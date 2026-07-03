@@ -1,0 +1,1942 @@
+# Code Trainer Build Plan
+
+This document is a handoff-ready implementation plan for building **Code Trainer**, a browser-based interview prep app for intermediate full-stack TypeScript engineers.
+
+It supersedes the earlier 25-lesson, frontend-only curriculum target. The new target is a deployed app with a richer, track-based curriculum, approximately 60 progressively structured lessons, multiple interactive problem types, guest progress through localStorage, and authenticated cloud progress sync through a lightweight backend.
+
+## 1. Product Goal
+
+Build a self-contained web app that teaches interview-ready engineering skills through:
+
+- Structured conceptual lessons authored in MDX.
+- Interactive practice problems.
+- Browser-based TypeScript and Python code execution.
+- Deterministic grading where possible.
+- Guided self-review for higher-level design and architecture exercises.
+- Persistent guest progress through `localStorage`.
+- Authenticated cloud progress sync across devices.
+
+The curriculum, MDX content, code execution, and grading should remain browser-side. The backend should be limited to authentication and user progress persistence.
+
+## 2. Target User
+
+Intermediate full-stack engineers who already know basic JavaScript/TypeScript and React, and want to prepare for interviews covering:
+
+- Algorithms and data structures.
+- JavaScript runtime behavior.
+- TypeScript type system and project design.
+- React and frontend engineering.
+- Backend TypeScript, APIs, and data modeling.
+- Testing, debugging, refactoring, system design, and production readiness.
+
+## 3. Core Product Principles
+
+- The first screen is the usable learning dashboard, not a marketing page.
+- Lessons are concise enough to finish in one focused session.
+- Every lesson has practice, not just reading.
+- Auto-grade only what can be graded honestly.
+- Use structured self-review for design, architecture, and tradeoff problems.
+- Keep the learning runtime browser-side and deterministic.
+- Use the backend only for authentication and user-specific progress sync.
+- Preserve guest mode so users can try the app without signing in.
+- Prefer shadcn/ui for interface primitives and patterns.
+- Keep the guided path linear by default, but let users inspect their progress and choose a different focus lesson when they want a self-directed path.
+
+## 4. Required Tech Stack
+
+Use these exact choices unless explicitly changed later:
+
+- TypeScript
+- React 19
+- React Router DOM 7
+- Vite 8
+- `@vitejs/plugin-react`
+- `@tailwindcss/vite`
+- `@mdx-js/rollup`
+- Tailwind CSS 4
+- shadcn/ui as the primary component system
+- Radix UI only through shadcn/ui unless a raw primitive is needed
+- `class-variance-authority`
+- `tailwind-merge`
+- `clsx`
+- `lucide-react`
+- `sonner`
+- `next-themes`
+- `@monaco-editor/react`
+- Sucrase
+- Pyodide loaded from CDN, approximately version `0.27`
+- `@fontsource-variable/geist`
+- Clerk through `@clerk/clerk-react` for authentication
+- Convex through `convex` for authenticated progress persistence and sync
+- ESLint flat config with TypeScript, React Hooks, and React Refresh plugins
+
+Required scripts:
+
+```json
+{
+  "dev": "vite",
+  "build": "tsc -b && vite build",
+  "lint": "eslint .",
+  "preview": "vite preview"
+}
+```
+
+Recommended helper scripts:
+
+```json
+{
+  "convex:dev": "convex dev",
+  "convex:deploy": "convex deploy"
+}
+```
+
+## 5. High-Level App Structure
+
+Use this approximate source layout:
+
+```text
+src/
+  app/
+    App.tsx
+    router.tsx
+    providers.tsx
+  components/
+    app/
+      AppShell.tsx
+      AuthButtons.tsx
+      Header.tsx
+      MobileNav.tsx
+      ProgressSidebar.tsx
+      SyncStatus.tsx
+      ThemeToggle.tsx
+    learning/
+      CurriculumMap.tsx
+      FocusLessonPicker.tsx
+      LessonCard.tsx
+      LessonHeader.tsx
+      LessonProgressTable.tsx
+      ProblemHeader.tsx
+      ProblemNavigation.tsx
+      PrerequisiteNotice.tsx
+    problems/
+      ProblemRenderer.tsx
+      CodeProblemView.tsx
+      DebugProblemView.tsx
+      RefactorProblemView.tsx
+      TraceProblemView.tsx
+      WrittenProblemView.tsx
+      DesignProblemView.tsx
+      ApproachesPanel.tsx
+      RubricReview.tsx
+      StaticCheckResults.tsx
+      TestResults.tsx
+    editor/
+      CodeEditor.tsx
+      DiffEditor.tsx
+      ReadOnlyCode.tsx
+    mdx/
+      Mdx.tsx
+    ui/
+      button.tsx
+      card.tsx
+      tabs.tsx
+      popover.tsx
+      dropdown-menu.tsx
+      sheet.tsx
+      badge.tsx
+      progress.tsx
+      separator.tsx
+      scroll-area.tsx
+      textarea.tsx
+      sonner.tsx
+  curriculum/
+    index.ts
+    types.ts
+    tracks.ts
+    lessons/
+      01-arrays-and-hashing/
+        index.ts
+        concept.mdx
+      ...
+  lib/
+    cn.ts
+    ids.ts
+    format.ts
+    storage.ts
+  pages/
+    HomePage.tsx
+    ConceptPage.tsx
+    ProgressPage.tsx
+    ProblemPage.tsx
+    NotFoundPage.tsx
+  runtime/
+    codeRunner.ts
+    jsRunner.ts
+    jsWorker.ts
+    pyRunner.ts
+    staticChecks.ts
+    testHarness.ts
+    traceGrader.ts
+  state/
+    cloudProgress.ts
+    learningPath.ts
+    progress.ts
+    syncProgress.ts
+    useProgress.ts
+    guidance.ts
+  styles/
+    globals.css
+  mdx.d.ts
+  main.tsx
+convex/
+  auth.config.ts
+  progress.ts
+  schema.ts
+  settings.ts
+```
+
+## 6. Routes
+
+Implement these routes:
+
+- `/`
+  - Home dashboard.
+  - Shows the recommended next lesson, active focus lesson, track progress, and lesson cards.
+  - Defaults to the linear guided path.
+- `/progress`
+  - Progress and curriculum map page.
+  - Shows completed, in-progress, untouched, and recommended lessons.
+  - Lets users select a focus lesson or return to the guided recommendation.
+- `/lesson/:slug`
+  - Concept page.
+  - Renders MDX lesson content.
+  - Shows lesson problems, completion state, and prerequisite guidance.
+  - Has primary action to start or continue problems.
+- `/lesson/:slug/problem/:problemId`
+  - Problem workspace.
+  - Uses a shared layout and dispatches to the correct problem renderer by `kind`.
+- `*`
+  - Not found page with a link back to the dashboard.
+
+## 7. Expanded Curriculum Model
+
+Create `src/curriculum/types.ts` with a richer problem model.
+
+```typescript
+import type { ComponentType } from 'react'
+
+export type Language = 'ts' | 'py'
+
+export type ProblemKind =
+  | 'code'
+  | 'debug'
+  | 'refactor'
+  | 'trace'
+  | 'written'
+  | 'design'
+
+export type CompletionMode =
+  | 'all-tests-pass'
+  | 'tests-and-static-checks-pass'
+  | 'structured-answer-correct'
+  | 'submitted-with-reference-review'
+  | 'submitted-with-rubric-review'
+
+export type TestCase = {
+  name: string
+  args: unknown[]
+  expected: unknown
+}
+
+export type BaseProblem = {
+  id: string
+  kind: ProblemKind
+  title: string
+  prompt: string
+  completionMode: CompletionMode
+  estimatedMinutes?: number
+}
+
+export type CodeProblem = BaseProblem & {
+  kind: 'code'
+  completionMode: 'all-tests-pass'
+  functionName: string
+  starter: Partial<Record<Language, string>>
+  tests: TestCase[]
+  defaultLanguage?: Language
+}
+
+export type DebugProblem = BaseProblem & {
+  kind: 'debug'
+  completionMode: 'all-tests-pass'
+  functionName: string
+  brokenCode: Partial<Record<Language, string>>
+  tests: TestCase[]
+  defaultLanguage?: Language
+  bugHints?: string[]
+}
+
+export type StaticCheck =
+  | { kind: 'forbid-text'; text: string; message: string }
+  | { kind: 'require-text'; text: string; message: string }
+  | { kind: 'max-lines'; max: number; message: string }
+  | { kind: 'no-any'; message: string }
+  | { kind: 'no-mutation'; targets: string[]; message: string }
+
+export type RefactorProblem = BaseProblem & {
+  kind: 'refactor'
+  completionMode: 'tests-and-static-checks-pass'
+  functionName: string
+  originalCode: string
+  starter: Partial<Record<Language, string>>
+  tests: TestCase[]
+  goals: string[]
+  staticChecks: StaticCheck[]
+  defaultLanguage?: Language
+}
+
+export type TraceQuestion =
+  | {
+      id: string
+      type: 'output-order'
+      label: string
+      options: string[]
+      expected: string[]
+    }
+  | {
+      id: string
+      type: 'final-value'
+      label: string
+      variable: string
+      expected: unknown
+    }
+  | {
+      id: string
+      type: 'multiple-choice'
+      label: string
+      options: string[]
+      answer: string
+    }
+
+export type TraceProblem = BaseProblem & {
+  kind: 'trace'
+  completionMode: 'structured-answer-correct'
+  code: string
+  questions: TraceQuestion[]
+  explanation: string
+}
+
+export type WrittenProblem = BaseProblem & {
+  kind: 'written'
+  completionMode: 'submitted-with-reference-review'
+  starter?: string
+  referenceAnswer: string
+  rubric?: RubricItem[]
+}
+
+export type DesignSection =
+  | { id: string; type: 'short-answer'; label: string; prompt: string }
+  | { id: string; type: 'endpoint-list'; label: string; prompt: string }
+  | { id: string; type: 'entity-list'; label: string; prompt: string }
+  | { id: string; type: 'tradeoff'; label: string; prompt: string; options: string[] }
+
+export type RubricItem = {
+  id: string
+  label: string
+  description: string
+}
+
+export type DesignProblem = BaseProblem & {
+  kind: 'design'
+  completionMode: 'submitted-with-rubric-review'
+  scenario: string
+  sections: DesignSection[]
+  rubric: RubricItem[]
+  referenceAnswer: string
+}
+
+export type Problem =
+  | CodeProblem
+  | DebugProblem
+  | RefactorProblem
+  | TraceProblem
+  | WrittenProblem
+  | DesignProblem
+
+export type Approach = {
+  name: string
+  language?: Language
+  code?: string
+  explanation: string
+  complexity?: string
+}
+
+export type Lesson = {
+  slug: string
+  title: string
+  summary: string
+  track: string
+  order: number
+  concept: ComponentType
+  problems: Problem[]
+  approaches: Record<string, Approach[]>
+}
+
+export type Track = {
+  id: string
+  title: string
+  summary: string
+  lessonSlugs: string[]
+}
+```
+
+## 8. Progress State
+
+Progress should be local-first and auth-aware.
+
+Use localStorage for:
+
+- Guest mode.
+- Fast optimistic UI updates.
+- Signed-in cache/fallback while cloud sync is in flight.
+
+Use Convex for:
+
+- Authenticated cross-device persistence.
+- Recovery after browser storage is cleared.
+- Syncing progress between sessions and devices.
+
+Use separate localStorage keys so signed-in user data is not shown to a later signed-out guest on the same browser:
+
+```text
+guest progress: "code-trainer:progress:v2:guest"
+authenticated cache: "code-trainer:progress:v2:user:<clerkUserId>"
+```
+
+Use a versioned state shape so future migrations are possible:
+
+```typescript
+export type ProgressState = {
+  version: 2
+  completed: Record<string, true>
+  drafts: Record<string, string>
+  languages: Record<string, 'ts' | 'py'>
+  traceAnswers: Record<string, unknown>
+  writtenAnswers: Record<string, string>
+  designAnswers: Record<string, unknown>
+  rubricReviews: Record<string, Record<string, true>>
+  revealedReferences: Record<string, true>
+  updatedAt: Record<string, number>
+  lastSyncedAt?: number
+  learningPath: {
+    mode: 'guided' | 'self-directed'
+    focusLessonSlug?: string
+    queuedLessonSlugs: string[]
+    updatedAt: number
+  }
+  lastVisited?: {
+    lessonSlug: string
+    problemId?: string
+    updatedAt: number
+  }
+}
+```
+
+Key formats:
+
+```text
+problem key: "slug::problemId"
+draft key: "slug::problemId::language"
+trace answer key: "slug::problemId::questionId"
+design answer key: "slug::problemId::sectionId"
+updatedAt key examples: "drafts::slug::problemId::ts", "languages::slug::problemId", "traceAnswers::slug::problemId::questionId"
+```
+
+The `useProgress()` hook should provide:
+
+- Read progress.
+- Save progress.
+- Save code drafts.
+- Save written answers.
+- Save trace answers.
+- Save design section answers.
+- Save selected language.
+- Reveal reference answer.
+- Toggle rubric items.
+- Mark problem complete.
+- Query lesson completion.
+- Query track completion.
+- Query recommended next lesson and problem.
+- Query and update selected focus lesson.
+- Queue or unqueue lessons for later.
+- Reset learning path mode to guided.
+- Report sync status.
+- Trigger manual sync retry.
+
+Use defensive parsing when loading from `localStorage`. If persisted data is invalid, reset to an empty valid state.
+
+## 8.1 Authentication, Cloud Sync, and Deployment
+
+Use Clerk for authentication and Convex for authenticated progress persistence.
+
+Do not build custom password auth. Authentication should be delegated to Clerk so the app does not own password storage, password recovery, session security, bot protection, or MFA mechanics.
+
+### 8.1.1 Auth UX
+
+Guest users:
+
+- Can browse the curriculum.
+- Can complete lessons.
+- Save progress to the guest localStorage key.
+- See a low-friction "Sign in to sync progress" action in the header and progress surfaces.
+
+Signed-in users:
+
+- See Clerk account controls in the header.
+- Sync progress to Convex.
+- Can continue across devices.
+- Use an authenticated localStorage cache while cloud state is loading.
+
+On sign-in:
+
+- Load guest local progress.
+- Load cloud progress from Convex.
+- Merge the two states deterministically.
+- Save the merged state to Convex.
+- Save the merged state to the authenticated local cache.
+- Keep the guest progress key unless the user explicitly chooses to clear it.
+
+On sign-out:
+
+- Stop showing the authenticated cache.
+- Return to guest progress.
+- Do not copy authenticated progress into the guest key automatically.
+
+### 8.1.2 Clerk Integration
+
+Frontend requirements:
+
+- Wrap the app in `ClerkProvider`.
+- Use Clerk sign-in/sign-up controls or Clerk-hosted flows.
+- Use `UserButton` for signed-in account management.
+- Use Clerk's `useAuth()` with Convex's Clerk provider integration.
+
+Environment variables:
+
+```text
+VITE_CLERK_PUBLISHABLE_KEY
+VITE_CONVEX_URL
+```
+
+Secrets and provider configuration should stay out of the frontend bundle. Any Clerk issuer/domain configuration required by Convex belongs in Convex configuration or environment settings.
+
+### 8.1.3 Convex Integration
+
+Use Convex for user-specific progress only. Do not move static curriculum content, MDX files, tests, or reference answers into Convex in v1.
+
+Convex functions must derive the user ID from the authenticated identity on the server side. The client must not be trusted to pass a user ID for authorization.
+
+Recommended server-side identity pattern:
+
+```typescript
+const identity = await ctx.auth.getUserIdentity()
+if (!identity) {
+  throw new Error('Authentication required')
+}
+const userId = identity.subject
+```
+
+Recommended Convex tables:
+
+```typescript
+userProblemProgress {
+  userId: string
+  lessonSlug: string
+  problemId: string
+  completedAt?: number
+  language?: 'ts' | 'py'
+  drafts?: {
+    ts?: string
+    py?: string
+  }
+  traceAnswers?: unknown
+  writtenAnswer?: string
+  designAnswers?: unknown
+  rubricReviews?: string[]
+  revealedReferenceAt?: number
+  updatedAt: number
+}
+
+userSettings {
+  userId: string
+  lastLessonSlug?: string
+  lastProblemId?: string
+  pathMode?: 'guided' | 'self-directed'
+  focusLessonSlug?: string
+  queuedLessonSlugs?: string[]
+  updatedAt: number
+}
+```
+
+Recommended indexes:
+
+```typescript
+userProblemProgress.by_user: ['userId']
+userProblemProgress.by_user_problem: ['userId', 'lessonSlug', 'problemId']
+userSettings.by_user: ['userId']
+```
+
+Recommended Convex functions:
+
+- `getProgress`
+- `mergeProgress`
+- `upsertProblemProgress`
+- `updateLastVisited`
+- `clearUserProgress`, optional and confirmation-gated
+
+### 8.1.4 Sync Rules
+
+Use deterministic merge rules:
+
+- `completed`: OR merge. If local or cloud says complete, keep complete.
+- `drafts`: last-write-wins using `updatedAt`.
+- `languages`: last-write-wins using `updatedAt`.
+- `traceAnswers`: last-write-wins using `updatedAt`.
+- `writtenAnswer`: last-write-wins using `updatedAt`.
+- `designAnswers`: last-write-wins using `updatedAt`.
+- `revealedReferences`: OR merge.
+- `rubricReviews`: OR merge per rubric item.
+- `lastVisited`: last-write-wins using `updatedAt`.
+- `learningPath`: last-write-wins using `updatedAt`, except queued lessons should be union-merged when both local and cloud changed recently.
+
+After sign-in merge, authenticated cloud progress should become the source of truth. The authenticated local cache should still update optimistically so the interface feels instant.
+
+Debounce frequent cloud writes such as editor drafts. Marking a problem complete, revealing references, and rubric review changes should sync immediately.
+
+### 8.1.5 Sync Status UI
+
+Add a small sync status surface in the app shell:
+
+- Guest mode: "Local progress"
+- Signed in and clean: "Synced"
+- Pending writes: "Syncing"
+- Failed write: "Sync failed" with retry action
+- Offline/network unavailable: "Saved locally"
+
+Use toasts sparingly. Persistent sync failures should be visible without repeatedly interrupting the learner.
+
+### 8.1.6 Deployment
+
+Recommended deployment model:
+
+- Static frontend host for the Vite app.
+- Convex deployment for progress functions and data.
+- Clerk application for authentication.
+
+Deployment documentation must list required environment variables and setup steps:
+
+- Clerk publishable key in the frontend host.
+- Convex URL in the frontend host.
+- Clerk/Convex auth provider configuration.
+- Allowed origins and redirect URLs for the deployed domain.
+- Local development setup for Clerk and Convex.
+
+## 9. Guided Path and Access Rules
+
+Use a linear guided path as the default flow, but do not force every user to follow it.
+
+Default guided behavior:
+
+- The app computes a recommended next lesson based on the first incomplete lesson in curriculum order.
+- The home page primary action continues the selected focus lesson if one exists; otherwise it continues the guided recommendation.
+- Lesson cards show whether each lesson is completed, in progress, recommended, ahead of the recommended path, or untouched.
+- Within a lesson, the first incomplete problem is the default next action.
+
+Self-directed behavior:
+
+- Users can open the progress/curriculum map and choose any lesson as their focus lesson.
+- Choosing a focus lesson switches `learningPath.mode` to `self-directed`.
+- Users can return to the guided recommendation at any time.
+- Lessons ahead of the recommended path should show a prerequisite notice, not a hard block.
+- Problem order inside a lesson should still default to sequential progression, but users may review the lesson overview before starting.
+
+The UI should show:
+
+- Recommended lessons/problems with a circle or arrow icon.
+- Selected focus lesson with a distinct active state.
+- Completed lessons/problems with a check icon.
+- Ahead-of-path lessons with a subtle notice icon, not a blocking lock.
+- Completion percentage globally and per track.
+- Counts for completed, in-progress, untouched, and ahead-of-path lessons.
+
+Implement guidance logic in `src/state/guidance.ts` as pure functions so it can be tested independently.
+
+## 10. Problem Renderer System
+
+Create a registry so `ProblemPage` does not contain problem-type-specific logic.
+
+```typescript
+export const problemRenderers = {
+  code: CodeProblemView,
+  debug: DebugProblemView,
+  refactor: RefactorProblemView,
+  trace: TraceProblemView,
+  written: WrittenProblemView,
+  design: DesignProblemView,
+} satisfies Record<ProblemKind, ComponentType<ProblemViewProps>>
+```
+
+`ProblemPage` responsibilities:
+
+- Resolve lesson and problem from route params.
+- Show prerequisite guidance when the lesson is ahead of the recommended path.
+- Render shared shell, sidebar, header, and navigation.
+- Render the correct problem view.
+- Save last visited location.
+- Show approaches/reference panels where relevant.
+
+Each problem view responsibilities:
+
+- Render problem-specific interaction.
+- Save drafts/answers.
+- Determine whether completion criteria have been met.
+- Call progress actions when complete.
+
+## 11. Problem Type UX
+
+### 11.1 Code Problems
+
+Use for standard implementation practice.
+
+UI:
+
+- Prompt and constraints on the left.
+- Monaco editor on the right.
+- Language switch for TypeScript/Python when both starters exist.
+- Run button.
+- Cmd/Ctrl+Enter runs tests.
+- Test results below editor.
+- Approaches panel hidden until requested or completion.
+
+Completion:
+
+- All tests pass.
+
+### 11.2 Debug Problems
+
+Use for broken implementations.
+
+UI:
+
+- Prompt explains expected behavior and symptoms.
+- Monaco editor starts with broken code.
+- Optional hint buttons reveal bug categories.
+- Same test results UI as code problems.
+
+Completion:
+
+- All tests pass.
+
+### 11.3 Refactor Problems
+
+Use for improving code without changing behavior.
+
+UI:
+
+- Read-only original code on the left.
+- Editable learner code on the right.
+- Monaco Diff Editor when practical.
+- Test results and static check results.
+- Goals panel listing refactor objectives.
+
+Completion:
+
+- All behavior tests pass.
+- All static checks pass.
+
+Keep static checks simple in v1. Do not build a full linter. Text-based and line-count checks are acceptable.
+
+### 11.4 Trace Problems
+
+Use for event loop, closures, recursion, async ordering, rendering order, and type narrowing reasoning.
+
+UI:
+
+- Read-only code snippet.
+- Structured questions:
+  - Ordered output list.
+  - Final variable values.
+  - Multiple-choice reasoning checks.
+- For output-order questions, use reorderable rows if available; otherwise use numbered dropdowns.
+- Submit button grades answers deterministically.
+- Reveal explanation after correct submission or explicit reveal.
+
+Completion:
+
+- All structured answers are correct.
+
+### 11.5 Written Problems
+
+Use for conceptual explanations.
+
+UI:
+
+- Prompt.
+- Textarea answer.
+- Submit button.
+- Reference answer reveal.
+- Optional rubric checklist.
+
+Completion:
+
+- Learner submits an answer.
+- Learner reveals reference answer.
+- If a rubric exists, learner checks all rubric items.
+
+### 11.6 Design Problems
+
+Use for API design, data modeling, system design, architecture tradeoffs, and production readiness.
+
+UI:
+
+- Scenario panel.
+- Structured tabs or sections:
+  - Requirements.
+  - API shape.
+  - Data model.
+  - Edge cases.
+  - Tradeoffs.
+  - Final recommendation.
+- Endpoint-list section should let users add method/path/description rows.
+- Entity-list section should let users add entity/table name, fields, and relationships.
+- Tradeoff section should use checkbox or segmented choices with rationale.
+- Reference answer reveal.
+- Rubric checklist.
+
+Completion:
+
+- All required sections have some content.
+- Reference answer has been revealed.
+- All rubric items have been reviewed.
+
+Do not claim design answers are automatically correct. The app should frame design completion as guided self-review.
+
+## 12. Runtime Execution
+
+### 12.1 Shared Harness
+
+Create `src/runtime/testHarness.ts`.
+
+Responsibilities:
+
+- `deepEqual(a, b)` for primitives, arrays, and plain objects.
+- Stable display formatting for expected/actual values.
+- Shared result types:
+
+```typescript
+export type TestResult = {
+  name: string
+  passed: boolean
+  error?: string
+  expected?: unknown
+  actual?: unknown
+}
+
+export type RunOutcome = {
+  results: TestResult[]
+  logs: string[]
+  fatal?: string
+}
+```
+
+### 12.2 JavaScript/TypeScript Runner
+
+Files:
+
+- `src/runtime/jsRunner.ts`
+- `src/runtime/jsWorker.ts`
+
+Requirements:
+
+- Run user TypeScript in a dedicated Web Worker.
+- Use Sucrase to transpile TypeScript to JavaScript.
+- Strip import/export statements so user code evaluates as a script body.
+- Invoke the target function once per test case.
+- Compare actual vs expected with `deepEqual`.
+- Capture `console.log` messages where practical.
+- Return fatal errors cleanly.
+- Enforce 5000ms timeout by terminating the worker.
+
+Security notes:
+
+- A Web Worker is an isolation boundary for the UI thread, not a full security sandbox.
+- The timeout protects app responsiveness.
+- Avoid exposing app internals to the worker.
+
+### 12.3 Python Runner
+
+File:
+
+- `src/runtime/pyRunner.ts`
+
+Requirements:
+
+- Load Pyodide lazily from CDN on first Python use.
+- Reuse the Pyodide instance after it loads.
+- Execute learner Python code.
+- Invoke the target function for each test case.
+- Convert Python results through `.toJs()` where needed.
+- Return the same `RunOutcome` shape.
+
+Known limitation:
+
+- Python infinite-loop protection is harder without a worker-backed Pyodide setup. For v1, prefer running Pyodide in a worker if feasible. If not feasible, document the limitation and keep Python problems simpler.
+
+### 12.4 Static Checks
+
+File:
+
+- `src/runtime/staticChecks.ts`
+
+Implement deterministic checks:
+
+- Required text present.
+- Forbidden text absent.
+- Maximum non-empty line count.
+- No obvious `any`.
+- No direct mutation of named inputs through simple pattern checks.
+
+Static checks are guardrails, not a substitute for human review.
+
+### 12.5 Trace Grader
+
+File:
+
+- `src/runtime/traceGrader.ts`
+
+Implement deterministic grading for:
+
+- Output order arrays.
+- Final values.
+- Multiple-choice answers.
+
+Normalize trivial whitespace for string answers.
+
+## 13. MDX Lesson Rendering
+
+Add `src/mdx.d.ts`:
+
+```typescript
+declare module '*.mdx' {
+  import type { ComponentType } from 'react'
+  const component: ComponentType
+  export default component
+}
+```
+
+Create `Mdx.tsx` that maps MDX elements to styled components:
+
+- `h1`, `h2`, `h3`
+- `p`
+- `ul`, `ol`, `li`
+- `pre`, `code`
+- `blockquote`
+- `table`
+- `a`
+
+Concept pages should be readable, dense, and useful. Avoid marketing-style hero sections.
+
+## 14. UI and Layout Requirements
+
+### 14.1 Visual Direction
+
+The product should feel like a focused technical learning environment:
+
+- Dense but readable.
+- Quiet and utilitarian.
+- Clear progress indicators.
+- Fast navigation.
+- No decorative hero sections.
+- No large marketing panels.
+
+### 14.2 App Shell
+
+Desktop:
+
+- Fixed left sidebar for tracks, lessons, and problems.
+- Main content area with constrained reading width on concept pages.
+- Split-pane workspace on problem pages.
+
+Mobile:
+
+- Hide sidebar.
+- Provide sheet-based navigation.
+- Stack prompt, editor, and results vertically.
+
+### 14.3 Progress and Curriculum Map
+
+Add a progress overview interface for users who want to choose their own path.
+
+The progress page should show:
+
+- Overall completion percentage.
+- Track-level completion percentages.
+- Completed, in-progress, untouched, recommended, and ahead-of-path counts.
+- A searchable/filterable curriculum map grouped by track.
+- Lesson rows or cards with title, summary, progress, status, estimated time, and problem count.
+- A primary action to continue the guided recommendation.
+- A secondary action to set any lesson as the active focus lesson.
+- A way to reset from self-directed mode back to the guided path.
+- Optional "queue for later" action for lessons the user wants to revisit.
+
+The home page should remain simple:
+
+- Prominent continue button.
+- Current focus lesson when self-directed mode is active.
+- Recommended next lesson when guided mode is active.
+- Track progress overview.
+- Link to the full progress/curriculum map.
+
+Use prerequisite notices for lessons ahead of the recommended path. The notice should explain what the guided path would cover first, while still allowing the user to continue.
+
+### 14.4 shadcn/ui Components
+
+Generate/copy at least:
+
+- button
+- card
+- tabs
+- popover
+- dropdown-menu
+- sheet
+- badge
+- progress
+- separator
+- scroll-area
+- textarea
+- sonner
+- tooltip
+- dialog
+- checkbox
+- input
+- select
+
+Use lucide-react icons for:
+
+- Lock
+- Circle
+- Check
+- Play
+- RotateCcw
+- BookOpen
+- Code
+- Bug
+- Wrench
+- ListChecks
+- PencilLine
+- Network
+- Moon/Sun
+
+### 14.5 Theme
+
+Use:
+
+- Tailwind CSS 4.
+- CSS custom properties.
+- OKLCH color values.
+- `next-themes`.
+- Geist variable font.
+
+Provide light and dark themes.
+
+## 15. Curriculum Plan
+
+Build approximately 60 lessons grouped into 5 tracks.
+
+Each lesson should include:
+
+- 1 MDX concept page.
+- 2 to 4 problems, with 3 as the default target when the topic supports it.
+- At least 1 auto-graded problem when the topic supports it.
+- Reference approaches or reference answers.
+- Estimated completion time.
+
+### 15.1 Lesson Problem Progression
+
+Most lessons should use a small progression of problems rather than a single broad exercise.
+
+Default progression:
+
+1. Foundation
+   Tests the core concept directly. It should be approachable immediately after reading the lesson and should isolate the main pattern or idea.
+2. Applied
+   Uses the same concept with realistic constraints, edge cases, or composition with another familiar skill. It should require the learner to recognize when and how to adapt the concept.
+3. Interview-depth
+   Requires deeper reasoning, tradeoff analysis, or a harder variant. It should resemble the level of ambiguity or edge-case handling expected in a real interview.
+4. Optional extension
+   Use only when it adds a genuinely different angle. Prefer `debug`, `refactor`, `trace`, `written`, or `design` for the fourth problem rather than another near-duplicate implementation task.
+
+Use 2 problems for narrow topics where a third problem would become repetitive. Use 4 problems only when the fourth problem tests a distinct subskill, failure mode, or interview-relevant tradeoff.
+
+Do not add extra problems merely to increase count. Every problem must have a clear learning purpose and must not be a near-duplicate of another problem in the same lesson.
+
+Example progression for sliding window:
+
+1. Foundation: maximum sum of a fixed-size subarray.
+2. Applied: longest substring without repeating characters.
+3. Interview-depth: minimum window substring.
+4. Optional debug: fix a shrinking-window bug.
+
+This is preferable to three fixed-window variants that only change the wording, because each problem introduces a different reasoning step.
+
+### Track 1: Algorithmic Problem Solving
+
+1. Arrays and hashing
+2. Two pointers
+3. Sliding window
+4. Prefix sums and difference arrays
+5. Binary search
+6. Sorting and comparison patterns
+7. Stacks and monotonic stacks
+8. Queues and deques
+9. Linked lists
+10. Trees and recursion
+11. Binary search trees
+12. Heaps and priority queues
+13. Graph traversal
+14. Graph shortest paths
+15. Backtracking
+16. Dynamic programming fundamentals
+17. Advanced dynamic programming
+18. Greedy algorithms
+19. Big-O analysis and tradeoffs
+
+Recommended problem mix:
+
+- Mostly `code`.
+- Some `debug` for off-by-one and mutation bugs.
+- Some `trace` for recursion and complexity reasoning.
+
+### Track 2: JavaScript and TypeScript Core
+
+20. JavaScript runtime fundamentals
+21. Scope, closures, and prototypes
+22. Event loop and task scheduling
+23. Async patterns with promises
+24. Cancellation, timeouts, and AbortController
+25. TypeScript strict-mode fundamentals
+26. Narrowing, unions, and discriminated unions
+27. Generics and reusable abstractions
+28. Utility types and mapped types
+29. Conditional types and inference
+30. Type-safe domain modeling
+31. Runtime validation and parsing external data
+32. Error handling with Result-style types
+
+Recommended problem mix:
+
+- `trace` for runtime behavior.
+- `code` for utility functions and typed helpers.
+- `debug` for async and narrowing bugs.
+- `refactor` for removing unsafe `any`.
+- `written` for tradeoff questions.
+
+### Track 3: React and Frontend Engineering
+
+33. React component design
+34. Props, state, and derived state
+35. Hooks and custom hooks
+36. Effects and synchronization
+37. Forms and validation
+38. Accessibility and keyboard UX
+39. Client state vs server state
+40. React performance and memoization
+41. Routing and layout architecture
+42. Browser storage and offline-friendly state
+43. Browser networking and fetch patterns
+44. Frontend security basics
+
+Recommended problem mix:
+
+- `debug` for stale closures, bad effects, derived-state bugs, and mutation.
+- `trace` for render/effect ordering.
+- `refactor` for component extraction and hook design.
+- `written` for accessibility and security explanations.
+- `design` for state architecture and routing decisions.
+
+### Track 4: Backend TypeScript and Data
+
+45. Node.js runtime fundamentals
+46. HTTP APIs and request lifecycle
+47. API design and resource modeling
+48. Authentication and authorization
+49. SQL fundamentals
+50. Schema design and relationships
+51. Indexes and query performance
+52. Transactions and consistency
+53. Migrations and data evolution
+54. Caching and rate limiting
+
+Recommended problem mix:
+
+- `design` for API and data models.
+- `written` for auth/security tradeoffs.
+- `trace` for async request lifecycle.
+- `code` for validators, serializers, query builders, and small service functions.
+- `debug` for transaction and authorization bugs.
+
+### Track 5: Testing, Design, and Production Readiness
+
+55. Unit testing strategy
+56. Integration and contract testing
+57. End-to-end testing
+58. Debugging and refactoring legacy code
+59. SOLID and design patterns in TypeScript
+60. System design capstone
+
+Recommended problem mix:
+
+- `debug` for failing tests and broken assumptions.
+- `refactor` for design patterns and legacy cleanup.
+- `written` for testing strategy.
+- `design` for system design and architecture capstones.
+
+## 16. Lesson Authoring Template
+
+Each lesson directory should follow this structure:
+
+```text
+src/curriculum/lessons/NN-topic-slug/
+  concept.mdx
+  index.ts
+```
+
+`index.ts` pattern:
+
+```typescript
+import Concept from './concept.mdx'
+import type { Lesson } from '../../types'
+
+export const lesson: Lesson = {
+  slug: 'arrays-and-hashing',
+  title: 'Arrays and Hashing',
+  summary: 'Use arrays, objects, maps, and sets to solve frequency and lookup problems.',
+  track: 'algorithms',
+  order: 1,
+  concept: Concept,
+  problems: [
+    // problems
+  ],
+  approaches: {
+    // problemId: approaches
+  },
+}
+```
+
+Concept MDX should include:
+
+- What the pattern is.
+- When to reach for it.
+- Common interview signals.
+- Common mistakes.
+- TypeScript-specific notes where relevant.
+- A short worked example.
+- Transition to practice.
+
+## 17. Implementation Phases
+
+### Phase 0: Project Scaffold
+
+Tasks:
+
+- Initialize Vite React TypeScript project.
+- Install required dependencies.
+- Configure Vite with React, Tailwind, and MDX plugins.
+- Configure Tailwind CSS 4.
+- Configure shadcn/ui.
+- Configure Clerk and Convex dependencies.
+- Configure Geist font.
+- Configure ESLint flat config.
+- Add base `tsconfig` settings.
+- Add `.env.example` with required frontend environment variables.
+- Add app root, router, providers, and global styles.
+
+Acceptance criteria:
+
+- `npm run dev` starts.
+- `npm run build` completes with a placeholder app.
+- `npm run lint` runs.
+
+### Phase 1: App Shell and Routing
+
+Tasks:
+
+- Create routes.
+- Build app shell.
+- Build dashboard layout.
+- Build progress/curriculum map page layout.
+- Build concept page layout.
+- Build problem page layout.
+- Add not found page.
+- Add dark mode.
+- Add toast provider.
+- Add Clerk provider shell.
+- Add Convex provider shell.
+- Add signed-out/sign-in controls and signed-in user menu.
+
+Acceptance criteria:
+
+- All routes render.
+- Mobile and desktop layouts are usable.
+- Theme toggle works.
+- App runs in guest mode without configured authenticated data.
+
+### Phase 2: Curriculum Types and Registry
+
+Tasks:
+
+- Implement expanded curriculum types.
+- Implement track registry.
+- Implement lesson registry.
+- Add placeholder lessons for all 60 lessons.
+- Add `mdx.d.ts`.
+- Add basic MDX renderer.
+
+Acceptance criteria:
+
+- Dashboard lists all tracks and lessons.
+- Concept pages render MDX.
+- Build succeeds with all lesson imports.
+
+### Phase 3: Progress and Guided Path
+
+Tasks:
+
+- Implement progress state.
+- Implement versioned guest localStorage load/save.
+- Implement versioned authenticated localStorage cache load/save.
+- Implement guided-path pure functions.
+- Implement completion queries.
+- Implement learning path mode and focus lesson state.
+- Implement last visited state.
+- Wire progress into dashboard/sidebar/problem navigation.
+
+Acceptance criteria:
+
+- Progress persists after reload.
+- The app computes a guided recommended next lesson.
+- Users can select and persist a focus lesson.
+- Completion percentages update immediately.
+- Guest progress and authenticated cache are stored separately.
+
+### Phase 3.5: Authentication, Cloud Sync, and Deployment Path
+
+Tasks:
+
+- Configure Clerk authentication.
+- Configure Convex project files.
+- Add Convex auth provider configuration for Clerk.
+- Implement Convex schema for user progress and user settings.
+- Implement Convex progress functions.
+- Implement local/cloud progress merge logic.
+- Implement sign-in merge from guest progress to cloud progress.
+- Implement optimistic local updates with debounced cloud writes.
+- Implement sync status UI.
+- Add retry behavior for failed sync writes.
+- Add deployment notes for environment variables, allowed origins, and redirect URLs.
+
+Acceptance criteria:
+
+- Signed-out users can use the app with guest local progress.
+- Signed-in users sync progress to Convex.
+- Signing in merges guest and cloud progress deterministically.
+- Signing out returns to guest progress without exposing authenticated cache.
+- Convex functions reject unauthenticated writes.
+- Sync status accurately reports local, syncing, synced, and failed states.
+
+### Phase 4: Code Execution Runtime
+
+Tasks:
+
+- Implement `deepEqual`.
+- Implement JS/TS worker runner.
+- Implement worker timeout.
+- Implement console log capture.
+- Implement Pyodide loader/runner.
+- Implement shared runner facade.
+
+Acceptance criteria:
+
+- TypeScript code problems can run tests.
+- Infinite loops in TypeScript are stopped by timeout.
+- Python problems can run when Pyodide loads.
+- Runtime errors show readable messages.
+
+### Phase 5: Code, Debug, and Refactor Problem Views
+
+Tasks:
+
+- Build `CodeEditor`.
+- Build `DiffEditor`.
+- Build `TestResults`.
+- Build `StaticCheckResults`.
+- Build `ApproachesPanel`.
+- Build `CodeProblemView`.
+- Build `DebugProblemView`.
+- Build `RefactorProblemView`.
+- Implement static checks.
+
+Acceptance criteria:
+
+- Code problems complete after all tests pass.
+- Debug problems complete after all tests pass.
+- Refactor problems complete after tests and static checks pass.
+- Drafts autosave per problem and language.
+
+### Phase 6: Trace, Written, and Design Problem Views
+
+Tasks:
+
+- Build `TraceProblemView`.
+- Implement trace answer widgets.
+- Implement `traceGrader`.
+- Build `WrittenProblemView`.
+- Build `DesignProblemView`.
+- Build `RubricReview`.
+- Implement reference answer reveal behavior.
+
+Acceptance criteria:
+
+- Trace problems grade deterministic answers.
+- Written/design answers persist.
+- Reference/rubric review completion works.
+
+### Phase 7: Navigation and Learning Flow Polish
+
+Tasks:
+
+- Add previous/next problem navigation.
+- Add continue button on home page.
+- Add progress/curriculum map interactions.
+- Add set-focus, queue-for-later, and return-to-guided actions.
+- Add concept reference sheet in problem workspace.
+- Add prerequisite notices for ahead-of-path lessons.
+- Add toasts on completion and failed tests.
+- Add empty/error states.
+
+Acceptance criteria:
+
+- User can move through the curriculum without dead ends.
+- Guided and self-directed flows are both clear.
+- Ahead-of-path lessons are clearly labeled without blocking access.
+- Completion produces clear feedback.
+
+### Phase 8: Curriculum Content Pass
+
+Tasks:
+
+- Replace placeholder lessons with real MDX content.
+- Add 2 to 4 problems per lesson.
+- Add test cases for code/debug/refactor problems.
+- Add trace expected answers.
+- Add written/design reference answers.
+- Add approaches and complexity notes.
+
+Acceptance criteria:
+
+- All 60 lessons have meaningful content.
+- All problems have valid completion paths.
+- No lesson is empty.
+
+### Phase 9: QA and Hardening
+
+Tasks:
+
+- Run build and lint.
+- Manually test representative problems of each kind.
+- Test progress persistence.
+- Test guest progress.
+- Test Clerk sign-in/sign-out.
+- Test guest-to-cloud progress merge.
+- Test authenticated progress sync across reloads.
+- Test sync failure/retry UI.
+- Test guided recommended-next behavior.
+- Test selecting a focus lesson.
+- Test returning to guided mode.
+- Test ahead-of-path prerequisite notices.
+- Test mobile layout.
+- Test dark mode.
+- Test Pyodide load failure state.
+- Test JS worker timeout.
+
+Acceptance criteria:
+
+- `npm run build` passes.
+- `npm run lint` passes or documented warnings are resolved.
+- No known broken route.
+- No known impossible problem.
+- Authenticated sync has been manually verified in a deployed or deploy-like environment.
+
+## 18. Suggested Multi-Agent Workstreams
+
+Use these workstreams if splitting the build among agents.
+
+### Agent A: Foundation and UI Shell
+
+Owns:
+
+- Project scaffold.
+- Vite/Tailwind/shadcn setup.
+- Routing.
+- App shell.
+- Theme.
+- Dashboard.
+- Sidebar.
+- Shared UI components.
+
+Dependencies:
+
+- None initially.
+
+Deliverables:
+
+- Running app.
+- Route skeletons.
+- Responsive shell.
+
+### Agent B: Curriculum and Content Model
+
+Owns:
+
+- Curriculum types.
+- Track registry.
+- Lesson registry.
+- Lesson directory structure.
+- Placeholder lesson generation.
+- Final curriculum content.
+
+Dependencies:
+
+- Needs agreed `types.ts`.
+
+Deliverables:
+
+- All 60 lessons registered.
+- MDX concept content.
+- Problems and reference material.
+
+### Agent C: Runtime and Grading
+
+Owns:
+
+- JS/TS runner.
+- Web Worker.
+- Pyodide runner.
+- Test harness.
+- Static checks.
+- Trace grading.
+
+Dependencies:
+
+- Needs problem type definitions.
+
+Deliverables:
+
+- Working code execution.
+- Working deterministic graders.
+- Runtime error handling.
+
+### Agent D: Problem Experiences
+
+Owns:
+
+- Problem renderer registry.
+- Code/debug/refactor views.
+- Trace/written/design views.
+- Editor components.
+- Results panels.
+- Approaches/reference/rubric panels.
+
+Dependencies:
+
+- Needs app shell, progress API, and runtime API.
+
+Deliverables:
+
+- All problem types interactive.
+- Completion logic wired.
+
+### Agent E: State, Guidance, and QA
+
+Owns:
+
+- Progress state.
+- Guest localStorage versioning.
+- Authenticated cache versioning.
+- Guided-path functions.
+- Learning path mode and focus lesson state.
+- Completion percentage.
+- Manual QA.
+- Build/lint verification.
+
+Dependencies:
+
+- Needs curriculum registry.
+
+Deliverables:
+
+- Persistent local progress.
+- Correct guided recommendation behavior.
+- Correct self-directed focus lesson behavior.
+- QA checklist results.
+
+### Agent F: Auth, Cloud Sync, and Deployment
+
+Owns:
+
+- Clerk setup.
+- Convex setup.
+- Convex schema and progress functions.
+- Clerk/Convex auth integration.
+- Guest-to-cloud merge logic.
+- Sync status UI.
+- Deployment environment documentation.
+
+Dependencies:
+
+- Needs progress state shape.
+- Needs app provider shell.
+
+Deliverables:
+
+- Guest mode remains usable.
+- Signed-in progress syncs through Convex.
+- Authenticated writes are server-authorized.
+- Deployment setup is documented.
+
+## 19. Integration Contracts
+
+Agents should coordinate through stable contracts.
+
+### Runtime Contract
+
+```typescript
+export type RunRequest = {
+  language: 'ts' | 'py'
+  code: string
+  functionName: string
+  tests: TestCase[]
+}
+
+export type CodeRunner = (request: RunRequest) => Promise<RunOutcome>
+```
+
+### Problem View Contract
+
+```typescript
+export type ProblemViewProps<TProblem extends Problem = Problem> = {
+  lesson: Lesson
+  problem: TProblem
+  problemKey: string
+  isCompleted: boolean
+  onComplete: () => void
+}
+```
+
+### Progress Contract
+
+```typescript
+export type ProgressActions = {
+  saveDraft: (lessonSlug: string, problemId: string, language: Language, value: string) => void
+  getDraft: (lessonSlug: string, problemId: string, language: Language) => string | undefined
+  setLanguage: (lessonSlug: string, problemId: string, language: Language) => void
+  getLanguage: (lessonSlug: string, problemId: string) => Language | undefined
+  markComplete: (lessonSlug: string, problemId: string) => void
+  setFocusLesson: (lessonSlug: string) => void
+  resetToGuidedPath: () => void
+  queueLesson: (lessonSlug: string) => void
+  unqueueLesson: (lessonSlug: string) => void
+}
+```
+
+Expand this contract as trace/design/written views are implemented.
+
+### Learning Path Contract
+
+```typescript
+export type LessonStatus =
+  | 'completed'
+  | 'in-progress'
+  | 'recommended'
+  | 'focus'
+  | 'ahead-of-path'
+  | 'untouched'
+
+export type LearningPathState = {
+  mode: 'guided' | 'self-directed'
+  recommendedLessonSlug: string
+  focusLessonSlug?: string
+  queuedLessonSlugs: string[]
+}
+```
+
+Guidance functions should be pure and should derive lesson status from the curriculum registry plus progress state.
+
+### Sync Contract
+
+```typescript
+export type SyncStatus =
+  | 'guest'
+  | 'loading-cloud'
+  | 'syncing'
+  | 'synced'
+  | 'saved-locally'
+  | 'failed'
+
+export type ProgressSyncAdapter = {
+  status: SyncStatus
+  isSignedIn: boolean
+  userId?: string
+  retry: () => Promise<void>
+  mergeGuestIntoCloud: () => Promise<void>
+}
+```
+
+The progress hook should expose sync status without making problem views depend directly on Clerk or Convex.
+
+### Cloud Progress Contract
+
+```typescript
+export type CloudProgressRecord = {
+  lessonSlug: string
+  problemId: string
+  completedAt?: number
+  language?: Language
+  drafts?: Partial<Record<Language, string>>
+  traceAnswers?: unknown
+  writtenAnswer?: string
+  designAnswers?: unknown
+  rubricReviews?: string[]
+  revealedReferenceAt?: number
+  updatedAt: number
+}
+```
+
+Cloud functions must infer the authenticated user on the server. Client-provided `userId` values must not be accepted for reads or writes.
+
+## 20. Testing Strategy
+
+### Automated Checks
+
+Required:
+
+- `npm run build`
+- `npm run lint`
+
+Recommended if time allows:
+
+- Unit tests for `deepEqual`.
+- Unit tests for guided-path logic.
+- Unit tests for lesson status derivation.
+- Unit tests for trace grading.
+- Unit tests for static checks.
+- Unit tests for progress merge rules.
+- Unit tests for localStorage key selection by auth state.
+
+If adding a test runner, prefer Vitest because it fits Vite projects naturally. Do not add it unless the build scope allows.
+
+### Manual QA Matrix
+
+Test these flows:
+
+- Fresh user opens dashboard.
+- User starts first lesson.
+- User completes a TypeScript code problem.
+- User triggers a TypeScript runtime error.
+- User triggers a TypeScript timeout.
+- User switches to Python and runs a Python problem.
+- User completes a debug problem.
+- User completes a refactor problem.
+- User completes a trace problem.
+- User completes a written problem.
+- User completes a design problem.
+- User reloads and progress persists.
+- Signed-out user sees guest local progress.
+- User signs in and guest progress merges into cloud progress.
+- Signed-in user reloads and cloud progress is restored.
+- User signs out and authenticated progress is not shown as guest progress.
+- Sync write fails and retry UI appears.
+- User opens an ahead-of-path lesson route directly and sees prerequisite guidance.
+- User opens the progress page and filters by completion status.
+- User selects an ahead-of-path lesson as focus and sees prerequisite guidance.
+- User resets back to guided mode.
+- User uses mobile navigation.
+- User toggles dark/light theme.
+
+## 21. Content Quality Standards
+
+Each lesson should be:
+
+- Accurate.
+- Focused.
+- Interview-relevant.
+- Practical for TypeScript engineers.
+- Short enough for a focused session.
+
+Each problem should have:
+
+- Clear instructions.
+- A deterministic completion path or explicit self-review path.
+- Starter material.
+- Reference material.
+- No hidden dependency on a backend.
+
+Each problem is acceptable only if:
+
+- It has a clear learning purpose.
+- It tests a distinct subskill, failure mode, or interview-relevant tradeoff.
+- It is not a near-duplicate of another problem in the same lesson.
+- Its expected solution teaches a reusable pattern or judgment.
+- Its difficulty matches its position in the lesson progression.
+- It includes realistic edge cases.
+- It includes a reference approach, reference answer, or rubric.
+- Auto-graded problems have tests that catch the main incorrect approaches.
+
+Code tests should include:
+
+- Normal case.
+- Edge case.
+- Empty/minimal case where relevant.
+- Duplicate or repeated value case where relevant.
+- Larger case where relevant.
+
+Design rubrics should include:
+
+- Requirements coverage.
+- Data shape/API shape correctness.
+- Edge cases.
+- Security/reliability considerations where relevant.
+- Tradeoff clarity.
+
+## 22. Known Risks and Mitigations
+
+### Risk: Curriculum Scope Is Large
+
+Mitigation:
+
+- Build full infrastructure first.
+- Start with placeholder content for all 60 lessons.
+- Fill content track by track.
+- Keep lesson content concise.
+
+### Risk: Browser Code Execution Is Complex
+
+Mitigation:
+
+- Implement TypeScript runner first.
+- Add Pyodide after TS runner is stable.
+- Use a shared `RunOutcome`.
+- Keep test cases JSON-serializable.
+
+### Risk: Python Timeout Handling
+
+Mitigation:
+
+- Prefer worker-backed Pyodide.
+- If not possible in v1, document limitation and avoid Python infinite-loop exercises.
+
+### Risk: Design Problems Cannot Be Fully Auto-Graded
+
+Mitigation:
+
+- Use structured prompts.
+- Use reference answers.
+- Use rubric self-review.
+- Avoid pretending self-reviewed answers are objectively verified.
+
+### Risk: Static Checks Become Too Ambitious
+
+Mitigation:
+
+- Keep checks simple.
+- Use tests as the primary behavior guard.
+- Treat static checks as educational nudges.
+
+### Risk: Auth and Sync Increase Setup Complexity
+
+Mitigation:
+
+- Use Clerk and Convex rather than custom auth.
+- Keep the backend limited to user progress and settings.
+- Keep the curriculum static in the frontend.
+- Document required environment variables and provider setup.
+
+### Risk: Progress Merge Conflicts Are Confusing
+
+Mitigation:
+
+- Use deterministic merge rules.
+- OR-merge irreversible learning actions such as completion and reference reveal.
+- Use `updatedAt` for drafts and editable answers.
+- Show sync status clearly.
+
+### Risk: Authenticated Progress Leaks Into Guest Mode
+
+Mitigation:
+
+- Use separate localStorage keys for guest progress and authenticated cache.
+- On sign-out, return to guest progress instead of copying user progress into the guest key.
+- Do not store Clerk secrets or Convex server credentials in frontend code.
+
+## 23. Definition of Done
+
+The app is done when:
+
+- `npm install` installs dependencies successfully.
+- `npm run dev` serves the app.
+- `npm run build` type-checks and bundles cleanly.
+- `npm run lint` passes.
+- All routes work.
+- All 60 lessons are present and registered.
+- Every lesson has MDX concept content.
+- Every lesson has 2 to 4 practice problems, with 3 as the default unless the topic is too narrow to support 3 distinct high-quality exercises.
+- Every included problem satisfies the content quality checklist.
+- All problem kinds have working interactive views.
+- TypeScript code execution works in a Web Worker.
+- Python execution works through Pyodide or has clearly documented limitations.
+- Guest progress persists to localStorage.
+- Authenticated progress syncs to Convex.
+- Clerk sign-in, sign-up, sign-out, and user menu flows work.
+- Guest progress merges into cloud progress after sign-in.
+- Authenticated progress is not exposed as guest progress after sign-out.
+- Sync status and retry behavior work.
+- The guided path recommends the next lesson by default.
+- Users can view completed/in-progress/untouched lessons in a progress map.
+- Users can select a focus lesson and return to guided mode.
+- Ahead-of-path lessons show prerequisite guidance without hard-blocking access.
+- Desktop and mobile layouts are usable.
+- Light and dark themes work.
+- Required deployment environment variables and provider setup are documented.
+- A representative problem from each problem kind has been manually verified.
+
+## 24. Recommended Build Order Summary
+
+1. Scaffold the project and install dependencies.
+2. Build shell, routes, theme, and shadcn/ui foundation.
+3. Define curriculum/problem/progress types.
+4. Add lesson registry and placeholder lessons.
+5. Implement progress, guided-path, and focus-lesson logic.
+6. Add Clerk, Convex, guest mode, cloud sync, and deployment setup.
+7. Implement TypeScript runner and test harness.
+8. Build code/debug/refactor views.
+9. Implement trace/written/design views.
+10. Add Pyodide runner.
+11. Fill curriculum content.
+12. Polish navigation and responsive UX.
+13. Run full QA and fix failures.
+
+## 25. Agent Handoff Rule
+
+Any agent taking this plan should first identify which workstream they own, then avoid editing unrelated areas unless required by an integration contract.
+
+When changing shared contracts such as `curriculum/types.ts`, progress state, or runtime result types, update all dependent views in the same handoff or clearly document the required follow-up.
