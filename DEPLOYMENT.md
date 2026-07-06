@@ -39,7 +39,10 @@ template audience/application ID to be `convex`.
 3. Link Convex with `bun x convex dev`.
 4. Set `VITE_CLERK_PUBLISHABLE_KEY` and `VITE_CONVEX_URL` in `.env.local`.
 5. Set `CLERK_JWT_ISSUER_DOMAIN` in Convex.
-6. Run the app with `bun run dev`.
+6. Run the app and local Convex backend together with `bun run dev:all`.
+
+For isolated debugging, run `bun run dev:vite` and `bun run dev:convex` in
+separate terminals.
 
 ## Production Setup
 

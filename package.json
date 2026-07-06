@@ -6,6 +6,9 @@
   "packageManager": "bun@1.3.14",
   "scripts": {
     "dev": "vite",
+    "dev:vite": "vite --host 127.0.0.1 --port 5173",
+    "dev:convex": "convex dev --typecheck disable",
+    "dev:all": "bash ./scripts/dev-all.sh",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "test": "vitest run",
