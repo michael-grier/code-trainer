@@ -3,6 +3,7 @@ import { Cloud, CloudOff, HardDrive, RefreshCw } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { isClerkConfigured, isConvexConfigured } from '@/lib/env'
+import { useProgress } from '@/state/progressContext'
 
 export function SyncStatus() {
   if (!isClerkConfigured) {
@@ -19,6 +20,7 @@ export function SyncStatus() {
 
 function ConfiguredSyncStatus() {
   const { isLoaded, isSignedIn } = useAuth()
+  const { syncStatus } = useProgress()
 
   if (!isLoaded) {
     return (
@@ -50,8 +52,7 @@ function ConfiguredSyncStatus() {
   return (
     <Badge title="Cloud progress sync will be wired in checkpoint 5." variant="outline">
       <Cloud className="mr-1 size-3" />
-      Sync ready
+      {syncStatus === 'saved-locally' ? 'Saved locally' : 'Sync ready'}
     </Badge>
   )
 }
-

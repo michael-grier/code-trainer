@@ -1,4 +1,12 @@
-import { ArrowRight, BookOpen, Circle, Play } from 'lucide-react'
+import {
+  ArrowRight,
+  BookOpen,
+  CheckCircle2,
+  Circle,
+  Play,
+  TriangleAlert,
+} from 'lucide-react'
+import { useEffect } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
 import { Mdx } from '@/components/mdx/Mdx'
@@ -12,12 +20,21 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
-import { getLesson, getTrack } from '@/curriculum'
+import { getLesson, getTrack, lessons } from '@/curriculum'
 import { formatSlug } from '@/lib/format'
+import { useProgress } from '@/state/progressContext'
 
 export function ConceptPage() {
   const { slug } = useParams()
   const lesson = getLesson(slug)
+  const progress = useProgress()
+  const { saveLastVisited } = progress
+
+  useEffect(() => {
+    if (lesson) {
+      saveLastVisited(lesson.slug)
+    }
+  }, [lesson, saveLastVisited])
 
   if (!lesson) {
     return (
@@ -40,7 +57,9 @@ export function ConceptPage() {
   }
 
   const track = getTrack(lesson.track)
-  const nextProblem = lesson.problems[0]
+  const nextProblem = progress.getRecommendedProblem(lesson, progress.state)
+  const lessonStatus = progress.getLessonStatus(lesson, lessons, progress.state)
+  const lessonCompletion = progress.getLessonCompletion(lesson, progress.state)
 
   return (
     <div className="mx-auto grid max-w-5xl gap-6">
@@ -55,6 +74,10 @@ export function ConceptPage() {
               {lesson.summary}
             </p>
             {track ? <Badge variant="muted">{track.title}</Badge> : null}
+            <Badge variant={lessonStatus === 'completed' ? 'default' : 'outline'}>
+              {lessonCompletion.completedProblems}/{lessonCompletion.totalProblems}{' '}
+              complete
+            </Badge>
           </div>
           <Button asChild>
             <Link to={`/lesson/${lesson.slug}/problem/${nextProblem.id}`}>
@@ -64,6 +87,18 @@ export function ConceptPage() {
           </Button>
         </div>
       </section>
+
+      {lessonStatus === 'ahead-of-path' ? (
+        <Card className="border-primary/30 bg-accent/40">
+          <CardContent className="flex gap-3 p-4 text-sm">
+            <TriangleAlert className="mt-0.5 size-4 shrink-0 text-primary" />
+            <p className="text-muted-foreground">
+              This lesson is ahead of the guided recommendation. You can continue,
+              or return to the dashboard for the next guided step.
+            </p>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-[1fr_18rem]">
         <Card>
@@ -95,7 +130,11 @@ export function ConceptPage() {
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="flex items-center gap-2 text-sm font-medium">
-                    <Circle className="size-3 text-muted-foreground" />
+                    {progress.isProblemCompleted(lesson.slug, problem.id) ? (
+                      <CheckCircle2 className="size-4 text-primary" />
+                    ) : (
+                      <Circle className="size-3 text-muted-foreground" />
+                    )}
                     {problem.title}
                   </span>
                   <ArrowRight className="size-4 text-muted-foreground transition group-hover:text-foreground" />
@@ -107,8 +146,8 @@ export function ConceptPage() {
             ))}
             <Separator />
             <p className="text-sm text-muted-foreground">
-              Completion state and prerequisite notices are wired in later
-              checkpoints.
+              Guest progress is saved locally. Cloud sync is added in the next
+              checkpoint.
             </p>
           </CardContent>
         </Card>

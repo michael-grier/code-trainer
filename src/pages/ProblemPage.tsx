@@ -1,4 +1,5 @@
 import { BookOpen, CheckCircle2, Code, Play } from 'lucide-react'
+import { useEffect } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
@@ -13,11 +14,20 @@ import {
 import { Separator } from '@/components/ui/separator'
 import { getLesson, getProblem } from '@/curriculum'
 import { formatSlug } from '@/lib/format'
+import { useProgress } from '@/state/progressContext'
 
 export function ProblemPage() {
   const { problemId, slug } = useParams()
   const lesson = getLesson(slug)
   const problem = getProblem(lesson, problemId)
+  const progress = useProgress()
+  const { saveLastVisited } = progress
+
+  useEffect(() => {
+    if (lesson && problem) {
+      saveLastVisited(lesson.slug, problem.id)
+    }
+  }, [lesson, problem, saveLastVisited])
 
   if (!lesson || !problem) {
     return (
@@ -42,6 +52,8 @@ export function ProblemPage() {
     )
   }
 
+  const isCompleted = progress.isProblemCompleted(lesson.slug, problem.id)
+
   return (
     <div className="mx-auto grid max-w-7xl gap-4">
       <section className="flex flex-col gap-3 rounded-lg border bg-card p-4 shadow-sm lg:flex-row lg:items-center lg:justify-between">
@@ -50,6 +62,7 @@ export function ProblemPage() {
             <Badge variant="outline">Problem workspace</Badge>
             <Badge variant="muted">{problem.kind}</Badge>
             <Badge variant="muted">{problem.completionMode}</Badge>
+            {isCompleted ? <Badge>Completed</Badge> : null}
           </div>
           <h1 className="text-2xl font-semibold tracking-normal">
             {problem.title}
@@ -65,9 +78,17 @@ export function ProblemPage() {
               Concept
             </Link>
           </Button>
-          <Button type="button">
-            <Play className="size-4" />
-            Run
+          <Button
+            disabled={isCompleted}
+            onClick={() => progress.markComplete(lesson.slug, problem.id)}
+            type="button"
+          >
+            {isCompleted ? (
+              <CheckCircle2 className="size-4" />
+            ) : (
+              <Play className="size-4" />
+            )}
+            {isCompleted ? 'Completed' : 'Mark complete'}
           </Button>
         </div>
       </section>
@@ -89,8 +110,8 @@ export function ProblemPage() {
                 Completion mode
               </div>
               <p>
-                Completion criteria remain problem-kind specific and will be
-                wired after the problem model exists.
+                Completion criteria are tracked locally now. Problem-specific
+                grading and self-review controls are added in later checkpoints.
               </p>
             </div>
           </CardContent>

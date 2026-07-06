@@ -20,10 +20,23 @@ import {
 } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { getLessonsForTrack, lessons, tracks } from '@/curriculum'
+import { useProgress } from '@/state/progressContext'
+import { getProblemKey } from '@/state/progress'
 
 export function HomePage() {
-  const recommendedLesson = lessons[0]
-  const recommendedProblem = recommendedLesson?.problems[0]
+  const progress = useProgress()
+  const recommendedLesson = progress.recommendedLesson ?? lessons[0]
+  const activeLesson = progress.activeLesson ?? recommendedLesson
+  const recommendedProblem = progress.getRecommendedProblem(activeLesson, progress.state)
+  const totalCompletedLessons = tracks.reduce((total, track) => {
+    const completion = progress.getTrackCompletion(track, lessons, progress.state)
+
+    return total + completion.completedLessons
+  }, 0)
+  const overallPercent =
+    lessons.length === 0 ? 0 : Math.round((totalCompletedLessons / lessons.length) * 100)
+  const isSelfDirected = progress.state.learningPath.mode === 'self-directed'
+  const continueLabel = isSelfDirected ? 'Continue focus' : 'Continue'
 
   return (
     <div className="mx-auto grid max-w-6xl gap-6">
@@ -41,9 +54,9 @@ export function HomePage() {
           </div>
           <div className="flex flex-wrap gap-2">
             <Button asChild>
-              <Link to={`/lesson/${recommendedLesson.slug}`}>
+              <Link to={`/lesson/${activeLesson.slug}`}>
                 <Play className="size-4" />
-                Continue
+                {continueLabel}
               </Link>
             </Button>
             <Button asChild variant="outline">
@@ -70,23 +83,25 @@ export function HomePage() {
           <CardContent className="grid gap-4">
             <div className="rounded-lg border bg-muted/30 p-4">
               <div className="mb-2 flex items-center justify-between gap-2">
-                <h2 className="font-semibold">Arrays and Hashing</h2>
-              <Badge variant="outline">Next</Badge>
+                <h2 className="font-semibold">{activeLesson.title}</h2>
+                <Badge variant="outline">
+                  {isSelfDirected ? 'Focus' : 'Next'}
+                </Badge>
               </div>
               <p className="text-sm text-muted-foreground">
-                {recommendedLesson.summary}
+                {activeLesson.summary}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button asChild>
-                <Link to={`/lesson/${recommendedLesson.slug}`}>
+                <Link to={`/lesson/${activeLesson.slug}`}>
                   Open lesson
                   <ArrowRight className="size-4" />
                 </Link>
               </Button>
               <Button asChild variant="outline">
                 <Link
-                  to={`/lesson/${recommendedLesson.slug}/problem/${recommendedProblem.id}`}
+                  to={`/lesson/${activeLesson.slug}/problem/${recommendedProblem.id}`}
                 >
                   Open workspace
                 </Link>
@@ -105,15 +120,16 @@ export function HomePage() {
           </CardHeader>
           <CardContent className="grid gap-4">
             <div className="flex items-end justify-between">
-              <span className="text-4xl font-semibold">0%</span>
+              <span className="text-4xl font-semibold">{overallPercent}%</span>
               <span className="text-sm text-muted-foreground">
-                0 / {lessons.length} lessons
+                {totalCompletedLessons} / {lessons.length} lessons
               </span>
             </div>
-            <Progress value={0} />
+            <Progress value={overallPercent} />
             <p className="text-sm text-muted-foreground">
-              The progress API will update this immediately as problems are
-              completed.
+              {progress.syncStatus === 'guest'
+                ? 'Guest progress is saved locally in this browser.'
+                : 'Signed-in progress uses a local cache until cloud sync is wired.'}
             </p>
           </CardContent>
         </Card>
@@ -143,15 +159,7 @@ export function HomePage() {
           </CardHeader>
           <CardContent className="grid gap-3">
             {trackPreviewItems.map((track) => (
-              <div className="grid gap-1.5" key={track.id}>
-                <div className="flex items-center justify-between gap-2 text-sm">
-                  <span>{track.shortTitle}</span>
-                  <span className="text-muted-foreground">
-                    {track.lessonCount} lessons
-                  </span>
-                </div>
-                <Progress value={0} />
-              </div>
+              <TrackProgressPreview key={track.id} trackId={track.id} />
             ))}
           </CardContent>
         </Card>
@@ -201,7 +209,23 @@ export function HomePage() {
                     <span className="min-w-0 truncate">
                       {lesson.order}. {lesson.title}
                     </span>
-                    <Badge variant="muted">{lesson.problems.length}</Badge>
+                    <Badge
+                      variant={
+                        progress.getLessonCompletion(lesson, progress.state).isComplete
+                          ? 'default'
+                          : 'muted'
+                      }
+                    >
+                      {
+                        lesson.problems.filter(
+                          (problem) =>
+                            progress.state.completed[
+                              getProblemKey(lesson.slug, problem.id)
+                            ],
+                        ).length
+                      }
+                      /{lesson.problems.length}
+                    </Badge>
                   </Link>
                 ))}
               </CardContent>
@@ -209,6 +233,30 @@ export function HomePage() {
           ))}
         </div>
       </section>
+    </div>
+  )
+}
+
+function TrackProgressPreview({ trackId }: { trackId: string }) {
+  const progress = useProgress()
+  const track = tracks.find((item) => item.id === trackId)
+  const preview = trackPreviewItems.find((item) => item.id === trackId)
+
+  if (!track || !preview) {
+    return null
+  }
+
+  const completion = progress.getTrackCompletion(track, lessons, progress.state)
+
+  return (
+    <div className="grid gap-1.5">
+      <div className="flex items-center justify-between gap-2 text-sm">
+        <span>{preview.shortTitle}</span>
+        <span className="text-muted-foreground">
+          {completion.completedLessons}/{completion.totalLessons}
+        </span>
+      </div>
+      <Progress value={completion.percent} />
     </div>
   )
 }

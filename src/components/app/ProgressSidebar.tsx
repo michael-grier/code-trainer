@@ -9,9 +9,13 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { Separator } from '@/components/ui/separator'
+import { lessons, tracks } from '@/curriculum'
 import { cn } from '@/lib/cn'
+import { useProgress } from '@/state/progressContext'
 
 export function ProgressSidebar() {
+  const progress = useProgress()
+
   return (
     <aside className="hidden border-r bg-muted/20 p-3 md:block">
       <div className="sticky top-[4.25rem] grid gap-3">
@@ -47,20 +51,27 @@ export function ProgressSidebar() {
             </CardTitle>
           </CardHeader>
           <CardContent className="grid gap-4">
-            {trackPreviewItems.map((track) => (
-              <div className="grid gap-1.5" key={track.id}>
+            {trackPreviewItems.map((track) => {
+              const registeredTrack = tracks.find((item) => item.id === track.id)
+              const completion = registeredTrack
+                ? progress.getTrackCompletion(registeredTrack, lessons, progress.state)
+                : { completedLessons: 0, totalLessons: track.lessonCount, percent: 0 }
+
+              return (
+                <div className="grid gap-1.5" key={track.id}>
                 <div className="flex items-center justify-between gap-2">
                   <span className="flex min-w-0 items-center gap-2 text-sm">
                     <track.icon className="size-4 shrink-0 text-primary" />
                     <span className="truncate">{track.shortTitle}</span>
                   </span>
                   <span className="text-xs text-muted-foreground">
-                    {track.completedCount}/{track.lessonCount}
+                    {completion.completedLessons}/{completion.totalLessons}
                   </span>
                 </div>
-                <Progress value={0} />
+                <Progress value={completion.percent} />
               </div>
-            ))}
+              )
+            })}
             <Separator />
             <div className="grid grid-cols-2 gap-2">
               {workspaceSummaryItems.map((item) => (
@@ -77,4 +88,3 @@ export function ProgressSidebar() {
     </aside>
   )
 }
-

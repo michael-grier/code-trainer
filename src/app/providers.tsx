@@ -6,6 +6,7 @@ import type { ReactNode } from 'react'
 import { Toaster } from 'sonner'
 
 import { appEnv, isClerkConfigured, isConvexConfigured } from '@/lib/env'
+import { ProgressProviderWithOptionalAuth } from '@/state/useProgress'
 
 type AppProvidersProps = {
   children: ReactNode
@@ -16,11 +17,14 @@ const convex = isConvexConfigured
   : null
 
 export function AppProviders({ children }: AppProvidersProps) {
-  const content = (
+  const themedContent = (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
       {children}
       <Toaster closeButton richColors />
     </ThemeProvider>
+  )
+  const content = (
+    <ProgressProviderWithOptionalAuth>{themedContent}</ProgressProviderWithOptionalAuth>
   )
 
   if (!isClerkConfigured) {
