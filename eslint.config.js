@@ -34,5 +34,13 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    files: ['convex/**/*.ts'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+        ...globals.es2022,
+      },
+    },
+  },
 )
-

@@ -146,8 +146,8 @@ export function ConceptPage() {
             ))}
             <Separator />
             <p className="text-sm text-muted-foreground">
-              Guest progress is saved locally. Cloud sync is added in the next
-              checkpoint.
+              Guest progress is saved locally. Signed-in progress syncs after
+              the cloud state is loaded.
             </p>
           </CardContent>
         </Card>

@@ -12,7 +12,13 @@ import {
 } from '@/state/guidance'
 import type { ProgressState } from '@/state/progress'
 
-export type SyncStatus = 'guest' | 'syncing' | 'synced' | 'saved-locally' | 'failed'
+export type SyncStatus =
+  | 'guest'
+  | 'loading-cloud'
+  | 'syncing'
+  | 'synced'
+  | 'saved-locally'
+  | 'failed'
 
 export type ProgressContextValue = {
   state: ProgressState
@@ -79,4 +85,3 @@ export function useProgress() {
 
   return value
 }
-

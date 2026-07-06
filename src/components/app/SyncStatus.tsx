@@ -1,7 +1,8 @@
 import { useAuth } from '@clerk/clerk-react'
-import { Cloud, CloudOff, HardDrive, RefreshCw } from 'lucide-react'
+import { CheckCircle2, CloudOff, HardDrive, RefreshCw } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { isClerkConfigured, isConvexConfigured } from '@/lib/env'
 import { useProgress } from '@/state/progressContext'
 
@@ -20,7 +21,7 @@ export function SyncStatus() {
 
 function ConfiguredSyncStatus() {
   const { isLoaded, isSignedIn } = useAuth()
-  const { syncStatus } = useProgress()
+  const { retrySync, syncStatus } = useProgress()
 
   if (!isLoaded) {
     return (
@@ -49,10 +50,52 @@ function ConfiguredSyncStatus() {
     )
   }
 
+  if (syncStatus === 'loading-cloud') {
+    return (
+      <Badge title="Loading cloud progress before merging." variant="muted">
+        <RefreshCw className="mr-1 size-3 animate-spin" />
+        Loading cloud
+      </Badge>
+    )
+  }
+
+  if (syncStatus === 'syncing') {
+    return (
+      <Badge title="Saving local changes to cloud progress." variant="outline">
+        <RefreshCw className="mr-1 size-3 animate-spin" />
+        Syncing
+      </Badge>
+    )
+  }
+
+  if (syncStatus === 'failed') {
+    return (
+      <Button
+        className="h-7 px-2 text-xs"
+        onClick={() => void retrySync()}
+        title="Cloud sync failed. Retry the latest write."
+        type="button"
+        variant="outline"
+      >
+        <CloudOff className="size-3" />
+        Retry sync
+      </Button>
+    )
+  }
+
+  if (syncStatus === 'saved-locally') {
+    return (
+      <Badge title="Progress is saved locally until cloud sync is available." variant="outline">
+        <HardDrive className="mr-1 size-3" />
+        Saved locally
+      </Badge>
+    )
+  }
+
   return (
-    <Badge title="Cloud progress sync will be wired in checkpoint 5." variant="outline">
-      <Cloud className="mr-1 size-3" />
-      {syncStatus === 'saved-locally' ? 'Saved locally' : 'Sync ready'}
+    <Badge title="Progress is synced to your account." variant="default">
+      <CheckCircle2 className="mr-1 size-3" />
+      Synced
     </Badge>
   )
 }

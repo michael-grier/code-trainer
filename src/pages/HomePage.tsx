@@ -48,8 +48,8 @@ export function HomePage() {
               Interview practice for full-stack TypeScript engineers.
             </h1>
             <p className="max-w-2xl text-muted-foreground">
-              Start with the guided path, inspect your curriculum map, and later
-              sync progress across devices without blocking guest learning.
+              Start with the guided path, inspect your curriculum map, and sync
+              signed-in progress across devices without blocking guest learning.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -116,7 +116,7 @@ export function HomePage() {
               <CheckCircle2 className="size-5 text-primary" />
               Overall progress
             </CardTitle>
-            <CardDescription>Guest local state is wired next.</CardDescription>
+            <CardDescription>Local-first progress with account sync.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4">
             <div className="flex items-end justify-between">
@@ -129,7 +129,7 @@ export function HomePage() {
             <p className="text-sm text-muted-foreground">
               {progress.syncStatus === 'guest'
                 ? 'Guest progress is saved locally in this browser.'
-                : 'Signed-in progress uses a local cache until cloud sync is wired.'}
+                : 'Signed-in progress uses a local cache and syncs through Convex.'}
             </p>
           </CardContent>
         </Card>

@@ -23,7 +23,7 @@ export function ProgressPage() {
           </h1>
           <p className="max-w-2xl text-muted-foreground">
             Track completion, guided recommendation, focus lesson selection, and
-            queue state are saved locally for guest use.
+            queue state are saved locally for guests and synced for signed-in users.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">

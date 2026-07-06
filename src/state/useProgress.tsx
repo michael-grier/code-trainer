@@ -3,11 +3,17 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
+import {
+  useMutation,
+  useQuery_experimental as useConvexQuery,
+} from 'convex/react'
 
 import { lessons } from '@/curriculum'
+import { progressApi } from '@/lib/convexProgressApi'
 import {
   getActiveLesson,
   getLessonCompletion,
@@ -31,26 +37,150 @@ import {
   loadProgressState,
   saveProgressState,
 } from '@/lib/storage'
-import { isClerkConfigured } from '@/lib/env'
+import { isClerkConfigured, isConvexConfigured } from '@/lib/env'
+import {
+  cloudSnapshotToProgressState,
+  getProgressRevision,
+  markProgressSynced,
+  mergeProgressStates,
+  progressStateToCloudSnapshot,
+  type CloudProgressSnapshot,
+} from '@/state/cloudProgress'
 import {
   ProgressContext,
   type ProgressContextValue,
+  type SyncStatus,
 } from '@/state/progressContext'
 
 type ProgressProviderProps = {
   children: ReactNode
   userId?: string
+  cloud?: {
+    enabled: boolean
+    snapshot?: CloudProgressSnapshot
+    isLoading: boolean
+    error?: Error
+    saveProgress?: (args: { progress: CloudProgressSnapshot }) => Promise<null>
+  }
 }
 
-export function ProgressProvider({ children, userId }: ProgressProviderProps) {
+type FlushMode = 'debounced' | 'immediate'
+
+export function ProgressProvider({ children, cloud, userId }: ProgressProviderProps) {
   const storageKey = getProgressStorageKey(userId)
   const [state, setState] = useState<ProgressState>(() => createEmptyProgressState())
   const [isHydrated, setIsHydrated] = useState(false)
+  const [hasMergedCloud, setHasMergedCloud] = useState(false)
+  const [hasPendingCloudWrite, setHasPendingCloudWrite] = useState(false)
+  const [syncError, setSyncError] = useState<Error | null>(null)
+  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const latestStateRef = useRef(state)
+  const mergedCloudUserRef = useRef<string | undefined>(undefined)
+  const requestedFlushModeRef = useRef<FlushMode>('debounced')
+  const isOnline = useOnlineStatus()
+  const cloudEnabled = cloud?.enabled ?? false
+  const cloudSnapshot = cloud?.snapshot
+  const cloudIsLoading = cloud?.isLoading ?? false
+  const cloudError = cloud?.error
+  const saveCloudProgress = cloud?.saveProgress
+  const canUseCloud = Boolean(userId && cloudEnabled && saveCloudProgress)
 
   useEffect(() => {
+    if (flushTimerRef.current) {
+      clearTimeout(flushTimerRef.current)
+      flushTimerRef.current = null
+    }
+
+    setIsHydrated(false)
     setState(loadProgressState(window.localStorage, storageKey))
+    setSyncError(null)
+    setHasPendingCloudWrite(false)
+    setHasMergedCloud(false)
+    mergedCloudUserRef.current = undefined
+    requestedFlushModeRef.current = 'debounced'
     setIsHydrated(true)
   }, [storageKey])
+
+  useEffect(() => {
+    latestStateRef.current = state
+  }, [state])
+
+  const flushCloudProgress = useCallback(async () => {
+    if (!canUseCloud || !saveCloudProgress || !hasMergedCloud || !isOnline) {
+      return
+    }
+
+    const stateToFlush = latestStateRef.current
+    const revisionAtFlush = getProgressRevision(stateToFlush)
+
+    if (revisionAtFlush <= (stateToFlush.lastSyncedAt ?? 0)) {
+      setHasPendingCloudWrite(false)
+      return
+    }
+
+    setHasPendingCloudWrite(true)
+
+    try {
+      await saveCloudProgress({
+        progress: progressStateToCloudSnapshot(stateToFlush, revisionAtFlush),
+      })
+
+      const hasNewerLocalChanges =
+        getProgressRevision(latestStateRef.current) > revisionAtFlush
+
+      setSyncError(null)
+      setHasPendingCloudWrite(hasNewerLocalChanges)
+      setState((current) =>
+        markProgressSynced(
+          current,
+          Math.max(current.lastSyncedAt ?? 0, revisionAtFlush),
+        ),
+      )
+    } catch (error) {
+      setSyncError(error instanceof Error ? error : new Error('Cloud sync failed'))
+      setHasPendingCloudWrite(true)
+    }
+  }, [canUseCloud, hasMergedCloud, isOnline, saveCloudProgress])
+
+  useEffect(() => {
+    if (
+      !isHydrated ||
+      !canUseCloud ||
+      !cloudSnapshot ||
+      cloudIsLoading ||
+      cloudError ||
+      !userId ||
+      mergedCloudUserRef.current === userId
+    ) {
+      return
+    }
+
+    const authenticatedCache = loadProgressState(
+      window.localStorage,
+      getProgressStorageKey(userId),
+    )
+    const guestCache = loadProgressState(
+      window.localStorage,
+      getProgressStorageKey(),
+    )
+    const cloudState = cloudSnapshotToProgressState(cloudSnapshot)
+    const localState = mergeProgressStates(authenticatedCache, guestCache)
+    const mergedState = mergeProgressStates(localState, cloudState)
+
+    requestedFlushModeRef.current = 'immediate'
+    mergedCloudUserRef.current = userId
+    setSyncError(null)
+    setHasPendingCloudWrite(true)
+    setHasMergedCloud(true)
+    setState(mergedState)
+  }, [
+    canUseCloud,
+    cloudError,
+    cloudIsLoading,
+    cloudSnapshot,
+    isHydrated,
+    userId,
+  ])
 
   useEffect(() => {
     if (!isHydrated) {
@@ -58,11 +188,65 @@ export function ProgressProvider({ children, userId }: ProgressProviderProps) {
     }
 
     saveProgressState(window.localStorage, storageKey, state)
-  }, [isHydrated, state, storageKey])
 
-  const update = useCallback((recipe: (current: ProgressState, now: number) => ProgressState) => {
-    setState((current) => recipe(current, Date.now()))
-  }, [])
+    if (!canUseCloud || !saveCloudProgress || !hasMergedCloud) {
+      return
+    }
+
+    const revision = getProgressRevision(state)
+
+    if (revision <= (state.lastSyncedAt ?? 0)) {
+      setHasPendingCloudWrite(false)
+      return
+    }
+
+    setHasPendingCloudWrite(true)
+
+    if (!isOnline) {
+      return
+    }
+
+    if (flushTimerRef.current) {
+      clearTimeout(flushTimerRef.current)
+    }
+
+    const delay = requestedFlushModeRef.current === 'immediate' ? 0 : 750
+    requestedFlushModeRef.current = 'debounced'
+    flushTimerRef.current = setTimeout(() => {
+      flushTimerRef.current = null
+      void flushCloudProgress()
+    }, delay)
+
+    return () => {
+      if (flushTimerRef.current) {
+        clearTimeout(flushTimerRef.current)
+        flushTimerRef.current = null
+      }
+    }
+  }, [
+    canUseCloud,
+    flushCloudProgress,
+    hasMergedCloud,
+    isHydrated,
+    isOnline,
+    saveCloudProgress,
+    state,
+    storageKey,
+  ])
+
+  const update = useCallback(
+    (
+      recipe: (current: ProgressState, now: number) => ProgressState,
+      flushMode: FlushMode = 'debounced',
+    ) => {
+      if (flushMode === 'immediate') {
+        requestedFlushModeRef.current = 'immediate'
+      }
+
+      setState((current) => recipe(current, Date.now()))
+    },
+    [],
+  )
 
   const saveLastVisited = useCallback(
     (lessonSlug: string, problemId?: string) => {
@@ -82,6 +266,58 @@ export function ProgressProvider({ children, userId }: ProgressProviderProps) {
     [update],
   )
 
+  const syncStatus = useMemo<SyncStatus>(() => {
+    if (!userId) {
+      return 'guest'
+    }
+
+    if (!cloudEnabled || !saveCloudProgress) {
+      return 'saved-locally'
+    }
+
+    if (!isOnline) {
+      return 'saved-locally'
+    }
+
+    if (syncError || cloudError) {
+      return 'failed'
+    }
+
+    if (cloudIsLoading || !hasMergedCloud) {
+      return 'loading-cloud'
+    }
+
+    if (
+      hasPendingCloudWrite ||
+      getProgressRevision(state) > (state.lastSyncedAt ?? 0)
+    ) {
+      return 'syncing'
+    }
+
+    return 'synced'
+  }, [
+    cloudEnabled,
+    cloudError,
+    cloudIsLoading,
+    hasMergedCloud,
+    hasPendingCloudWrite,
+    isOnline,
+    saveCloudProgress,
+    state,
+    syncError,
+    userId,
+  ])
+
+  const retrySync = useCallback(async () => {
+    if (flushTimerRef.current) {
+      clearTimeout(flushTimerRef.current)
+      flushTimerRef.current = null
+    }
+
+    requestedFlushModeRef.current = 'immediate'
+    await flushCloudProgress()
+  }, [flushCloudProgress])
+
   const contextValue = useMemo<ProgressContextValue>(() => {
     const recommendedLesson = getRecommendedLesson(lessons, state)
     const activeLesson = getActiveLesson(lessons, state)
@@ -89,7 +325,7 @@ export function ProgressProvider({ children, userId }: ProgressProviderProps) {
     return {
       state,
       storageKey,
-      syncStatus: userId ? 'saved-locally' : 'guest',
+      syncStatus,
       isHydrated,
       recommendedLesson,
       activeLesson,
@@ -180,7 +416,7 @@ export function ProgressProvider({ children, userId }: ProgressProviderProps) {
               [getUpdatedAtKey('revealedReferences', lessonSlug, problemId)]: now,
             },
           }
-        })
+        }, 'immediate')
       },
       toggleRubricItem: (lessonSlug, problemId, rubricItemId) => {
         update((current, now) => {
@@ -202,7 +438,7 @@ export function ProgressProvider({ children, userId }: ProgressProviderProps) {
               [getUpdatedAtKey('rubricReviews', lessonSlug, problemId, rubricItemId)]: now,
             },
           }
-        })
+        }, 'immediate')
       },
       markComplete: (lessonSlug, problemId) => {
         update((current, now) => {
@@ -216,7 +452,7 @@ export function ProgressProvider({ children, userId }: ProgressProviderProps) {
               [getUpdatedAtKey('completed', lessonSlug, problemId)]: now,
             },
           }
-        })
+        }, 'immediate')
       },
       isProblemCompleted: (lessonSlug, problemId) =>
         Boolean(state.completed[getProblemKey(lessonSlug, problemId)]),
@@ -233,6 +469,10 @@ export function ProgressProvider({ children, userId }: ProgressProviderProps) {
             focusLessonSlug: lessonSlug,
             updatedAt: now,
           },
+          updatedAt: {
+            ...current.updatedAt,
+            [getUpdatedAtKey('learningPath')]: now,
+          },
         }))
       },
       resetToGuidedPath: () => {
@@ -243,6 +483,10 @@ export function ProgressProvider({ children, userId }: ProgressProviderProps) {
             mode: 'guided',
             focusLessonSlug: undefined,
             updatedAt: now,
+          },
+          updatedAt: {
+            ...current.updatedAt,
+            [getUpdatedAtKey('learningPath')]: now,
           },
         }))
       },
@@ -256,6 +500,10 @@ export function ProgressProvider({ children, userId }: ProgressProviderProps) {
               : [...current.learningPath.queuedLessonSlugs, lessonSlug],
             updatedAt: now,
           },
+          updatedAt: {
+            ...current.updatedAt,
+            [getUpdatedAtKey('learningPath')]: now,
+          },
         }))
       },
       unqueueLesson: (lessonSlug) => {
@@ -268,12 +516,16 @@ export function ProgressProvider({ children, userId }: ProgressProviderProps) {
             ),
             updatedAt: now,
           },
+          updatedAt: {
+            ...current.updatedAt,
+            [getUpdatedAtKey('learningPath')]: now,
+          },
         }))
       },
       saveLastVisited,
-      retrySync: async () => undefined,
+      retrySync,
     }
-  }, [isHydrated, saveLastVisited, state, storageKey, update, userId])
+  }, [isHydrated, retrySync, saveLastVisited, state, storageKey, syncStatus, update])
 
   return (
     <ProgressContext.Provider value={contextValue}>
@@ -296,10 +548,68 @@ export function ProgressProviderWithOptionalAuth({
 
 function AuthenticatedProgressProvider({ children }: { children: ReactNode }) {
   const { isLoaded, isSignedIn, userId } = useAuth()
+  const signedInUserId = isLoaded && isSignedIn ? userId ?? undefined : undefined
+
+  if (!isConvexConfigured) {
+    return <ProgressProvider userId={signedInUserId}>{children}</ProgressProvider>
+  }
 
   return (
-    <ProgressProvider userId={isLoaded && isSignedIn ? userId ?? undefined : undefined}>
+    <CloudBackedProgressProvider userId={signedInUserId}>
+      {children}
+    </CloudBackedProgressProvider>
+  )
+}
+
+function CloudBackedProgressProvider({
+  children,
+  userId,
+}: {
+  children: ReactNode
+  userId?: string
+}) {
+  const queryResult = useConvexQuery({
+    query: progressApi.getProgress,
+    args: userId ? {} : 'skip',
+  })
+  const saveProgress = useMutation(progressApi.mergeProgress)
+  const cloudSnapshot =
+    queryResult.status === 'success' ? queryResult.data : undefined
+  const cloudError = queryResult.status === 'error' ? queryResult.error : undefined
+  const cloudIsLoading = Boolean(userId) && queryResult.status === 'pending'
+  const cloud = useMemo(
+    () => ({
+      enabled: Boolean(userId),
+      snapshot: cloudSnapshot,
+      isLoading: cloudIsLoading,
+      error: cloudError,
+      saveProgress,
+    }),
+    [cloudError, cloudIsLoading, cloudSnapshot, saveProgress, userId],
+  )
+
+  return (
+    <ProgressProvider cloud={cloud} userId={userId}>
       {children}
     </ProgressProvider>
   )
+}
+
+function useOnlineStatus() {
+  const [isOnline, setIsOnline] = useState(() => navigator.onLine)
+
+  useEffect(() => {
+    const markOnline = () => setIsOnline(true)
+    const markOffline = () => setIsOnline(false)
+
+    window.addEventListener('online', markOnline)
+    window.addEventListener('offline', markOffline)
+
+    return () => {
+      window.removeEventListener('online', markOnline)
+      window.removeEventListener('offline', markOffline)
+    }
+  }, [])
+
+  return isOnline
 }
