@@ -19,8 +19,12 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
+import { getLessonsForTrack, lessons, tracks } from '@/curriculum'
 
 export function HomePage() {
+  const recommendedLesson = lessons[0]
+  const recommendedProblem = recommendedLesson?.problems[0]
+
   return (
     <div className="mx-auto grid max-w-6xl gap-6">
       <section className="grid gap-4 rounded-lg border bg-card p-5 text-card-foreground shadow-sm">
@@ -37,7 +41,7 @@ export function HomePage() {
           </div>
           <div className="flex flex-wrap gap-2">
             <Button asChild>
-              <Link to="/lesson/arrays-and-hashing">
+              <Link to={`/lesson/${recommendedLesson.slug}`}>
                 <Play className="size-4" />
                 Continue
               </Link>
@@ -67,22 +71,23 @@ export function HomePage() {
             <div className="rounded-lg border bg-muted/30 p-4">
               <div className="mb-2 flex items-center justify-between gap-2">
                 <h2 className="font-semibold">Arrays and Hashing</h2>
-                <Badge variant="outline">Next</Badge>
+              <Badge variant="outline">Next</Badge>
               </div>
               <p className="text-sm text-muted-foreground">
-                Use arrays, maps, and sets to solve lookup and frequency
-                problems. Curriculum content is registered in checkpoint 3.
+                {recommendedLesson.summary}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button asChild>
-                <Link to="/lesson/arrays-and-hashing">
+                <Link to={`/lesson/${recommendedLesson.slug}`}>
                   Open lesson
                   <ArrowRight className="size-4" />
                 </Link>
               </Button>
               <Button asChild variant="outline">
-                <Link to="/lesson/arrays-and-hashing/problem/foundation">
+                <Link
+                  to={`/lesson/${recommendedLesson.slug}/problem/${recommendedProblem.id}`}
+                >
                   Open workspace
                 </Link>
               </Button>
@@ -102,7 +107,7 @@ export function HomePage() {
             <div className="flex items-end justify-between">
               <span className="text-4xl font-semibold">0%</span>
               <span className="text-sm text-muted-foreground">
-                0 / 60 lessons
+                0 / {lessons.length} lessons
               </span>
             </div>
             <Progress value={0} />
@@ -137,7 +142,7 @@ export function HomePage() {
             <CardDescription>Five structured learning areas</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3">
-            {trackPreviewItems.slice(0, 3).map((track) => (
+            {trackPreviewItems.map((track) => (
               <div className="grid gap-1.5" key={track.id}>
                 <div className="flex items-center justify-between gap-2 text-sm">
                   <span>{track.shortTitle}</span>
@@ -169,7 +174,41 @@ export function HomePage() {
           </CardContent>
         </Card>
       </section>
+
+      <section className="grid gap-4">
+        <div>
+          <h2 className="text-xl font-semibold tracking-normal">
+            Curriculum preview
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            All placeholder lessons are registered and ready for content.
+          </p>
+        </div>
+        <div className="grid gap-4 lg:grid-cols-2">
+          {tracks.map((track) => (
+            <Card key={track.id}>
+              <CardHeader>
+                <CardTitle className="text-base">{track.title}</CardTitle>
+                <CardDescription>{track.summary}</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-2">
+                {getLessonsForTrack(track.id).map((lesson) => (
+                  <Link
+                    className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm outline-none transition hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+                    key={lesson.slug}
+                    to={`/lesson/${lesson.slug}`}
+                  >
+                    <span className="min-w-0 truncate">
+                      {lesson.order}. {lesson.title}
+                    </span>
+                    <Badge variant="muted">{lesson.problems.length}</Badge>
+                  </Link>
+                ))}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </section>
     </div>
   )
 }
-

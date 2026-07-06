@@ -1,11 +1,12 @@
 import { Search } from 'lucide-react'
+import { Link } from 'react-router-dom'
 
-import { trackPreviewItems } from '@/components/app/navigation'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { Separator } from '@/components/ui/separator'
+import { getLessonsForTrack, lessons, tracks } from '@/curriculum'
 
 export function ProgressPage() {
   return (
@@ -31,7 +32,7 @@ export function ProgressPage() {
         {[
           ['Completed', '0'],
           ['In progress', '0'],
-          ['Untouched', '60'],
+          ['Untouched', String(lessons.length)],
           ['Ahead of path', '0'],
         ].map(([label, value]) => (
           <Card key={label}>
@@ -48,21 +49,36 @@ export function ProgressPage() {
           <CardTitle>Track overview</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4">
-          {trackPreviewItems.map((track) => (
+          {tracks.map((track) => (
             <div className="grid gap-3" key={track.id}>
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex min-w-0 items-center gap-2">
-                  <track.icon className="size-4 shrink-0 text-primary" />
                   <div className="min-w-0">
                     <h2 className="truncate font-medium">{track.title}</h2>
                     <p className="text-sm text-muted-foreground">
-                      {track.lessonCount} lessons planned
+                      {track.lessonSlugs.length} lessons planned
                     </p>
                   </div>
                 </div>
                 <Badge variant="muted">0% complete</Badge>
               </div>
               <Progress value={0} />
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {getLessonsForTrack(track.id).map((lesson) => (
+                  <Link
+                    className="rounded-md border px-3 py-2 text-sm outline-none transition hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+                    key={lesson.slug}
+                    to={`/lesson/${lesson.slug}`}
+                  >
+                    <span className="block truncate font-medium">
+                      {lesson.order}. {lesson.title}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {lesson.problems.length} problems
+                    </span>
+                  </Link>
+                ))}
+              </div>
               <Separator />
             </div>
           ))}

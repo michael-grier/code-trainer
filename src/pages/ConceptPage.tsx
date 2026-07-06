@@ -1,6 +1,7 @@
 import { ArrowRight, BookOpen, Circle, Play } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 
+import { Mdx } from '@/components/mdx/Mdx'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -11,10 +12,35 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
+import { getLesson, getTrack } from '@/curriculum'
+import { formatSlug } from '@/lib/format'
 
 export function ConceptPage() {
   const { slug } = useParams()
-  const lessonSlug = slug ?? 'unknown'
+  const lesson = getLesson(slug)
+
+  if (!lesson) {
+    return (
+      <div className="mx-auto max-w-3xl">
+        <Card>
+          <CardHeader>
+            <CardTitle>Lesson not found</CardTitle>
+            <CardDescription>
+              No registered lesson matches {slug ? formatSlug(slug) : 'this route'}.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild>
+              <Link to="/progress">Back to curriculum map</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  const track = getTrack(lesson.track)
+  const nextProblem = lesson.problems[0]
 
   return (
     <div className="mx-auto grid max-w-5xl gap-6">
@@ -23,15 +49,15 @@ export function ConceptPage() {
           <div className="grid gap-2">
             <Badge variant="outline">Concept lesson</Badge>
             <h1 className="text-3xl font-semibold tracking-normal">
-              {formatSlug(lessonSlug)}
+              {lesson.title}
             </h1>
             <p className="max-w-2xl text-muted-foreground">
-              MDX lesson content will render here once the curriculum registry
-              is added. This route already carries the final layout contract.
+              {lesson.summary}
             </p>
+            {track ? <Badge variant="muted">{track.title}</Badge> : null}
           </div>
           <Button asChild>
-            <Link to={`/lesson/${lessonSlug}/problem/foundation`}>
+            <Link to={`/lesson/${lesson.slug}/problem/${nextProblem.id}`}>
               <Play className="size-4" />
               Start practice
             </Link>
@@ -47,16 +73,11 @@ export function ConceptPage() {
               Lesson content
             </CardTitle>
             <CardDescription>
-              Dense, technical MDX content replaces this placeholder in
-              checkpoint 3.
+              Placeholder MDX content is registered for this lesson.
             </CardDescription>
           </CardHeader>
-          <CardContent className="prose prose-neutral max-w-none text-sm text-muted-foreground dark:prose-invert">
-            <p>
-              Each lesson will explain the pattern, interview signals, common
-              mistakes, TypeScript notes, and a short worked example before
-              transitioning into practice.
-            </p>
+          <CardContent>
+            <Mdx component={lesson.concept} />
           </CardContent>
         </Card>
 
@@ -66,19 +87,22 @@ export function ConceptPage() {
             <CardDescription>Sequential by default</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3">
-            {['Foundation', 'Applied', 'Interview-depth'].map((label, index) => (
+            {lesson.problems.map((problem) => (
               <Link
                 className="group rounded-md border p-3 outline-none transition hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-                key={label}
-                to={`/lesson/${lessonSlug}/problem/${index === 0 ? 'foundation' : label.toLowerCase()}`}
+                key={problem.id}
+                to={`/lesson/${lesson.slug}/problem/${problem.id}`}
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="flex items-center gap-2 text-sm font-medium">
                     <Circle className="size-3 text-muted-foreground" />
-                    {label}
+                    {problem.title}
                   </span>
                   <ArrowRight className="size-4 text-muted-foreground transition group-hover:text-foreground" />
                 </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {problem.kind} · {problem.estimatedMinutes ?? 10} min
+                </p>
               </Link>
             ))}
             <Separator />
@@ -91,12 +115,4 @@ export function ConceptPage() {
       </div>
     </div>
   )
-}
-
-function formatSlug(slug: string) {
-  return slug
-    .split('-')
-    .filter(Boolean)
-    .map((part) => part[0]?.toUpperCase() + part.slice(1))
-    .join(' ')
 }

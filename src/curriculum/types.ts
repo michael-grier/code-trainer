@@ -1,0 +1,172 @@
+import type { ComponentType } from 'react'
+
+export type Language = 'ts' | 'py'
+
+export type ProblemKind =
+  | 'code'
+  | 'debug'
+  | 'refactor'
+  | 'trace'
+  | 'written'
+  | 'design'
+
+export type CompletionMode =
+  | 'all-tests-pass'
+  | 'tests-and-static-checks-pass'
+  | 'structured-answer-correct'
+  | 'submitted-with-reference-review'
+  | 'submitted-with-rubric-review'
+
+export type TestCase = {
+  name: string
+  args: unknown[]
+  expected: unknown
+}
+
+export type BaseProblem = {
+  id: string
+  kind: ProblemKind
+  title: string
+  prompt: string
+  completionMode: CompletionMode
+  estimatedMinutes?: number
+}
+
+export type CodeProblem = BaseProblem & {
+  kind: 'code'
+  completionMode: 'all-tests-pass'
+  functionName: string
+  starter: Partial<Record<Language, string>>
+  tests: TestCase[]
+  defaultLanguage?: Language
+}
+
+export type DebugProblem = BaseProblem & {
+  kind: 'debug'
+  completionMode: 'all-tests-pass'
+  functionName: string
+  brokenCode: Partial<Record<Language, string>>
+  tests: TestCase[]
+  defaultLanguage?: Language
+  bugHints?: string[]
+}
+
+export type StaticCheck =
+  | { kind: 'forbid-text'; text: string; message: string }
+  | { kind: 'require-text'; text: string; message: string }
+  | { kind: 'max-lines'; max: number; message: string }
+  | { kind: 'no-any'; message: string }
+  | { kind: 'no-mutation'; targets: string[]; message: string }
+
+export type RefactorProblem = BaseProblem & {
+  kind: 'refactor'
+  completionMode: 'tests-and-static-checks-pass'
+  functionName: string
+  originalCode: string
+  starter: Partial<Record<Language, string>>
+  tests: TestCase[]
+  goals: string[]
+  staticChecks: StaticCheck[]
+  defaultLanguage?: Language
+}
+
+export type TraceQuestion =
+  | {
+      id: string
+      type: 'output-order'
+      label: string
+      options: string[]
+      expected: string[]
+    }
+  | {
+      id: string
+      type: 'final-value'
+      label: string
+      variable: string
+      expected: unknown
+    }
+  | {
+      id: string
+      type: 'multiple-choice'
+      label: string
+      options: string[]
+      answer: string
+    }
+
+export type TraceProblem = BaseProblem & {
+  kind: 'trace'
+  completionMode: 'structured-answer-correct'
+  code: string
+  questions: TraceQuestion[]
+  explanation: string
+}
+
+export type WrittenProblem = BaseProblem & {
+  kind: 'written'
+  completionMode: 'submitted-with-reference-review'
+  starter?: string
+  referenceAnswer: string
+  rubric?: RubricItem[]
+}
+
+export type DesignSection =
+  | { id: string; type: 'short-answer'; label: string; prompt: string }
+  | { id: string; type: 'endpoint-list'; label: string; prompt: string }
+  | { id: string; type: 'entity-list'; label: string; prompt: string }
+  | {
+      id: string
+      type: 'tradeoff'
+      label: string
+      prompt: string
+      options: string[]
+    }
+
+export type RubricItem = {
+  id: string
+  label: string
+  description: string
+}
+
+export type DesignProblem = BaseProblem & {
+  kind: 'design'
+  completionMode: 'submitted-with-rubric-review'
+  scenario: string
+  sections: DesignSection[]
+  rubric: RubricItem[]
+  referenceAnswer: string
+}
+
+export type Problem =
+  | CodeProblem
+  | DebugProblem
+  | RefactorProblem
+  | TraceProblem
+  | WrittenProblem
+  | DesignProblem
+
+export type Approach = {
+  name: string
+  language?: Language
+  code?: string
+  explanation: string
+  complexity?: string
+}
+
+export type Lesson = {
+  slug: string
+  title: string
+  summary: string
+  track: string
+  order: number
+  concept: ComponentType
+  problems: Problem[]
+  approaches: Record<string, Approach[]>
+}
+
+export type Track = {
+  id: string
+  title: string
+  summary: string
+  lessonSlugs: string[]
+}
+

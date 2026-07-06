@@ -1,6 +1,5 @@
 import { BookOpen, CheckCircle2, Code, Play } from 'lucide-react'
-import { Link } from 'react-router-dom'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -12,11 +11,36 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
+import { getLesson, getProblem } from '@/curriculum'
+import { formatSlug } from '@/lib/format'
 
 export function ProblemPage() {
   const { problemId, slug } = useParams()
-  const lessonSlug = slug ?? 'unknown'
-  const currentProblemId = problemId ?? 'unknown'
+  const lesson = getLesson(slug)
+  const problem = getProblem(lesson, problemId)
+
+  if (!lesson || !problem) {
+    return (
+      <div className="mx-auto max-w-3xl">
+        <Card>
+          <CardHeader>
+            <CardTitle>Problem not found</CardTitle>
+            <CardDescription>
+              No registered problem matches{' '}
+              {problemId ? formatSlug(problemId) : 'this route'}.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild>
+              <Link to={lesson ? `/lesson/${lesson.slug}` : '/progress'}>
+                Back to {lesson ? 'lesson' : 'curriculum map'}
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   return (
     <div className="mx-auto grid max-w-7xl gap-4">
@@ -24,19 +48,19 @@ export function ProblemPage() {
         <div className="grid gap-1">
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="outline">Problem workspace</Badge>
-            <Badge variant="muted">{currentProblemId}</Badge>
+            <Badge variant="muted">{problem.kind}</Badge>
+            <Badge variant="muted">{problem.completionMode}</Badge>
           </div>
           <h1 className="text-2xl font-semibold tracking-normal">
-            {formatSlug(lessonSlug)}
+            {problem.title}
           </h1>
           <p className="text-sm text-muted-foreground">
-            The renderer registry will dispatch code, debug, refactor, trace,
-            written, and design problems from this shared shell.
+            {lesson.title} · {problem.estimatedMinutes ?? 10} min
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button asChild variant="outline">
-            <Link to={`/lesson/${lessonSlug}`}>
+            <Link to={`/lesson/${lesson.slug}`}>
               <BookOpen className="size-4" />
               Concept
             </Link>
@@ -57,10 +81,7 @@ export function ProblemPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 text-sm text-muted-foreground">
-            <p>
-              This left pane will hold the prompt, hints, goals, reference
-              controls, or rubric depending on problem kind.
-            </p>
+            <p>{problem.prompt}</p>
             <Separator />
             <div className="grid gap-2">
               <div className="flex items-center gap-2 text-foreground">
@@ -87,20 +108,12 @@ export function ProblemPage() {
           </CardHeader>
           <CardContent>
             <div className="grid min-h-[22rem] place-items-center rounded-md border border-dashed bg-muted/30 p-6 text-center text-sm text-muted-foreground">
-              Interactive problem views are added after the runtime and progress
-              contracts are in place.
+              Interactive {problem.kind} problem rendering is added after the
+              runtime and progress contracts are in place.
             </div>
           </CardContent>
         </Card>
       </section>
     </div>
   )
-}
-
-function formatSlug(slug: string) {
-  return slug
-    .split('-')
-    .filter(Boolean)
-    .map((part) => part[0]?.toUpperCase() + part.slice(1))
-    .join(' ')
 }
