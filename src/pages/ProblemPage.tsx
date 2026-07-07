@@ -1,7 +1,8 @@
-import { BookOpen, CheckCircle2, Code, Play } from 'lucide-react'
+import { BookOpen, CheckCircle2, Play } from 'lucide-react'
 import { useEffect } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
+import { ProblemRenderer } from '@/components/problems/ProblemRenderer'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -53,6 +54,10 @@ export function ProblemPage() {
   }
 
   const isCompleted = progress.isProblemCompleted(lesson.slug, problem.id)
+  const isAutoGraded =
+    problem.kind === 'code' ||
+    problem.kind === 'debug' ||
+    problem.kind === 'refactor'
 
   return (
     <div className="mx-auto grid max-w-7xl gap-4">
@@ -78,62 +83,49 @@ export function ProblemPage() {
               Concept
             </Link>
           </Button>
-          <Button
-            disabled={isCompleted}
-            onClick={() => progress.markComplete(lesson.slug, problem.id)}
-            type="button"
-          >
-            {isCompleted ? (
-              <CheckCircle2 className="size-4" />
-            ) : (
-              <Play className="size-4" />
-            )}
-            {isCompleted ? 'Completed' : 'Mark complete'}
-          </Button>
+          {!isAutoGraded ? (
+            <Button
+              disabled={isCompleted}
+              onClick={() => progress.markComplete(lesson.slug, problem.id)}
+              type="button"
+            >
+              {isCompleted ? (
+                <CheckCircle2 className="size-4" />
+              ) : (
+                <Play className="size-4" />
+              )}
+              {isCompleted ? 'Completed' : 'Mark complete'}
+            </Button>
+          ) : null}
         </div>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-        <Card>
+      <section className="grid gap-4">
+        <Card className="min-w-0">
           <CardHeader>
             <CardTitle>Prompt</CardTitle>
             <CardDescription>
-              Problem-specific instructions and constraints.
+              {problem.estimatedMinutes ?? 10} minute target
             </CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-4 text-sm text-muted-foreground">
-            <p>{problem.prompt}</p>
-            <Separator />
+          <CardContent className="grid gap-4 text-sm text-muted-foreground lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start">
+            <p className="max-w-4xl">{problem.prompt}</p>
+            <Separator className="lg:hidden" />
             <div className="grid gap-2">
               <div className="flex items-center gap-2 text-foreground">
                 <CheckCircle2 className="size-4 text-primary" />
                 Completion mode
               </div>
               <p>
-                Completion criteria are tracked locally now. Problem-specific
-                grading and self-review controls are added in later checkpoints.
+                {isAutoGraded
+                  ? 'Passing workspace checks marks this problem complete.'
+                  : 'Use the completion control after finishing this problem.'}
               </p>
             </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Code className="size-5 text-primary" />
-              Workspace
-            </CardTitle>
-            <CardDescription>
-              Monaco/editor, answers, test results, and static checks.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid min-h-[22rem] place-items-center rounded-md border border-dashed bg-muted/30 p-6 text-center text-sm text-muted-foreground">
-              Interactive {problem.kind} problem rendering is added after the
-              runtime and progress contracts are in place.
-            </div>
-          </CardContent>
-        </Card>
+        <ProblemRenderer lesson={lesson} problem={problem} />
       </section>
     </div>
   )

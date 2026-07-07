@@ -6,6 +6,10 @@ export {
 } from './codeRunner'
 export { deepEqual } from './deepEqual'
 export {
+  allStaticChecksPassed,
+  runStaticChecks,
+} from './staticChecks'
+export {
   DEFAULT_PYTHON_RUN_TIMEOUT_MS,
   DEFAULT_PYODIDE_INDEX_URL,
   DEFAULT_RUN_TIMEOUT_MS,
@@ -20,3 +24,4 @@ export type {
   TestRunResult,
   TestRunStatus,
 } from './types'
+export type { StaticCheckResult } from './staticChecks'
