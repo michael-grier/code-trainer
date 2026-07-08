@@ -1,13 +1,11 @@
 import { DiffEditor as MonacoDiffEditor } from '@monaco-editor/react'
 import { useTheme } from 'next-themes'
 
-import type { Language } from '@/curriculum/types'
 import { cn } from '@/lib/cn'
 
 type DiffEditorProps = {
   original: string
   modified: string
-  language: Language
   label: string
   className?: string
   height?: string
@@ -17,7 +15,6 @@ export function DiffEditor({
   className,
   height = '22rem',
   label,
-  language,
   modified,
   original,
 }: DiffEditorProps) {
@@ -33,7 +30,7 @@ export function DiffEditor({
     >
       <MonacoDiffEditor
         height={height}
-        language={language === 'py' ? 'python' : 'typescript'}
+        language="typescript"
         modified={modified}
         options={{
           automaticLayout: true,

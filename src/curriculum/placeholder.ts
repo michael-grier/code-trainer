@@ -38,11 +38,7 @@ export function createPlaceholderLesson({
           'Placeholder auto-graded exercise. The content pass will replace this with a focused implementation problem for the lesson concept.',
         estimatedMinutes: 12,
         functionName,
-        defaultLanguage: 'ts',
-        starter: {
-          ts: `export function ${functionName}(input: string): string {\n  return input\n}\n`,
-          py: `def ${functionName}(input):\n    return input\n`,
-        },
+        starter: `export function ${functionName}(input: string): string {\n  return input\n}\n`,
         tests: [
           {
             name: 'returns the provided value',
@@ -113,7 +109,6 @@ export function createPlaceholderLesson({
       foundation: [
         {
           name: 'Placeholder reference',
-          language: 'ts',
           code: `export function ${functionName}(input: string): string {\n  return input\n}\n`,
           explanation:
             'This placeholder approach keeps the lesson buildable until the real curriculum content is authored.',
@@ -131,4 +126,3 @@ function toPascalCase(value: string) {
     .map((part) => part[0]?.toUpperCase() + part.slice(1))
     .join('')
 }
-

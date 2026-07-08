@@ -40,7 +40,7 @@ describe('progress storage', () => {
   it('keeps valid persisted state and normalizes invalid fields', () => {
     const state = createEmptyProgressState(100)
     state.completed['lesson::problem'] = true
-    state.drafts['lesson::problem::ts'] = 'answer'
+    state.drafts['lesson::problem'] = 'answer'
 
     const parsed = parseProgressState(
       JSON.stringify({
@@ -57,6 +57,6 @@ describe('progress storage', () => {
     )
 
     expect(parsed.completed).toEqual({ 'lesson::problem': true })
-    expect(parsed.drafts).toEqual({ 'lesson::problem::ts': 'answer' })
+    expect(parsed.drafts).toEqual({ 'lesson::problem': 'answer' })
   })
 })

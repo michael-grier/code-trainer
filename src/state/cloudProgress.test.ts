@@ -18,18 +18,18 @@ describe('cloud progress sync helpers', () => {
     const local = createEmptyProgressState(0)
     const cloud = createEmptyProgressState(0)
     const problemKey = getProblemKey('arrays-and-hashing', 'practice')
-    const draftKey = getDraftKey('arrays-and-hashing', 'practice', 'ts')
+    const draftKey = getDraftKey('arrays-and-hashing', 'practice')
 
     local.completed[problemKey] = true
     local.updatedAt[getUpdatedAtKey('completed', 'arrays-and-hashing', 'practice')] =
       100
     local.drafts[draftKey] = 'local draft'
     local.updatedAt[
-      getUpdatedAtKey('drafts', 'arrays-and-hashing', 'practice', 'ts')
+      getUpdatedAtKey('drafts', 'arrays-and-hashing', 'practice')
     ] = 100
     cloud.drafts[draftKey] = 'cloud draft'
     cloud.updatedAt[
-      getUpdatedAtKey('drafts', 'arrays-and-hashing', 'practice', 'ts')
+      getUpdatedAtKey('drafts', 'arrays-and-hashing', 'practice')
     ] = 200
 
     const merged = mergeProgressStates(local, cloud)
@@ -68,16 +68,16 @@ describe('cloud progress sync helpers', () => {
 
   test('preserves field timestamps through cloud conversion', () => {
     const state = createEmptyProgressState(0)
-    const draftKey = getDraftKey('arrays-and-hashing', 'practice', 'py')
+    const draftKey = getDraftKey('arrays-and-hashing', 'practice')
     const traceKey = getTraceAnswerKey(
       'arrays-and-hashing',
       'practice',
       'step-one',
     )
 
-    state.drafts[draftKey] = 'print("hi")'
+    state.drafts[draftKey] = 'export function practice() {}'
     state.updatedAt[
-      getUpdatedAtKey('drafts', 'arrays-and-hashing', 'practice', 'py')
+      getUpdatedAtKey('drafts', 'arrays-and-hashing', 'practice')
     ] = 300
     state.traceAnswers[traceKey] = 'runs once'
     state.updatedAt[
@@ -93,8 +93,8 @@ describe('cloud progress sync helpers', () => {
     const roundTrip = cloudSnapshotToProgressState(snapshot)
 
     expect(snapshot.problems).toHaveLength(1)
-    expect(roundTrip.drafts[draftKey]).toBe('print("hi")')
-    expect(roundTrip.updatedAt[getUpdatedAtKey('drafts', 'arrays-and-hashing', 'practice', 'py')]).toBe(300)
+    expect(roundTrip.drafts[draftKey]).toBe('export function practice() {}')
+    expect(roundTrip.updatedAt[getUpdatedAtKey('drafts', 'arrays-and-hashing', 'practice')]).toBe(300)
     expect(roundTrip.traceAnswers[traceKey]).toBe('runs once')
   })
 })

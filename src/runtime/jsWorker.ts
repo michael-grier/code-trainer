@@ -61,7 +61,6 @@ async function handleRun(message: RuntimeWorkerRequest) {
         consumeLogs: consoleCapture.consume,
       })
       const result: CodeRunResult = {
-        language: 'ts',
         status: getStatusFromTestResults(tests),
         durationMs: getElapsedMs(startedAt),
         tests,

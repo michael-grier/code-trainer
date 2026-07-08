@@ -1,7 +1,5 @@
 import type { ComponentType } from 'react'
 
-export type Language = 'ts' | 'py'
-
 export type ProblemKind =
   | 'code'
   | 'debug'
@@ -36,18 +34,16 @@ export type CodeProblem = BaseProblem & {
   kind: 'code'
   completionMode: 'all-tests-pass'
   functionName: string
-  starter: Partial<Record<Language, string>>
+  starter: string
   tests: TestCase[]
-  defaultLanguage?: Language
 }
 
 export type DebugProblem = BaseProblem & {
   kind: 'debug'
   completionMode: 'all-tests-pass'
   functionName: string
-  brokenCode: Partial<Record<Language, string>>
+  brokenCode: string
   tests: TestCase[]
-  defaultLanguage?: Language
   bugHints?: string[]
 }
 
@@ -63,11 +59,10 @@ export type RefactorProblem = BaseProblem & {
   completionMode: 'tests-and-static-checks-pass'
   functionName: string
   originalCode: string
-  starter: Partial<Record<Language, string>>
+  starter: string
   tests: TestCase[]
   goals: string[]
   staticChecks: StaticCheck[]
-  defaultLanguage?: Language
 }
 
 export type TraceQuestion =
@@ -146,7 +141,6 @@ export type Problem =
 
 export type Approach = {
   name: string
-  language?: Language
   code?: string
   explanation: string
   complexity?: string
@@ -169,4 +163,3 @@ export type Track = {
   summary: string
   lessonSlugs: string[]
 }
-

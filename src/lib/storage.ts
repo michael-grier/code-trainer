@@ -1,4 +1,3 @@
-import type { Language } from '@/curriculum/types'
 import {
   createEmptyProgressState,
   PROGRESS_VERSION,
@@ -51,7 +50,6 @@ export function parseProgressState(value: string | null): ProgressState {
       version: PROGRESS_VERSION,
       completed: normalizeTrueRecord(parsed.completed),
       drafts: normalizeStringRecord(parsed.drafts),
-      languages: normalizeLanguageRecord(parsed.languages),
       traceAnswers: normalizeRecord(parsed.traceAnswers),
       writtenAnswers: normalizeStringRecord(parsed.writtenAnswers),
       designAnswers: normalizeRecord(parsed.designAnswers),
@@ -107,7 +105,6 @@ function isProgressLike(value: unknown): value is ProgressState {
     value.version === PROGRESS_VERSION &&
     isRecord(value.completed) &&
     isRecord(value.drafts) &&
-    isRecord(value.languages) &&
     isRecord(value.traceAnswers) &&
     isRecord(value.writtenAnswers) &&
     isRecord(value.designAnswers) &&
@@ -175,18 +172,5 @@ function normalizeNestedTrueRecord(
         isRecord(entry[1]),
       )
       .map(([key, recordValue]) => [key, normalizeTrueRecord(recordValue)]),
-  )
-}
-
-function normalizeLanguageRecord(value: unknown): Record<string, Language> {
-  if (!isRecord(value)) {
-    return {}
-  }
-
-  return Object.fromEntries(
-    Object.entries(value).filter(
-      (entry): entry is [string, Language] =>
-        entry[1] === 'ts' || entry[1] === 'py',
-    ),
   )
 }

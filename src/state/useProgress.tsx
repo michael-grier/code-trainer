@@ -327,34 +327,18 @@ export function ProgressProvider({ children, cloud, userId }: ProgressProviderPr
       isHydrated,
       recommendedLesson,
       counts: getProgressCounts(lessons, state),
-      getDraft: (lessonSlug, problemId, language) =>
-        state.drafts[getDraftKey(lessonSlug, problemId, language)],
-      saveDraft: (lessonSlug, problemId, language, value) => {
+      getDraft: (lessonSlug, problemId) =>
+        state.drafts[getDraftKey(lessonSlug, problemId)],
+      saveDraft: (lessonSlug, problemId, value) => {
         update((current, now) => {
-          const key = getDraftKey(lessonSlug, problemId, language)
+          const key = getDraftKey(lessonSlug, problemId)
 
           return {
             ...current,
             drafts: { ...current.drafts, [key]: value },
             updatedAt: {
               ...current.updatedAt,
-              [getUpdatedAtKey('drafts', lessonSlug, problemId, language)]: now,
-            },
-          }
-        })
-      },
-      getLanguage: (lessonSlug, problemId) =>
-        state.languages[getProblemKey(lessonSlug, problemId)],
-      setLanguage: (lessonSlug, problemId, language) => {
-        update((current, now) => {
-          const key = getProblemKey(lessonSlug, problemId)
-
-          return {
-            ...current,
-            languages: { ...current.languages, [key]: language },
-            updatedAt: {
-              ...current.updatedAt,
-              [getUpdatedAtKey('languages', lessonSlug, problemId)]: now,
+              [getUpdatedAtKey('drafts', lessonSlug, problemId)]: now,
             },
           }
         })

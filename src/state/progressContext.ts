@@ -1,6 +1,5 @@
 import { createContext, useContext } from 'react'
 
-import type { Language } from '@/curriculum/types'
 import type { getLessonStatus } from '@/state/guidance'
 import {
   getLessonCompletion,
@@ -26,19 +25,8 @@ export type ProgressContextValue = {
   isHydrated: boolean
   recommendedLesson: ReturnType<typeof getRecommendedLesson>
   counts: ReturnType<typeof getProgressCounts>
-  getDraft: (
-    lessonSlug: string,
-    problemId: string,
-    language: Language,
-  ) => string | undefined
-  saveDraft: (
-    lessonSlug: string,
-    problemId: string,
-    language: Language,
-    value: string,
-  ) => void
-  getLanguage: (lessonSlug: string, problemId: string) => Language | undefined
-  setLanguage: (lessonSlug: string, problemId: string, language: Language) => void
+  getDraft: (lessonSlug: string, problemId: string) => string | undefined
+  saveDraft: (lessonSlug: string, problemId: string, value: string) => void
   saveTraceAnswer: (
     lessonSlug: string,
     problemId: string,

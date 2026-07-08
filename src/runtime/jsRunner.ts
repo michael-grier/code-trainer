@@ -15,7 +15,6 @@ export function runTypeScriptTests(
 ): Promise<CodeRunResult> {
   if (typeof Worker === 'undefined') {
     return Promise.resolve({
-      language: 'ts',
       status: 'error',
       durationMs: 0,
       tests: [],
@@ -56,7 +55,6 @@ export function runTypeScriptTests(
       }
 
       finish({
-        language: 'ts',
         status: 'error',
         durationMs: getElapsedMs(startedAt),
         tests: [],
@@ -67,7 +65,6 @@ export function runTypeScriptTests(
 
     worker.addEventListener('error', (event) => {
       finish({
-        language: 'ts',
         status: 'error',
         durationMs: getElapsedMs(startedAt),
         tests: [],
@@ -92,7 +89,6 @@ function createTimeoutResult(
   durationMs: number,
 ): CodeRunResult {
   return {
-    language: 'ts',
     status: 'timeout',
     durationMs,
     tests: tests.map<TestRunResult>((test) => ({
@@ -120,4 +116,3 @@ function getNow() {
 function getElapsedMs(startedAt: number) {
   return Math.max(0, Math.round(getNow() - startedAt))
 }
-

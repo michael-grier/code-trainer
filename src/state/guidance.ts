@@ -142,12 +142,6 @@ function hasProblemActivity(
   }
 
   return lesson.problems.some((problem) => {
-    const currentProblemKey = getProblemKey(lesson.slug, problem.id)
-
-    return (
-      progress.languages[currentProblemKey] ||
-      progress.drafts[getDraftKey(lesson.slug, problem.id, 'ts')] ||
-      progress.drafts[getDraftKey(lesson.slug, problem.id, 'py')]
-    )
+    return progress.drafts[getDraftKey(lesson.slug, problem.id)]
   })
 }

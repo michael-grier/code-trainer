@@ -135,7 +135,7 @@ describe('guidance', () => {
   it('treats draft activity as in progress for the owning lesson', () => {
     const progress = createEmptyProgressState()
 
-    progress.drafts[getDraftKey('first', 'two', 'ts')] = 'draft code'
+    progress.drafts[getDraftKey('first', 'two')] = 'draft code'
 
     expect(getLessonCompletion(lessons[0], progress).isInProgress).toBe(true)
     expect(getLessonStatus(lessons[0], lessons, progress)).toBe('recommended')

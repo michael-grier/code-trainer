@@ -1,10 +1,7 @@
-import type { Language } from '@/curriculum/types'
-
 export type ProgressState = {
   version: 2
   completed: Record<string, true>
   drafts: Record<string, string>
-  languages: Record<string, Language>
   traceAnswers: Record<string, unknown>
   writtenAnswers: Record<string, string>
   designAnswers: Record<string, unknown>
@@ -53,7 +50,6 @@ export function createEmptyProgressState(now = Date.now()): ProgressState {
     version: PROGRESS_VERSION,
     completed: {},
     drafts: {},
-    languages: {},
     traceAnswers: {},
     writtenAnswers: {},
     designAnswers: {},
@@ -72,12 +68,8 @@ export function getProblemKey(lessonSlug: string, problemId: string) {
   return `${lessonSlug}::${problemId}`
 }
 
-export function getDraftKey(
-  lessonSlug: string,
-  problemId: string,
-  language: Language,
-) {
-  return `${lessonSlug}::${problemId}::${language}`
+export function getDraftKey(lessonSlug: string, problemId: string) {
+  return getProblemKey(lessonSlug, problemId)
 }
 
 export function getTraceAnswerKey(
@@ -99,4 +91,3 @@ export function getDesignAnswerKey(
 export function getUpdatedAtKey(...parts: string[]) {
   return parts.join('::')
 }
-

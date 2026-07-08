@@ -2,11 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { CodeProblem, DebugProblem } from '@/curriculum/types'
 
-import {
-  getProblemDefaultLanguage,
-  getProblemStarterCode,
-  getSupportedLanguages,
-} from './codeRunner'
+import { getProblemStarterCode } from './codeRunner'
 
 describe('code runner helpers', () => {
   it('reads starter code from code problems', () => {
@@ -17,16 +13,11 @@ describe('code runner helpers', () => {
       prompt: 'Prompt',
       completionMode: 'all-tests-pass',
       functionName: 'solve',
-      starter: {
-        py: 'def solve():\n    return True\n',
-        ts: 'export function solve() {\n  return true\n}\n',
-      },
+      starter: 'export function solve() {\n  return true\n}\n',
       tests: [],
     }
 
-    expect(getProblemStarterCode(problem, 'ts')).toContain('export function')
-    expect(getProblemDefaultLanguage(problem)).toBe('ts')
-    expect(getSupportedLanguages(problem)).toEqual(['ts', 'py'])
+    expect(getProblemStarterCode(problem)).toContain('export function')
   })
 
   it('reads broken code from debug problems', () => {
@@ -37,15 +28,10 @@ describe('code runner helpers', () => {
       prompt: 'Prompt',
       completionMode: 'all-tests-pass',
       functionName: 'solve',
-      brokenCode: {
-        ts: 'export function solve() {\n  return false\n}\n',
-      },
+      brokenCode: 'export function solve() {\n  return false\n}\n',
       tests: [],
-      defaultLanguage: 'ts',
     }
 
-    expect(getProblemStarterCode(problem, 'ts')).toContain('false')
-    expect(getProblemDefaultLanguage(problem)).toBe('ts')
-    expect(getSupportedLanguages(problem)).toEqual(['ts'])
+    expect(getProblemStarterCode(problem)).toContain('false')
   })
 })

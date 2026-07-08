@@ -21,15 +21,12 @@ import type {
   Approach,
   CodeProblem,
   DebugProblem,
-  Language,
   RefactorProblem,
 } from '@/curriculum/types'
 import { cn } from '@/lib/cn'
 import {
   allStaticChecksPassed,
-  getProblemDefaultLanguage,
   getProblemStarterCode,
-  getSupportedLanguages,
   runCode,
   runStaticChecks,
   type CodeRunResult,
@@ -50,17 +47,8 @@ export function RunnableProblemView({
   problem,
 }: RunnableProblemViewProps) {
   const progress = useProgress()
-  const supportedLanguages = useMemo(
-    () => getSupportedLanguages(problem),
-    [problem],
-  )
-  const selectedLanguage = getSelectedLanguage(
-    progress.getLanguage(lessonSlug, problem.id),
-    supportedLanguages,
-    getProblemDefaultLanguage(problem),
-  )
-  const starterCode = getProblemStarterCode(problem, selectedLanguage)
-  const savedDraft = progress.getDraft(lessonSlug, problem.id, selectedLanguage)
+  const starterCode = getProblemStarterCode(problem)
+  const savedDraft = progress.getDraft(lessonSlug, problem.id)
   const [code, setCode] = useState(savedDraft ?? starterCode)
   const [runResult, setRunResult] = useState<CodeRunResult>()
   const [isRunning, setIsRunning] = useState(false)
@@ -78,18 +66,13 @@ export function RunnableProblemView({
 
   const handleCodeChange = (nextCode: string) => {
     setCode(nextCode)
-    progress.saveDraft(lessonSlug, problem.id, selectedLanguage, nextCode)
-  }
-
-  const handleLanguageChange = (language: Language) => {
-    progress.setLanguage(lessonSlug, problem.id, language)
-    setRunResult(undefined)
+    progress.saveDraft(lessonSlug, problem.id, nextCode)
   }
 
   const handleReset = () => {
     setRunResult(undefined)
     setCode(starterCode)
-    progress.saveDraft(lessonSlug, problem.id, selectedLanguage, starterCode)
+    progress.saveDraft(lessonSlug, problem.id, starterCode)
   }
 
   const handleRun = async () => {
@@ -105,7 +88,6 @@ export function RunnableProblemView({
       const result = await runCode({
         code,
         functionName: problem.functionName,
-        language: selectedLanguage,
         tests: problem.tests,
       })
 
@@ -132,7 +114,6 @@ export function RunnableProblemView({
       const message = errorToMessage(error)
 
       setRunResult({
-        language: selectedLanguage,
         status: 'error',
         durationMs: 0,
         tests: [],
@@ -164,11 +145,7 @@ export function RunnableProblemView({
                 </CardDescription>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <LanguageSelector
-                  onChange={handleLanguageChange}
-                  selected={selectedLanguage}
-                  supported={supportedLanguages}
-                />
+                <Badge variant="muted">TypeScript</Badge>
                 <Button onClick={handleReset} type="button" variant="outline">
                   <RotateCcw className="size-4" />
                   Reset
@@ -191,7 +168,6 @@ export function RunnableProblemView({
           <CardContent>
             <CodeEditor
               label={`${problem.title} solution editor`}
-              language={selectedLanguage}
               onChange={handleCodeChange}
               value={code}
             />
@@ -218,7 +194,6 @@ export function RunnableProblemView({
       {problem.kind === 'refactor' ? (
         <RefactorDetails
           code={code}
-          language={selectedLanguage}
           problem={problem}
         />
       ) : null}
@@ -264,45 +239,6 @@ function getRunFailureDescription(result: CodeRunResult) {
     : `${failedCount} tests need attention.`
 }
 
-function LanguageSelector({
-  onChange,
-  selected,
-  supported,
-}: {
-  selected: Language
-  supported: Language[]
-  onChange: (language: Language) => void
-}) {
-  if (supported.length <= 1) {
-    return <Badge variant="muted">{getLanguageLabel(selected)}</Badge>
-  }
-
-  return (
-    <div
-      aria-label="Language"
-      className="inline-flex rounded-md border bg-background p-1"
-      role="group"
-    >
-      {supported.map((language) => (
-        <Button
-          aria-pressed={selected === language}
-          className={cn(
-            'h-8 px-3',
-            selected !== language && 'text-muted-foreground',
-          )}
-          key={language}
-          onClick={() => onChange(language)}
-          size="sm"
-          type="button"
-          variant={selected === language ? 'secondary' : 'ghost'}
-        >
-          {getLanguageLabel(language)}
-        </Button>
-      ))}
-    </div>
-  )
-}
-
 function HintList({ hints }: { hints: string[] }) {
   return (
     <Card>
@@ -324,11 +260,9 @@ function HintList({ hints }: { hints: string[] }) {
 
 function RefactorDetails({
   code,
-  language,
   problem,
 }: {
   code: string
-  language: Language
   problem: RefactorProblem
 }) {
   return (
@@ -347,31 +281,10 @@ function RefactorDetails({
         <Separator />
         <DiffEditor
           label={`${problem.title} refactor diff`}
-          language={language}
           modified={code}
           original={problem.originalCode}
         />
       </CardContent>
     </Card>
   )
-}
-
-function getSelectedLanguage(
-  savedLanguage: Language | undefined,
-  supportedLanguages: Language[],
-  defaultLanguage: Language,
-) {
-  if (savedLanguage && supportedLanguages.includes(savedLanguage)) {
-    return savedLanguage
-  }
-
-  if (supportedLanguages.includes(defaultLanguage)) {
-    return defaultLanguage
-  }
-
-  return supportedLanguages[0] ?? 'ts'
-}
-
-function getLanguageLabel(language: Language) {
-  return language === 'py' ? 'Python' : 'TypeScript'
 }

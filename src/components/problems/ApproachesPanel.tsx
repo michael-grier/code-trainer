@@ -1,7 +1,6 @@
 import { ChevronDown } from 'lucide-react'
 
 import { ReadOnlyCode } from '@/components/editor/ReadOnlyCode'
-import { Badge } from '@/components/ui/badge'
 import {
   Card,
   CardContent,
@@ -32,14 +31,11 @@ export function ApproachesPanel({ approaches = [] }: ApproachesPanelProps) {
         {approaches.map((approach) => (
           <details
             className="group rounded-md border bg-background p-3"
-            key={`${approach.name}-${approach.language ?? 'general'}`}
+            key={approach.name}
           >
             <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
               <span className="font-medium">{approach.name}</span>
               <span className="flex items-center gap-2">
-                {approach.language ? (
-                  <Badge variant="muted">{approach.language}</Badge>
-                ) : null}
                 <ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
               </span>
             </summary>
@@ -56,4 +52,3 @@ export function ApproachesPanel({ approaches = [] }: ApproachesPanelProps) {
     </Card>
   )
 }
-

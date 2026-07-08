@@ -1,4 +1,3 @@
-import type { Language } from '@/curriculum/types'
 import {
   createEmptyProgressState,
   getDesignAnswerKey,
@@ -13,8 +12,7 @@ export type CloudProblemProgressRecord = {
   lessonSlug: string
   problemId: string
   completedAt?: number
-  language?: Language
-  drafts?: Partial<Record<Language, string>>
+  draft?: string
   traceAnswers?: Record<string, unknown>
   writtenAnswer?: string
   designAnswers?: Record<string, unknown>
@@ -41,14 +39,12 @@ export type CloudProgressSnapshot = {
 }
 
 type MutableCloudProblemProgressRecord = CloudProblemProgressRecord & {
-  drafts: Partial<Record<Language, string>>
   traceAnswers: Record<string, unknown>
   designAnswers: Record<string, unknown>
   rubricReviews: string[]
   fieldUpdatedAt: Record<string, number>
 }
 
-const LANGUAGES: Language[] = ['ts', 'py']
 const RECENT_QUEUE_MERGE_MS = 5 * 60 * 1000
 const LEARNING_PATH_UPDATED_AT_KEY = getUpdatedAtKey('learningPath')
 
@@ -68,7 +64,6 @@ export function progressStateToCloudSnapshot(
     const record: MutableCloudProblemProgressRecord = {
       lessonSlug,
       problemId,
-      drafts: {},
       traceAnswers: {},
       designAnswers: {},
       rubricReviews: [],
@@ -105,8 +100,8 @@ export function progressStateToCloudSnapshot(
     record.completedAt = touchRecord(record, updatedAtKey)
   }
 
-  for (const [problemKey, language] of Object.entries(state.languages)) {
-    const parts = parseProgressKey(problemKey, 2)
+  for (const [draftKey, draft] of Object.entries(state.drafts)) {
+    const parts = parseProgressKey(draftKey, 2)
 
     if (!parts) {
       continue
@@ -115,22 +110,8 @@ export function progressStateToCloudSnapshot(
     const [lessonSlug, problemId] = parts
     const record = ensureRecord(lessonSlug, problemId)
 
-    record.language = language
-    touchRecord(record, getUpdatedAtKey('languages', lessonSlug, problemId))
-  }
-
-  for (const [draftKey, draft] of Object.entries(state.drafts)) {
-    const parts = parseProgressKey(draftKey, 3)
-
-    if (!parts || !isLanguage(parts[2])) {
-      continue
-    }
-
-    const [lessonSlug, problemId, language] = parts
-    const record = ensureRecord(lessonSlug, problemId)
-
-    record.drafts[language] = draft
-    touchRecord(record, getUpdatedAtKey('drafts', lessonSlug, problemId, language))
+    record.draft = draft
+    touchRecord(record, getUpdatedAtKey('drafts', lessonSlug, problemId))
   }
 
   for (const [answerKey, answer] of Object.entries(state.traceAnswers)) {
@@ -264,33 +245,15 @@ export function cloudSnapshotToProgressState(
       )
     }
 
-    if (problem.language) {
-      const updatedAtKey = getUpdatedAtKey(
-        'languages',
-        problem.lessonSlug,
-        problem.problemId,
-      )
-
-      state.languages[problemKey] = problem.language
-      state.updatedAt[updatedAtKey] = getProblemFieldUpdatedAt(problem, updatedAtKey)
-    }
-
-    for (const language of LANGUAGES) {
-      const draft = problem.drafts?.[language]
-
-      if (typeof draft !== 'string') {
-        continue
-      }
-
-      const draftKey = getDraftKey(problem.lessonSlug, problem.problemId, language)
+    if (typeof problem.draft === 'string') {
+      const draftKey = getDraftKey(problem.lessonSlug, problem.problemId)
       const updatedAtKey = getUpdatedAtKey(
         'drafts',
         problem.lessonSlug,
         problem.problemId,
-        language,
       )
 
-      state.drafts[draftKey] = draft
+      state.drafts[draftKey] = problem.draft
       state.updatedAt[updatedAtKey] = getProblemFieldUpdatedAt(problem, updatedAtKey)
     }
 
@@ -424,7 +387,6 @@ export function mergeProgressStates(
 
   mergeTrueRecord(merged, local, cloud, 'completed')
   mergeLastWriteRecord(merged.drafts, merged, local, cloud, 'drafts')
-  mergeLastWriteRecord(merged.languages, merged, local, cloud, 'languages')
   mergeLastWriteRecord(merged.traceAnswers, merged, local, cloud, 'traceAnswers')
   mergeLastWriteRecord(
     merged.writtenAnswers,
@@ -484,7 +446,6 @@ export function getLearningPathUpdatedAt(state: ProgressState) {
 function toCloudRecord(
   record: MutableCloudProblemProgressRecord,
 ): CloudProblemProgressRecord {
-  const drafts = hasKeys(record.drafts) ? record.drafts : undefined
   const traceAnswers = hasKeys(record.traceAnswers) ? record.traceAnswers : undefined
   const designAnswers = hasKeys(record.designAnswers)
     ? record.designAnswers
@@ -497,8 +458,7 @@ function toCloudRecord(
     lessonSlug: record.lessonSlug,
     problemId: record.problemId,
     completedAt: record.completedAt,
-    language: record.language,
-    drafts,
+    draft: record.draft,
     traceAnswers,
     writtenAnswer: record.writtenAnswer,
     designAnswers,
@@ -540,7 +500,6 @@ function mergeLastWriteRecord<T>(
   cloud: ProgressState,
   field:
     | 'drafts'
-    | 'languages'
     | 'traceAnswers'
     | 'writtenAnswers'
     | 'designAnswers',
@@ -673,10 +632,6 @@ function parseProgressKey(key: string, expectedParts: number) {
   const parts = key.split('::')
 
   return parts.length === expectedParts ? parts : null
-}
-
-function isLanguage(value: string): value is Language {
-  return value === 'ts' || value === 'py'
 }
 
 function unionKeys(

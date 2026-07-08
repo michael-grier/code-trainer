@@ -1,20 +1,12 @@
 import { v } from 'convex/values'
 
-export const languageValidator = v.union(v.literal('ts'), v.literal('py'))
-
 export const fieldUpdatedAtValidator = v.record(v.string(), v.number())
 
 export const cloudProblemProgressFields = {
   lessonSlug: v.string(),
   problemId: v.string(),
   completedAt: v.optional(v.number()),
-  language: v.optional(languageValidator),
-  drafts: v.optional(
-    v.object({
-      ts: v.optional(v.string()),
-      py: v.optional(v.string()),
-    }),
-  ),
+  draft: v.optional(v.string()),
   traceAnswers: v.optional(v.any()),
   writtenAnswer: v.optional(v.string()),
   designAnswers: v.optional(v.any()),

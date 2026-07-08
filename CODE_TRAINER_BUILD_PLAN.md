@@ -10,7 +10,7 @@ Build a self-contained web app that teaches interview-ready engineering skills t
 
 - Structured conceptual lessons authored in MDX.
 - Interactive practice problems.
-- Browser-based TypeScript and Python code execution.
+- Browser-based TypeScript code execution.
 - Deterministic grading where possible.
 - Guided self-review for higher-level design and architecture exercises.
 - Persistent guest progress through `localStorage`.
@@ -64,7 +64,6 @@ Use these exact choices unless explicitly changed later:
 - `next-themes`
 - `@monaco-editor/react`
 - Sucrase
-- Pyodide loaded from CDN, approximately version `0.27`
 - `@fontsource-variable/geist`
 - Clerk through `@clerk/clerk-react` for authentication
 - Convex through `convex` for authenticated progress persistence and sync
@@ -172,7 +171,6 @@ src/
     codeRunner.ts
     jsRunner.ts
     jsWorker.ts
-    pyRunner.ts
     staticChecks.ts
     testHarness.ts
     traceGrader.ts
@@ -223,8 +221,6 @@ Create `src/curriculum/types.ts` with a richer problem model.
 ```typescript
 import type { ComponentType } from 'react'
 
-export type Language = 'ts' | 'py'
-
 export type ProblemKind =
   | 'code'
   | 'debug'
@@ -259,18 +255,16 @@ export type CodeProblem = BaseProblem & {
   kind: 'code'
   completionMode: 'all-tests-pass'
   functionName: string
-  starter: Partial<Record<Language, string>>
+  starter: string
   tests: TestCase[]
-  defaultLanguage?: Language
 }
 
 export type DebugProblem = BaseProblem & {
   kind: 'debug'
   completionMode: 'all-tests-pass'
   functionName: string
-  brokenCode: Partial<Record<Language, string>>
+  brokenCode: string
   tests: TestCase[]
-  defaultLanguage?: Language
   bugHints?: string[]
 }
 
@@ -286,11 +280,10 @@ export type RefactorProblem = BaseProblem & {
   completionMode: 'tests-and-static-checks-pass'
   functionName: string
   originalCode: string
-  starter: Partial<Record<Language, string>>
+  starter: string
   tests: TestCase[]
   goals: string[]
   staticChecks: StaticCheck[]
-  defaultLanguage?: Language
 }
 
 export type TraceQuestion =
@@ -363,7 +356,6 @@ export type Problem =
 
 export type Approach = {
   name: string
-  language?: Language
   code?: string
   explanation: string
   complexity?: string
@@ -418,7 +410,6 @@ export type ProgressState = {
   version: 2
   completed: Record<string, true>
   drafts: Record<string, string>
-  languages: Record<string, 'ts' | 'py'>
   traceAnswers: Record<string, unknown>
   writtenAnswers: Record<string, string>
   designAnswers: Record<string, unknown>
@@ -444,10 +435,10 @@ Key formats:
 
 ```text
 problem key: "slug::problemId"
-draft key: "slug::problemId::language"
+draft key: "slug::problemId"
 trace answer key: "slug::problemId::questionId"
 design answer key: "slug::problemId::sectionId"
-updatedAt key examples: "drafts::slug::problemId::ts", "languages::slug::problemId", "traceAnswers::slug::problemId::questionId"
+updatedAt key examples: "drafts::slug::problemId", "traceAnswers::slug::problemId::questionId"
 ```
 
 The `useProgress()` hook should provide:
@@ -458,7 +449,6 @@ The `useProgress()` hook should provide:
 - Save written answers.
 - Save trace answers.
 - Save design section answers.
-- Save selected language.
 - Reveal reference answer.
 - Toggle rubric items.
 - Mark problem complete.
@@ -551,11 +541,7 @@ userProblemProgress {
   lessonSlug: string
   problemId: string
   completedAt?: number
-  language?: 'ts' | 'py'
-  drafts?: {
-    ts?: string
-    py?: string
-  }
+  draft?: string
   traceAnswers?: unknown
   writtenAnswer?: string
   designAnswers?: unknown
@@ -598,7 +584,6 @@ Use deterministic merge rules:
 
 - `completed`: OR merge. If local or cloud says complete, keep complete.
 - `drafts`: last-write-wins using `updatedAt`.
-- `languages`: last-write-wins using `updatedAt`.
 - `traceAnswers`: last-write-wins using `updatedAt`.
 - `writtenAnswer`: last-write-wins using `updatedAt`.
 - `designAnswers`: last-write-wins using `updatedAt`.
@@ -713,7 +698,6 @@ UI:
 
 - Prompt and constraints on the left.
 - Monaco editor on the right.
-- Language switch for TypeScript/Python when both starters exist.
 - Run button.
 - Cmd/Ctrl+Enter runs tests.
 - Test results below editor.
@@ -874,24 +858,17 @@ Security notes:
 - The timeout protects app responsiveness.
 - Avoid exposing app internals to the worker.
 
-### 12.3 Python Runner
+### 12.3 Future Python Curriculum and Runner
 
-File:
+Python is intentionally out of scope for the current TypeScript-focused product. The current curriculum targets TypeScript, JavaScript runtime behavior, React, and TypeScript backend/data work, so Python should not appear as a tacked-on language toggle.
 
-- `src/runtime/pyRunner.ts`
+Future Python support should be introduced as a parallel curriculum with its own learning path, problem content, runtime constraints, and QA plan.
 
-Requirements:
+Potential future requirements:
 
-- Load Pyodide lazily from CDN on first Python use.
-- Reuse the Pyodide instance after it loads.
-- Execute learner Python code.
-- Invoke the target function for each test case.
-- Convert Python results through `.toJs()` where needed.
-- Return the same `RunOutcome` shape.
-
-Known limitation:
-
-- Python infinite-loop protection is harder without a worker-backed Pyodide setup. For v1, prefer running Pyodide in a worker if feasible. If not feasible, document the limitation and keep Python problems simpler.
+- Add a dedicated Python curriculum rather than mixing Python into TypeScript lessons.
+- Add a Pyodide-backed runner only after the Python curriculum has concrete problem requirements.
+- Prefer worker-backed execution with timeout behavior before exposing Python exercises.
 
 ### 12.4 Static Checks
 
@@ -1357,14 +1334,12 @@ Tasks:
 - Implement JS/TS worker runner.
 - Implement worker timeout.
 - Implement console log capture.
-- Implement Pyodide loader/runner.
 - Implement shared runner facade.
 
 Acceptance criteria:
 
 - TypeScript code problems can run tests.
 - Infinite loops in TypeScript are stopped by timeout.
-- Python problems can run when Pyodide loads.
 - Runtime errors show readable messages.
 
 ### Phase 5: Code, Debug, and Refactor Problem Views
@@ -1458,7 +1433,6 @@ Tasks:
 - Test ahead-of-path prerequisite notices.
 - Test mobile layout.
 - Test dark mode.
-- Test Pyodide load failure state.
 - Test JS worker timeout.
 
 Acceptance criteria:
@@ -1523,7 +1497,6 @@ Owns:
 
 - JS/TS runner.
 - Web Worker.
-- Pyodide runner.
 - Test harness.
 - Static checks.
 - Trace grading.
@@ -1612,7 +1585,6 @@ Agents should coordinate through stable contracts.
 
 ```typescript
 export type RunRequest = {
-  language: 'ts' | 'py'
   code: string
   functionName: string
   tests: TestCase[]
@@ -1637,10 +1609,8 @@ export type ProblemViewProps<TProblem extends Problem = Problem> = {
 
 ```typescript
 export type ProgressActions = {
-  saveDraft: (lessonSlug: string, problemId: string, language: Language, value: string) => void
-  getDraft: (lessonSlug: string, problemId: string, language: Language) => string | undefined
-  setLanguage: (lessonSlug: string, problemId: string, language: Language) => void
-  getLanguage: (lessonSlug: string, problemId: string) => Language | undefined
+  saveDraft: (lessonSlug: string, problemId: string, value: string) => void
+  getDraft: (lessonSlug: string, problemId: string) => string | undefined
   markComplete: (lessonSlug: string, problemId: string) => void
 }
 ```
@@ -1693,8 +1663,7 @@ export type CloudProgressRecord = {
   lessonSlug: string
   problemId: string
   completedAt?: number
-  language?: Language
-  drafts?: Partial<Record<Language, string>>
+  draft?: string
   traceAnswers?: unknown
   writtenAnswer?: string
   designAnswers?: unknown
@@ -1736,7 +1705,6 @@ Test these flows:
 - User completes a TypeScript code problem.
 - User triggers a TypeScript runtime error.
 - User triggers a TypeScript timeout.
-- User switches to Python and runs a Python problem.
 - User completes a debug problem.
 - User completes a refactor problem.
 - User completes a trace problem.
@@ -1816,16 +1784,18 @@ Mitigation:
 Mitigation:
 
 - Implement TypeScript runner first.
-- Add Pyodide after TS runner is stable.
 - Use a shared `RunOutcome`.
 - Keep test cases JSON-serializable.
 
-### Risk: Python Timeout Handling
+### Future Scope: Python Runtime
 
-Mitigation:
+Python support should not be added as a language toggle inside the TypeScript curriculum.
 
-- Prefer worker-backed Pyodide.
-- If not possible in v1, document limitation and avoid Python infinite-loop exercises.
+Future requirements:
+
+- Define a parallel Python curriculum first.
+- Add Pyodide only after the Python content and runtime requirements are clear.
+- Prefer worker-backed timeout handling before exposing Python exercises.
 
 ### Risk: Design Problems Cannot Be Fully Auto-Graded
 
@@ -1885,7 +1855,6 @@ The app is done when:
 - Every included problem satisfies the content quality checklist.
 - All problem kinds have working interactive views.
 - TypeScript code execution works in a Web Worker.
-- Python execution works through Pyodide or has clearly documented limitations.
 - Guest progress persists to localStorage.
 - Authenticated progress syncs to Convex.
 - Clerk sign-in, sign-up, sign-out, and user menu flows work.
@@ -1911,10 +1880,9 @@ The app is done when:
 7. Implement TypeScript runner and test harness.
 8. Build code/debug/refactor views.
 9. Implement trace/written/design views.
-10. Add Pyodide runner.
-11. Fill curriculum content.
-12. Polish navigation and responsive UX.
-13. Run full QA and fix failures.
+10. Fill curriculum content.
+11. Polish navigation and responsive UX.
+12. Run full QA and fix failures.
 
 ## 25. Agent Handoff Rule
 

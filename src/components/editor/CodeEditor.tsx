@@ -1,12 +1,10 @@
 import Editor from '@monaco-editor/react'
 import { useTheme } from 'next-themes'
 
-import type { Language } from '@/curriculum/types'
 import { cn } from '@/lib/cn'
 
 type CodeEditorProps = {
   value: string
-  language: Language
   label: string
   className?: string
   height?: string
@@ -18,7 +16,6 @@ export function CodeEditor({
   className,
   height = '30rem',
   label,
-  language,
   onChange,
   readOnly = false,
   value,
@@ -34,7 +31,7 @@ export function CodeEditor({
     >
       <Editor
         height={height}
-        language={getMonacoLanguage(language)}
+        language="typescript"
         onChange={(nextValue) => onChange?.(nextValue ?? '')}
         options={{
           ariaLabel: label,
@@ -57,8 +54,4 @@ export function CodeEditor({
       />
     </div>
   )
-}
-
-function getMonacoLanguage(language: Language) {
-  return language === 'py' ? 'python' : 'typescript'
 }
