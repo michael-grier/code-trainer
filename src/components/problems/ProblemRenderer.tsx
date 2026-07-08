@@ -1,15 +1,9 @@
-import { CircleDashed } from 'lucide-react'
-
 import { CodeProblemView } from '@/components/problems/CodeProblemView'
 import { DebugProblemView } from '@/components/problems/DebugProblemView'
+import { DesignProblemView } from '@/components/problems/DesignProblemView'
 import { RefactorProblemView } from '@/components/problems/RefactorProblemView'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
+import { TraceProblemView } from '@/components/problems/TraceProblemView'
+import { WrittenProblemView } from '@/components/problems/WrittenProblemView'
 import type { Lesson, Problem } from '@/curriculum/types'
 
 type ProblemRendererProps = {
@@ -50,23 +44,13 @@ export function ProblemRenderer({ lesson, problem }: ProblemRendererProps) {
     )
   }
 
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Workspace</CardTitle>
-        <CardDescription>
-          This problem type is implemented in the next checkpoint.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="grid min-h-[22rem] place-items-center rounded-md border border-dashed bg-muted/30 p-6 text-center text-sm text-muted-foreground">
-          <div className="grid gap-2 justify-items-center">
-            <CircleDashed className="size-5" />
-            Interactive {problem.kind} controls are not available yet.
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
+  if (problem.kind === 'trace') {
+    return <TraceProblemView lessonSlug={lesson.slug} problem={problem} />
+  }
 
+  if (problem.kind === 'written') {
+    return <WrittenProblemView lessonSlug={lesson.slug} problem={problem} />
+  }
+
+  return <DesignProblemView lessonSlug={lesson.slug} problem={problem} />
+}

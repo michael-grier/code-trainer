@@ -10,6 +10,10 @@ export {
   runStaticChecks,
 } from './staticChecks'
 export {
+  gradeTraceProblem,
+  gradeTraceQuestion,
+} from './traceGrader'
+export {
   DEFAULT_PYTHON_RUN_TIMEOUT_MS,
   DEFAULT_PYODIDE_INDEX_URL,
   DEFAULT_RUN_TIMEOUT_MS,
@@ -25,3 +29,4 @@ export type {
   TestRunStatus,
 } from './types'
 export type { StaticCheckResult } from './staticChecks'
+export type { TraceGradeResult, TraceGradeSummary } from './traceGrader'

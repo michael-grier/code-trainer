@@ -9,3 +9,5 @@ dist-ssr
 .convex
 coverage
 
+# T3 Code worktree threads
+.t3-worktrees/

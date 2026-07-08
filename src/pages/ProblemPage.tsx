@@ -1,4 +1,4 @@
-import { BookOpen, CheckCircle2, Play } from 'lucide-react'
+import { BookOpen, CheckCircle2 } from 'lucide-react'
 import { useEffect } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
@@ -54,10 +54,7 @@ export function ProblemPage() {
   }
 
   const isCompleted = progress.isProblemCompleted(lesson.slug, problem.id)
-  const isAutoGraded =
-    problem.kind === 'code' ||
-    problem.kind === 'debug' ||
-    problem.kind === 'refactor'
+  const completionDescription = getCompletionDescription(problem.kind)
 
   return (
     <div className="mx-auto grid max-w-7xl gap-4">
@@ -83,20 +80,6 @@ export function ProblemPage() {
               Concept
             </Link>
           </Button>
-          {!isAutoGraded ? (
-            <Button
-              disabled={isCompleted}
-              onClick={() => progress.markComplete(lesson.slug, problem.id)}
-              type="button"
-            >
-              {isCompleted ? (
-                <CheckCircle2 className="size-4" />
-              ) : (
-                <Play className="size-4" />
-              )}
-              {isCompleted ? 'Completed' : 'Mark complete'}
-            </Button>
-          ) : null}
         </div>
       </section>
 
@@ -116,11 +99,7 @@ export function ProblemPage() {
                 <CheckCircle2 className="size-4 text-primary" />
                 Completion mode
               </div>
-              <p>
-                {isAutoGraded
-                  ? 'Passing workspace checks marks this problem complete.'
-                  : 'Use the completion control after finishing this problem.'}
-              </p>
+              <p>{completionDescription}</p>
             </div>
           </CardContent>
         </Card>
@@ -129,4 +108,20 @@ export function ProblemPage() {
       </section>
     </div>
   )
+}
+
+function getCompletionDescription(problemKind: string) {
+  if (problemKind === 'trace') {
+    return 'Grade every trace question correctly to complete this problem.'
+  }
+
+  if (problemKind === 'written') {
+    return 'Write an answer, reveal the reference, then mark the review complete.'
+  }
+
+  if (problemKind === 'design') {
+    return 'Complete the structured response and rubric review to finish.'
+  }
+
+  return 'Passing workspace checks marks this problem complete.'
 }
