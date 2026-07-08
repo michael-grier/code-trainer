@@ -1076,6 +1076,23 @@ Example progression for sliding window:
 
 This is preferable to three fixed-window variants that only change the wording, because each problem introduces a different reasoning step.
 
+### 15.2 Lesson Authoring Principles
+
+Use these principles when replacing placeholder lessons with final curriculum content:
+
+- Prefer concrete, runnable TypeScript examples over pseudo-code. Avoid placeholder bodies, ellipses, `TODO` comments, and comments that stand in for behavior.
+- When introducing a representation, key, invariant, or data structure, show both how it is created and how it is used. For example, a hash key section should show the key construction and the `Map` or `Set` lookup that uses it.
+- Explain compact encodings before relying on them. If a string, tuple, bit mask, count array, or serialized key represents something meaningful, spell out how to read it.
+- State assumptions before they matter, especially input shape, casing, ordering guarantees, mutation expectations, and runtime complexity targets.
+- Keep examples small, complete, and self-contained. Define setup values before using them, and prefer a short named function over a detached snippet when the reader needs inputs, output, control flow, and return behavior.
+- Pair abstract language with an immediate example. If the lesson says "preserve an invariant", name the invariant in plain English and show the update that maintains it.
+- Make output ordering deterministic for auto-graded problems. If multiple answers could be valid, either require a specific order in the prompt or choose a problem shape that avoids ambiguous equality.
+- Teach the mistake as well as the method. Call out common failure modes such as missing default values, off-by-one updates, stale state, mutation leaks, unsafe narrowing, missing authorization checks, or unbounded memory.
+- Keep each section connected to the practice path. The code, written prompt, and design prompt should exercise concepts that were introduced in the lesson text.
+- Use reference approaches to model production-quality clarity, not only the shortest passing answer. Prefer readable names, explicit guards, and complexity notes.
+- Avoid broad survey writing. Each lesson should focus on the decisions the learner needs for the attached problems, with links between concept, examples, edge cases, and practice.
+- Use pseudo-code only when real TypeScript would distract from the point. If pseudo-code is necessary, label it explicitly and keep it out of runnable-looking code fences.
+
 ### Track 1: Algorithmic Problem Solving
 
 1. Arrays and hashing

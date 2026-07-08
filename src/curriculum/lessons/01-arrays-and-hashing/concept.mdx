@@ -1,14 +1,151 @@
 # Arrays and Hashing
 
-This placeholder concept page reserves the lesson slot for **Arrays and Hashing**. The content pass will replace it with the final interview-focused MDX lesson.
+Arrays give you an ordered sequence. Hash-backed structures give you fast lookup by key. Many interview problems become easier when you stop repeatedly scanning an array and instead ask, "What should I remember as I move through the input?"
 
-## What this lesson will cover
+## The core pattern
 
-- Core interview signals for arrays and hashing.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+Most array and hashing solutions follow the same loop:
+
+1. Choose the key that represents the thing you need to find again.
+2. Store what you have already seen in a `Set`, `Map`, or object.
+3. On each item, check the structure before or after updating it.
+4. Keep an invariant you can explain in one sentence.
+
+For a two-sum style problem, the key is the number you have already seen. For an anagram problem, the key is a character or a canonical character-count signature. For deduplication, the key is usually an ID.
+
+For valid anagrams, a useful invariant is: after each character from `right` is processed, `counts` stores exactly the characters from `left` that still need to be matched.
+
+```ts
+export function areAnagrams(left: string, right: string): boolean {
+  if (left.length !== right.length) {
+    return false
+  }
+
+  const counts = new Map<string, number>()
+
+  for (const char of left) {
+    counts.set(char, (counts.get(char) ?? 0) + 1)
+  }
+
+  for (const char of right) {
+    const remaining = (counts.get(char) ?? 0) - 1
+
+    if (remaining < 0) {
+      return false
+    }
+
+    if (remaining === 0) {
+      counts.delete(char)
+    } else {
+      counts.set(char, remaining)
+    }
+  }
+
+  return counts.size === 0
+}
+```
+
+## Frequency maps
+
+Use a frequency map when the count matters, not just whether something exists.
+
+```ts
+const counts = new Map<string, number>()
+
+for (const char of word) {
+  counts.set(char, (counts.get(char) ?? 0) + 1)
+}
+```
+
+The important detail is the default value. A missing key is usually a count of zero, and forgetting that default is a common source of `NaN`, negative counts, or false positives.
+
+Frequency maps are a good fit for:
+
+- Valid anagrams.
+- Character replacement windows.
+- Counting duplicate IDs.
+- Grouping values by a canonical key.
+
+## Sets
+
+Use a `Set` when membership is the only question.
+
+```ts
+export function hasDuplicate(nums: number[]): boolean {
+  const seen = new Set<number>()
+
+  for (const num of nums) {
+    if (seen.has(num)) {
+      return true
+    }
+
+    seen.add(num)
+  }
+
+  return false
+}
+```
+
+A set is also useful when duplicates should not affect the answer. In longest consecutive sequence, duplicates can be collapsed because the problem asks for distinct integer runs.
+
+## Choosing a key
+
+The key is the design choice. A weak key makes different inputs collide; an expensive key can erase the benefit of hashing.
+
+For grouped anagrams, sorting every word gives a clear key:
+
+```ts
+"eat" -> "aet"
+"tea" -> "aet"
+```
+
+For lowercase English words, a 26-count signature also works. The array has one slot per letter: index `0` represents `a`, index `1` represents `b`, and index `25` represents `z`. For `"eat"`, the counts for `a`, `e`, and `t` are `1`, and every other count is `0`.
+
+```ts
+"eat" -> "1#0#0#0#1#0#0#0#0#0#0#0#0#0#0#0#0#0#0#1#0#0#0#0#0#0"
+```
+
+That signature becomes the actual key in the map:
+
+```ts
+function createSignature(word: string): string {
+  const counts = new Array<number>(26).fill(0)
+
+  for (const char of word) {
+    const alphabetIndex = char.charCodeAt(0) - 97
+    counts[alphabetIndex] += 1
+  }
+
+  return counts.join('#')
+}
+
+const groups = new Map<string, string[]>()
+const key = createSignature('tea')
+const currentGroup = groups.get(key) ?? []
+
+groups.set(key, [...currentGroup, 'tea'])
+```
+
+The sorted key is simpler. The count key avoids sorting cost and makes the character-frequency idea explicit.
+
+## Complexity and pitfalls
+
+Hashing usually trades memory for speed. Average lookup is O(1), but you still pay for:
+
+- Extra memory for keys and values.
+- Creating canonical keys.
+- Handling missing defaults.
+- Preserving output order when tests or product behavior require it.
+- Normalizing input when casing, whitespace, Unicode, or punctuation matter.
+
+Before writing code, state your assumptions. In this lesson's code exercises, strings use lowercase English letters unless the prompt says otherwise.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+You will build this topic in layers:
+
+1. Check whether two strings are valid anagrams with a frequency map.
+2. Group words by an anagram signature while preserving deterministic order.
+3. Use a set to find the longest consecutive integer run in O(n) average time.
+4. Explain when hashing is the right choice.
+5. Design a bounded duplicate filter that applies the same lookup idea to product-style state.
