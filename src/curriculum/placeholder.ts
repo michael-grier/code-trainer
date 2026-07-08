@@ -1,6 +1,6 @@
 import type { ComponentType } from 'react'
 
-import type { Lesson } from '@/curriculum/types'
+import type { Approach, Lesson, Problem } from '@/curriculum/types'
 
 type PlaceholderLessonOptions = {
   slug: string
@@ -20,6 +20,44 @@ export function createPlaceholderLesson({
   track,
 }: PlaceholderLessonOptions): Lesson {
   const functionName = `solve${toPascalCase(slug)}`
+  const isAlgorithmLesson = track === 'algorithms'
+  const codeProblems = isAlgorithmLesson
+    ? [
+        createPlaceholderCodeProblem({
+          id: 'foundation',
+          title: `${title}: Foundation`,
+          prompt:
+            'Placeholder auto-graded exercise. The content pass will replace this with a direct implementation problem for the lesson concept.',
+          functionName,
+          estimatedMinutes: 12,
+        }),
+        createPlaceholderCodeProblem({
+          id: 'applied-code',
+          title: `${title}: Applied implementation`,
+          prompt:
+            'Placeholder auto-graded exercise. The content pass will replace this with an applied coding problem that adds realistic constraints or edge cases.',
+          functionName: `${functionName}Applied`,
+          estimatedMinutes: 15,
+        }),
+        createPlaceholderCodeProblem({
+          id: 'interview-depth-code',
+          title: `${title}: Interview-depth implementation`,
+          prompt:
+            'Placeholder auto-graded exercise. The content pass will replace this with a deeper coding problem for interview-level reasoning.',
+          functionName: `${functionName}InterviewDepth`,
+          estimatedMinutes: 20,
+        }),
+      ]
+    : [
+        createPlaceholderCodeProblem({
+          id: 'foundation',
+          title: `${title}: Foundation`,
+          prompt:
+            'Placeholder auto-graded exercise. The content pass will replace this with a focused implementation problem for the lesson concept.',
+          functionName,
+          estimatedMinutes: 12,
+        }),
+      ]
 
   return {
     slug,
@@ -29,24 +67,7 @@ export function createPlaceholderLesson({
     order,
     concept,
     problems: [
-      {
-        id: 'foundation',
-        kind: 'code',
-        completionMode: 'all-tests-pass',
-        title: `${title}: Foundation`,
-        prompt:
-          'Placeholder auto-graded exercise. The content pass will replace this with a focused implementation problem for the lesson concept.',
-        estimatedMinutes: 12,
-        functionName,
-        starter: `export function ${functionName}(input: string): string {\n  return input\n}\n`,
-        tests: [
-          {
-            name: 'returns the provided value',
-            args: ['ready'],
-            expected: 'ready',
-          },
-        ],
-      },
+      ...codeProblems,
       {
         id: 'applied',
         kind: 'written',
@@ -105,18 +126,59 @@ export function createPlaceholderLesson({
           'A complete review states assumptions, chooses an approach, tests edge cases, and explains the main complexity or design tradeoff.',
       },
     ],
-    approaches: {
-      foundation: [
-        {
-          name: 'Placeholder reference',
-          code: `export function ${functionName}(input: string): string {\n  return input\n}\n`,
-          explanation:
-            'This placeholder approach keeps the lesson buildable until the real curriculum content is authored.',
-          complexity: 'O(1) for the placeholder behavior.',
-        },
-      ],
-    },
+    approaches: createPlaceholderApproaches(codeProblems),
   }
+}
+
+function createPlaceholderCodeProblem({
+  estimatedMinutes,
+  functionName,
+  id,
+  prompt,
+  title,
+}: {
+  id: string
+  title: string
+  prompt: string
+  functionName: string
+  estimatedMinutes: number
+}): Problem {
+  return {
+    id,
+    kind: 'code',
+    completionMode: 'all-tests-pass',
+    title,
+    prompt,
+    estimatedMinutes,
+    functionName,
+    starter: `export function ${functionName}(input: string): string {\n  return input\n}\n`,
+    tests: [
+      {
+        name: 'returns the provided value',
+        args: ['ready'],
+        expected: 'ready',
+      },
+    ],
+  }
+}
+
+function createPlaceholderApproaches(problems: Problem[]) {
+  return Object.fromEntries(
+    problems
+      .filter((problem) => problem.kind === 'code')
+      .map((problem) => [
+        problem.id,
+        [
+          {
+            name: 'Placeholder reference',
+            code: `export function ${problem.functionName}(input: string): string {\n  return input\n}\n`,
+            explanation:
+              'This placeholder approach keeps the lesson buildable until the real curriculum content is authored.',
+            complexity: 'O(1) for the placeholder behavior.',
+          },
+        ] satisfies Approach[],
+      ]),
+  )
 }
 
 function toPascalCase(value: string) {

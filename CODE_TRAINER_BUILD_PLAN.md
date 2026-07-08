@@ -1030,8 +1030,10 @@ Build approximately 60 lessons grouped into 5 tracks.
 Each lesson should include:
 
 - 1 MDX concept page.
-- 2 to 4 problems, with 3 as the default target when the topic supports it.
+- A problem set shaped by the track and lesson skill, not a universal `code` / `written` / `design` template.
+- 2 to 4 problems for most lessons, with 3 as the default target when the topic supports it.
 - At least 1 auto-graded problem when the topic supports it.
+- Algorithmic Problem Solving lessons should be code-heavy: at least 2 TypeScript coding problems, preferably 3 for broad patterns, while still allowing written or design review prompts when they add value.
 - Reference approaches or reference answers.
 - Estimated completion time.
 
@@ -1053,6 +1055,17 @@ Default progression:
 Use 2 problems for narrow topics where a third problem would become repetitive. Use 4 problems only when the fourth problem tests a distinct subskill, failure mode, or interview-relevant tradeoff.
 
 Do not add extra problems merely to increase count. Every problem must have a clear learning purpose and must not be a near-duplicate of another problem in the same lesson.
+
+Do not force every lesson into a `code` / `written` / `design` sequence. The problem kind should match the skill being taught:
+
+- Use `code` when implementation practice is the core interview signal.
+- Use `debug` when the lesson is about recognizing and fixing failure modes.
+- Use `trace` when the learner needs to reason through execution order, runtime state, recursion, async behavior, or render/effect ordering.
+- Use `refactor` when the lesson is about improving structure without changing behavior.
+- Use `written` when the interview signal is explanation, tradeoff articulation, security judgment, or testing strategy.
+- Use `design` when the lesson asks for API shape, state architecture, data modeling, system boundaries, or production tradeoffs.
+
+Algorithm lessons are the main exception to the 2-to-4 default. They may use 5 practice items when the lesson benefits from 3 distinct code problems plus written/design review. The code problems should still be meaningfully different: foundation, applied, and interview-depth should not be simple wording variants of the same task.
 
 Example progression for sliding window:
 
@@ -1087,9 +1100,11 @@ This is preferable to three fixed-window variants that only change the wording, 
 
 Recommended problem mix:
 
-- Mostly `code`.
+- Default shape: `code`, `code`, `code`, with optional `debug`, `trace`, `written`, or `design` review when it adds a distinct skill.
+- Mostly `code`; each lesson should have at least 2 TypeScript coding problems, and broad pattern lessons should usually have 3.
 - Some `debug` for off-by-one and mutation bugs.
 - Some `trace` for recursion and complexity reasoning.
+- Written or design prompts may remain as review exercises, but they should not replace the coding-heavy core of this track.
 
 ### Track 2: JavaScript and TypeScript Core
 
@@ -1109,11 +1124,11 @@ Recommended problem mix:
 
 Recommended problem mix:
 
-- `trace` for runtime behavior.
-- `code` for utility functions and typed helpers.
-- `debug` for async and narrowing bugs.
-- `refactor` for removing unsafe `any`.
-- `written` for tradeoff questions.
+- Default shape: `trace` or `debug`, then `code` or `refactor`, then `written` when explanation matters.
+- Runtime lessons should lean on `trace` and `debug` because the core skill is predicting execution behavior.
+- Type-system lessons should lean on `code` and `refactor` because the core skill is shaping safer APIs and removing unsafe types.
+- Use `written` for tradeoffs, mental models, and edge-case explanation.
+- Use `design` sparingly; reserve it for domain modeling or API-boundary lessons where a design artifact is actually the interview signal.
 
 ### Track 3: React and Frontend Engineering
 
@@ -1132,11 +1147,12 @@ Recommended problem mix:
 
 Recommended problem mix:
 
-- `debug` for stale closures, bad effects, derived-state bugs, and mutation.
-- `trace` for render/effect ordering.
-- `refactor` for component extraction and hook design.
-- `written` for accessibility and security explanations.
-- `design` for state architecture and routing decisions.
+- Default shape: `debug` or `trace`, then `refactor` or `code`, then `design` or `written`.
+- Use `debug` for stale closures, bad effects, derived-state bugs, accessibility regressions, and mutation.
+- Use `trace` for render/effect ordering and client state transitions.
+- Use `refactor` for component extraction, hook design, prop API cleanup, and performance simplification.
+- Use `design` for state architecture, routing/layout architecture, forms architecture, and client/server state boundaries.
+- Use `written` for accessibility, browser security, networking, and tradeoff explanations.
 
 ### Track 4: Backend TypeScript and Data
 
@@ -1153,11 +1169,12 @@ Recommended problem mix:
 
 Recommended problem mix:
 
-- `design` for API and data models.
-- `written` for auth/security tradeoffs.
-- `trace` for async request lifecycle.
-- `code` for validators, serializers, query builders, and small service functions.
-- `debug` for transaction and authorization bugs.
+- Default shape: `code`, then `design`, then `written` or `debug`.
+- Use `code` for validators, serializers, request handlers, authorization guards, query builders, migration transforms, and small service functions.
+- Use `design` for API resource modeling, schema relationships, transaction boundaries, indexes, caching strategy, and rate-limit design.
+- Use `debug` for transaction bugs, missing authorization checks, data consistency issues, and query performance mistakes.
+- Use `trace` for async request lifecycle and Node.js runtime behavior.
+- Use `written` for auth/security tradeoffs, data evolution risks, and consistency guarantees.
 
 ### Track 5: Testing, Design, and Production Readiness
 
@@ -1170,10 +1187,12 @@ Recommended problem mix:
 
 Recommended problem mix:
 
-- `debug` for failing tests and broken assumptions.
-- `refactor` for design patterns and legacy cleanup.
-- `written` for testing strategy.
-- `design` for system design and architecture capstones.
+- Default shape: `debug` or `refactor`, then `written`, then `design`.
+- Use `debug` for failing tests, flaky assumptions, brittle integrations, and production incident reasoning.
+- Use `refactor` for legacy cleanup, testability improvements, SOLID/design-pattern exercises, and behavior-preserving changes.
+- Use `written` for testing strategy, debugging process, and production-readiness tradeoffs.
+- Use `design` for system design, architecture capstones, observability, reliability, and rollout planning.
+- Use `code` only when implementation is the point of the lesson, such as writing a test helper, refactoring a module, or implementing a small pattern.
 
 ## 16. Lesson Authoring Template
 
@@ -1406,6 +1425,8 @@ Tasks:
 
 - Replace placeholder lessons with real MDX content.
 - Add 2 to 4 problems per lesson.
+- For Algorithmic Problem Solving lessons, add at least 2 and usually 3 distinct TypeScript coding problems before any written/design review prompts.
+- For non-algorithm tracks, choose problem kinds from the track-specific mix instead of forcing a `code` / `written` / `design` sequence.
 - Add test cases for code/debug/refactor problems.
 - Add trace expected answers.
 - Add written/design reference answers.
