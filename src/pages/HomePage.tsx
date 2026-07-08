@@ -20,14 +20,19 @@ import {
 } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { getLessonsForTrack, lessons, tracks } from '@/curriculum'
+import { getContinueTarget, learningTargetToPath } from '@/state/learningFlow'
 import { useProgress } from '@/state/progressContext'
 import { getProblemKey } from '@/state/progress'
 
 export function HomePage() {
   const progress = useProgress()
   const recommendedLesson = progress.recommendedLesson ?? lessons[0]
-  const activeLesson = progress.activeLesson ?? recommendedLesson
-  const recommendedProblem = progress.getRecommendedProblem(activeLesson, progress.state)
+  const recommendedProblem = progress.getRecommendedProblem(
+    recommendedLesson,
+    progress.state,
+  )
+  const continueTarget = getContinueTarget(lessons, progress.state)
+  const continuePath = learningTargetToPath(continueTarget)
   const totalCompletedLessons = tracks.reduce((total, track) => {
     const completion = progress.getTrackCompletion(track, lessons, progress.state)
 
@@ -35,8 +40,6 @@ export function HomePage() {
   }, 0)
   const overallPercent =
     lessons.length === 0 ? 0 : Math.round((totalCompletedLessons / lessons.length) * 100)
-  const isSelfDirected = progress.state.learningPath.mode === 'self-directed'
-  const continueLabel = isSelfDirected ? 'Continue focus' : 'Continue'
 
   return (
     <div className="mx-auto grid max-w-6xl gap-6">
@@ -54,9 +57,9 @@ export function HomePage() {
           </div>
           <div className="flex flex-wrap gap-2">
             <Button asChild>
-              <Link to={`/lesson/${activeLesson.slug}`}>
+              <Link to={continuePath}>
                 <Play className="size-4" />
-                {continueLabel}
+                Continue
               </Link>
             </Button>
             <Button asChild variant="outline">
@@ -83,25 +86,23 @@ export function HomePage() {
           <CardContent className="grid gap-4">
             <div className="rounded-lg border bg-muted/30 p-4">
               <div className="mb-2 flex items-center justify-between gap-2">
-                <h2 className="font-semibold">{activeLesson.title}</h2>
-                <Badge variant="outline">
-                  {isSelfDirected ? 'Focus' : 'Next'}
-                </Badge>
+                <h2 className="font-semibold">{recommendedLesson.title}</h2>
+                <Badge variant="outline">Next</Badge>
               </div>
               <p className="text-sm text-muted-foreground">
-                {activeLesson.summary}
+                {recommendedLesson.summary}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button asChild>
-                <Link to={`/lesson/${activeLesson.slug}`}>
+                <Link to={`/lesson/${recommendedLesson.slug}`}>
                   Open lesson
                   <ArrowRight className="size-4" />
                 </Link>
               </Button>
               <Button asChild variant="outline">
                 <Link
-                  to={`/lesson/${activeLesson.slug}/problem/${recommendedProblem.id}`}
+                  to={`/lesson/${recommendedLesson.slug}/problem/${recommendedProblem.id}`}
                 >
                   Open workspace
                 </Link>
@@ -142,11 +143,11 @@ export function HomePage() {
               <Play className="size-4 text-primary" />
               Continue
             </CardTitle>
-            <CardDescription>Recommended or focused lesson</CardDescription>
+            <CardDescription>Last workspace or guided lesson</CardDescription>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground">
-            The primary action will prefer a self-directed focus lesson when one
-            is selected, otherwise the guided recommendation.
+            The primary action resumes your last workspace when it is still in
+            the curriculum, otherwise it opens the guided recommendation.
           </CardContent>
         </Card>
         <Card>

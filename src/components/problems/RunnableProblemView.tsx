@@ -1,5 +1,6 @@
 import { Loader2, Play, RotateCcw } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import { toast } from 'sonner'
 
 import { CodeEditor } from '@/components/editor/CodeEditor'
 import { DiffEditor } from '@/components/editor/DiffEditor'
@@ -115,15 +116,31 @@ export function RunnableProblemView({
         (problem.kind !== 'refactor' || allStaticChecksPassed(checkResults))
       ) {
         progress.markComplete(lessonSlug, problem.id)
+        toast.success('Problem completed', {
+          description: 'All workspace checks passed.',
+        })
+      } else if (result.status === 'passed') {
+        toast.warning('Static checks still need work', {
+          description: 'Tests passed, but the refactor checks are not complete.',
+        })
+      } else {
+        toast.error('Tests did not pass', {
+          description: getRunFailureDescription(result),
+        })
       }
     } catch (error) {
+      const message = errorToMessage(error)
+
       setRunResult({
         language: selectedLanguage,
         status: 'error',
         durationMs: 0,
         tests: [],
         logs: [],
-        error: errorToMessage(error),
+        error: message,
+      })
+      toast.error('Unable to run tests', {
+        description: message,
       })
     } finally {
       setIsRunning(false)
@@ -221,6 +238,30 @@ function errorToMessage(error: unknown) {
   }
 
   return 'Unable to run tests.'
+}
+
+function getRunFailureDescription(result: CodeRunResult) {
+  if (result.error) {
+    return result.error
+  }
+
+  if (result.status === 'timeout') {
+    return 'The run timed out before all tests completed.'
+  }
+
+  if (result.status === 'error') {
+    return 'The runtime reported an error.'
+  }
+
+  const failedCount = result.tests.filter((test) => test.status !== 'passed').length
+
+  if (failedCount === 0) {
+    return 'Review the test results for details.'
+  }
+
+  return failedCount === 1
+    ? '1 test needs attention.'
+    : `${failedCount} tests need attention.`
 }
 
 function LanguageSelector({

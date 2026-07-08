@@ -40,7 +40,7 @@ Intermediate full-stack engineers who already know basic JavaScript/TypeScript a
 - Use the backend only for authentication and user-specific progress sync.
 - Preserve guest mode so users can try the app without signing in.
 - Prefer shadcn/ui for interface primitives and patterns.
-- Keep the guided path linear by default, but let users inspect their progress and choose a different focus lesson when they want a self-directed path.
+- Keep the guided path linear by default, but let users inspect their progress and manually open any lesson from the curriculum map.
 
 ## 4. Required Tech Stack
 
@@ -111,7 +111,6 @@ src/
       ThemeToggle.tsx
     learning/
       CurriculumMap.tsx
-      FocusLessonPicker.tsx
       LessonCard.tsx
       LessonHeader.tsx
       LessonProgressTable.tsx
@@ -179,7 +178,6 @@ src/
     traceGrader.ts
   state/
     cloudProgress.ts
-    learningPath.ts
     progress.ts
     syncProgress.ts
     useProgress.ts
@@ -201,12 +199,12 @@ Implement these routes:
 
 - `/`
   - Home dashboard.
-  - Shows the recommended next lesson, active focus lesson, track progress, and lesson cards.
+  - Shows the recommended next lesson, track progress, and lesson cards.
   - Defaults to the linear guided path.
 - `/progress`
   - Progress and curriculum map page.
   - Shows completed, in-progress, untouched, and recommended lessons.
-  - Lets users select a focus lesson or return to the guided recommendation.
+  - Lets users search, inspect, and manually open lessons.
 - `/lesson/:slug`
   - Concept page.
   - Renders MDX lesson content.
@@ -467,11 +465,10 @@ The `useProgress()` hook should provide:
 - Query lesson completion.
 - Query track completion.
 - Query recommended next lesson and problem.
-- Query and update selected focus lesson.
-- Queue or unqueue lessons for later.
-- Reset learning path mode to guided.
 - Report sync status.
 - Trigger manual sync retry.
+
+The `learningPath` fields remain in the persisted state shape for backward compatibility and possible future feature work. In the current product, Focus/Queue flows are inactive and should not affect recommendations.
 
 Use defensive parsing when loading from `localStorage`. If persisted data is invalid, reset to an empty valid state.
 
@@ -571,6 +568,7 @@ userSettings {
   userId: string
   lastLessonSlug?: string
   lastProblemId?: string
+  // Compatibility/future-use fields. Current UI does not expose Focus/Queue flows.
   pathMode?: 'guided' | 'self-directed'
   focusLessonSlug?: string
   queuedLessonSlugs?: string[]
@@ -607,7 +605,7 @@ Use deterministic merge rules:
 - `revealedReferences`: OR merge.
 - `rubricReviews`: OR merge per rubric item.
 - `lastVisited`: last-write-wins using `updatedAt`.
-- `learningPath`: last-write-wins using `updatedAt`, except queued lessons should be union-merged when both local and cloud changed recently.
+- `learningPath`: retained as a compatibility/future-use setting. Current recommendations should ignore focus and queue values.
 
 After sign-in merge, authenticated cloud progress should become the source of truth. The authenticated local cache should still update optimistically so the interface feels instant.
 
@@ -648,22 +646,25 @@ Use a linear guided path as the default flow, but do not force every user to fol
 Default guided behavior:
 
 - The app computes a recommended next lesson based on the first incomplete lesson in curriculum order.
-- The home page primary action continues the selected focus lesson if one exists; otherwise it continues the guided recommendation.
+- The home page primary action resumes the last valid workspace when available; otherwise it continues the guided recommendation.
 - Lesson cards show whether each lesson is completed, in progress, recommended, ahead of the recommended path, or untouched.
 - Within a lesson, the first incomplete problem is the default next action.
 
-Self-directed behavior:
+Manual navigation behavior:
 
-- Users can open the progress/curriculum map and choose any lesson as their focus lesson.
-- Choosing a focus lesson switches `learningPath.mode` to `self-directed`.
-- Users can return to the guided recommendation at any time.
+- Users can open the progress/curriculum map and manually choose any lesson.
+- Manual navigation does not change the guided recommendation.
 - Lessons ahead of the recommended path should show a prerequisite notice, not a hard block.
 - Problem order inside a lesson should still default to sequential progression, but users may review the lesson overview before starting.
+
+Future feature candidates:
+
+- Focus lesson: let a user temporarily pin one lesson as the active dashboard target.
+- Lesson queue: let a user build an ordered list of lessons to revisit, with a clear "start queue" flow and next-up behavior.
 
 The UI should show:
 
 - Recommended lessons/problems with a circle or arrow icon.
-- Selected focus lesson with a distinct active state.
 - Completed lessons/problems with a check icon.
 - Ahead-of-path lessons with a subtle notice icon, not a blocking lock.
 - Completion percentage globally and per track.
@@ -985,15 +986,11 @@ The progress page should show:
 - A searchable/filterable curriculum map grouped by track.
 - Lesson rows or cards with title, summary, progress, status, estimated time, and problem count.
 - A primary action to continue the guided recommendation.
-- A secondary action to set any lesson as the active focus lesson.
-- A way to reset from self-directed mode back to the guided path.
-- Optional "queue for later" action for lessons the user wants to revisit.
 
 The home page should remain simple:
 
 - Prominent continue button.
-- Current focus lesson when self-directed mode is active.
-- Recommended next lesson when guided mode is active.
+- Recommended next lesson.
 - Track progress overview.
 - Link to the full progress/curriculum map.
 
@@ -1317,7 +1314,6 @@ Tasks:
 - Implement versioned authenticated localStorage cache load/save.
 - Implement guided-path pure functions.
 - Implement completion queries.
-- Implement learning path mode and focus lesson state.
 - Implement last visited state.
 - Wire progress into dashboard/sidebar/problem navigation.
 
@@ -1325,7 +1321,6 @@ Acceptance criteria:
 
 - Progress persists after reload.
 - The app computes a guided recommended next lesson.
-- Users can select and persist a focus lesson.
 - Completion percentages update immediately.
 - Guest progress and authenticated cache are stored separately.
 
@@ -1418,7 +1413,6 @@ Tasks:
 - Add previous/next problem navigation.
 - Add continue button on home page.
 - Add progress/curriculum map interactions.
-- Add set-focus, queue-for-later, and return-to-guided actions.
 - Add concept reference sheet in problem workspace.
 - Add prerequisite notices for ahead-of-path lessons.
 - Add toasts on completion and failed tests.
@@ -1427,7 +1421,7 @@ Tasks:
 Acceptance criteria:
 
 - User can move through the curriculum without dead ends.
-- Guided and self-directed flows are both clear.
+- Guided and manual navigation flows are both clear.
 - Ahead-of-path lessons are clearly labeled without blocking access.
 - Completion produces clear feedback.
 
@@ -1461,8 +1455,6 @@ Tasks:
 - Test authenticated progress sync across reloads.
 - Test sync failure/retry UI.
 - Test guided recommended-next behavior.
-- Test selecting a focus lesson.
-- Test returning to guided mode.
 - Test ahead-of-path prerequisite notices.
 - Test mobile layout.
 - Test dark mode.
@@ -1574,7 +1566,6 @@ Owns:
 - Guest localStorage versioning.
 - Authenticated cache versioning.
 - Guided-path functions.
-- Learning path mode and focus lesson state.
 - Completion percentage.
 - Manual QA.
 - Build/lint verification.
@@ -1587,7 +1578,6 @@ Deliverables:
 
 - Persistent local progress.
 - Correct guided recommendation behavior.
-- Correct self-directed focus lesson behavior.
 - QA checklist results.
 
 ### Agent F: Auth, Cloud Sync, and Deployment
@@ -1652,10 +1642,6 @@ export type ProgressActions = {
   setLanguage: (lessonSlug: string, problemId: string, language: Language) => void
   getLanguage: (lessonSlug: string, problemId: string) => Language | undefined
   markComplete: (lessonSlug: string, problemId: string) => void
-  setFocusLesson: (lessonSlug: string) => void
-  resetToGuidedPath: () => void
-  queueLesson: (lessonSlug: string) => void
-  unqueueLesson: (lessonSlug: string) => void
 }
 ```
 
@@ -1668,15 +1654,11 @@ export type LessonStatus =
   | 'completed'
   | 'in-progress'
   | 'recommended'
-  | 'focus'
   | 'ahead-of-path'
   | 'untouched'
 
 export type LearningPathState = {
-  mode: 'guided' | 'self-directed'
   recommendedLessonSlug: string
-  focusLessonSlug?: string
-  queuedLessonSlugs: string[]
 }
 ```
 
@@ -1912,7 +1894,6 @@ The app is done when:
 - Sync status and retry behavior work.
 - The guided path recommends the next lesson by default.
 - Users can view completed/in-progress/untouched lessons in a progress map.
-- Users can select a focus lesson and return to guided mode.
 - Ahead-of-path lessons show prerequisite guidance without hard-blocking access.
 - Desktop and mobile layouts are usable.
 - Light and dark themes work.
@@ -1925,7 +1906,7 @@ The app is done when:
 2. Build shell, routes, theme, and shadcn/ui foundation.
 3. Define curriculum/problem/progress types.
 4. Add lesson registry and placeholder lessons.
-5. Implement progress, guided-path, and focus-lesson logic.
+5. Implement progress, guided-path, and last-visited logic.
 6. Add Clerk, Convex, guest mode, cloud sync, and deployment setup.
 7. Implement TypeScript runner and test harness.
 8. Build code/debug/refactor views.

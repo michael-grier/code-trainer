@@ -3,7 +3,6 @@ import { createContext, useContext } from 'react'
 import type { Language } from '@/curriculum/types'
 import type { getLessonStatus } from '@/state/guidance'
 import {
-  getActiveLesson,
   getLessonCompletion,
   getProgressCounts,
   getRecommendedLesson,
@@ -26,7 +25,6 @@ export type ProgressContextValue = {
   syncStatus: SyncStatus
   isHydrated: boolean
   recommendedLesson: ReturnType<typeof getRecommendedLesson>
-  activeLesson: ReturnType<typeof getActiveLesson>
   counts: ReturnType<typeof getProgressCounts>
   getDraft: (
     lessonSlug: string,
@@ -66,10 +64,6 @@ export type ProgressContextValue = {
   getTrackCompletion: typeof getTrackCompletion
   getLessonStatus: typeof getLessonStatus
   getRecommendedProblem: typeof getRecommendedProblem
-  setFocusLesson: (lessonSlug: string) => void
-  resetToGuidedPath: () => void
-  queueLesson: (lessonSlug: string) => void
-  unqueueLesson: (lessonSlug: string) => void
   saveLastVisited: (lessonSlug: string, problemId?: string) => void
   retrySync: () => Promise<void>
 }

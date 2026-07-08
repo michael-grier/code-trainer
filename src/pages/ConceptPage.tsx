@@ -4,12 +4,12 @@ import {
   CheckCircle2,
   Circle,
   Play,
-  TriangleAlert,
 } from 'lucide-react'
 import { useEffect } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
 import { Mdx } from '@/components/mdx/Mdx'
+import { PrerequisiteNotice } from '@/components/learning/PrerequisiteNotice'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -89,15 +89,10 @@ export function ConceptPage() {
       </section>
 
       {lessonStatus === 'ahead-of-path' ? (
-        <Card className="border-primary/30 bg-accent/40">
-          <CardContent className="flex gap-3 p-4 text-sm">
-            <TriangleAlert className="mt-0.5 size-4 shrink-0 text-primary" />
-            <p className="text-muted-foreground">
-              This lesson is ahead of the guided recommendation. You can continue,
-              or return to the dashboard for the next guided step.
-            </p>
-          </CardContent>
-        </Card>
+        <PrerequisiteNotice
+          lesson={lesson}
+          recommendedLesson={progress.recommendedLesson}
+        />
       ) : null}
 
       <div className="grid gap-4 lg:grid-cols-[1fr_18rem]">

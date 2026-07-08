@@ -15,7 +15,6 @@ import {
 import { lessons } from '@/curriculum'
 import { progressApi } from '@/lib/convexProgressApi'
 import {
-  getActiveLesson,
   getLessonCompletion,
   getLessonStatus,
   getProgressCounts,
@@ -320,7 +319,6 @@ export function ProgressProvider({ children, cloud, userId }: ProgressProviderPr
 
   const contextValue = useMemo<ProgressContextValue>(() => {
     const recommendedLesson = getRecommendedLesson(lessons, state)
-    const activeLesson = getActiveLesson(lessons, state)
 
     return {
       state,
@@ -328,7 +326,6 @@ export function ProgressProvider({ children, cloud, userId }: ProgressProviderPr
       syncStatus,
       isHydrated,
       recommendedLesson,
-      activeLesson,
       counts: getProgressCounts(lessons, state),
       getDraft: (lessonSlug, problemId, language) =>
         state.drafts[getDraftKey(lessonSlug, problemId, language)],
@@ -460,68 +457,6 @@ export function ProgressProvider({ children, cloud, userId }: ProgressProviderPr
       getTrackCompletion,
       getLessonStatus,
       getRecommendedProblem,
-      setFocusLesson: (lessonSlug) => {
-        update((current, now) => ({
-          ...current,
-          learningPath: {
-            ...current.learningPath,
-            mode: 'self-directed',
-            focusLessonSlug: lessonSlug,
-            updatedAt: now,
-          },
-          updatedAt: {
-            ...current.updatedAt,
-            [getUpdatedAtKey('learningPath')]: now,
-          },
-        }))
-      },
-      resetToGuidedPath: () => {
-        update((current, now) => ({
-          ...current,
-          learningPath: {
-            ...current.learningPath,
-            mode: 'guided',
-            focusLessonSlug: undefined,
-            updatedAt: now,
-          },
-          updatedAt: {
-            ...current.updatedAt,
-            [getUpdatedAtKey('learningPath')]: now,
-          },
-        }))
-      },
-      queueLesson: (lessonSlug) => {
-        update((current, now) => ({
-          ...current,
-          learningPath: {
-            ...current.learningPath,
-            queuedLessonSlugs: current.learningPath.queuedLessonSlugs.includes(lessonSlug)
-              ? current.learningPath.queuedLessonSlugs
-              : [...current.learningPath.queuedLessonSlugs, lessonSlug],
-            updatedAt: now,
-          },
-          updatedAt: {
-            ...current.updatedAt,
-            [getUpdatedAtKey('learningPath')]: now,
-          },
-        }))
-      },
-      unqueueLesson: (lessonSlug) => {
-        update((current, now) => ({
-          ...current,
-          learningPath: {
-            ...current.learningPath,
-            queuedLessonSlugs: current.learningPath.queuedLessonSlugs.filter(
-              (queuedSlug) => queuedSlug !== lessonSlug,
-            ),
-            updatedAt: now,
-          },
-          updatedAt: {
-            ...current.updatedAt,
-            [getUpdatedAtKey('learningPath')]: now,
-          },
-        }))
-      },
       saveLastVisited,
       retrySync,
     }

@@ -9,7 +9,11 @@ import {
   getRecommendedProblem,
   getTrackCompletion,
 } from '@/state/guidance'
-import { createEmptyProgressState, getProblemKey } from '@/state/progress'
+import {
+  createEmptyProgressState,
+  getDraftKey,
+  getProblemKey,
+} from '@/state/progress'
 
 const Concept = () => null
 
@@ -100,7 +104,7 @@ describe('guidance', () => {
     })
   })
 
-  it('derives lesson statuses from completion and focus state', () => {
+  it('derives lesson statuses from completion and guided recommendation', () => {
     const progress = createEmptyProgressState()
 
     expect(getLessonStatus(lessons[0], lessons, progress)).toBe('recommended')
@@ -109,7 +113,7 @@ describe('guidance', () => {
     progress.learningPath.mode = 'self-directed'
     progress.learningPath.focusLessonSlug = 'second'
 
-    expect(getLessonStatus(lessons[1], lessons, progress)).toBe('focus')
+    expect(getLessonStatus(lessons[1], lessons, progress)).toBe('ahead-of-path')
 
     progress.completed[getProblemKey('first', 'one')] = true
 
@@ -126,5 +130,14 @@ describe('guidance', () => {
       untouched: 0,
       aheadOfPath: 1,
     })
+  })
+
+  it('treats draft activity as in progress for the owning lesson', () => {
+    const progress = createEmptyProgressState()
+
+    progress.drafts[getDraftKey('first', 'two', 'ts')] = 'draft code'
+
+    expect(getLessonCompletion(lessons[0], progress).isInProgress).toBe(true)
+    expect(getLessonStatus(lessons[0], lessons, progress)).toBe('recommended')
   })
 })

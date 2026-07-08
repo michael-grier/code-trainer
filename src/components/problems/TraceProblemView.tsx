@@ -1,5 +1,6 @@
 import { CheckCircle2, ListChecks, XCircle } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { toast } from 'sonner'
 
 import { ReadOnlyCode } from '@/components/editor/ReadOnlyCode'
 import { Badge } from '@/components/ui/badge'
@@ -57,6 +58,20 @@ export function TraceProblemView({ lessonSlug, problem }: TraceProblemViewProps)
 
     if (nextSummary.passed) {
       progress.markComplete(lessonSlug, problem.id)
+      toast.success('Trace completed', {
+        description: 'Every trace question is correct.',
+      })
+    } else {
+      const missedCount = nextSummary.results.filter(
+        (result) => !result.passed,
+      ).length
+
+      toast.error('Trace needs review', {
+        description:
+          missedCount === 1
+            ? '1 answer needs attention.'
+            : `${missedCount} answers need attention.`,
+      })
     }
   }
 
@@ -263,4 +278,3 @@ function hasTraceAnswer(question: TraceQuestion, answer: unknown) {
 
   return typeof answer === 'string' && answer.trim().length > 0
 }
-

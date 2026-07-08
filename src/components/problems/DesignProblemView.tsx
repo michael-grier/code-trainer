@@ -1,4 +1,5 @@
 import { CheckCircle2, Layers3 } from 'lucide-react'
+import { toast } from 'sonner'
 
 import { ReferenceAnswer } from '@/components/problems/ReferenceAnswer'
 import { RubricReview } from '@/components/problems/RubricReview'
@@ -41,6 +42,7 @@ export function DesignProblemView({ lessonSlug, problem }: DesignProblemViewProp
 
   const handleComplete = () => {
     progress.markComplete(lessonSlug, problem.id)
+    toast.success('Design review completed')
   }
 
   return (
@@ -233,4 +235,3 @@ function textToList(value: string) {
     .map((item) => item.trim())
     .filter(Boolean)
 }
-

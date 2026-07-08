@@ -2,6 +2,9 @@ import { BookOpen, CheckCircle2 } from 'lucide-react'
 import { useEffect } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
+import { ConceptReferenceSheet } from '@/components/learning/ConceptReferenceSheet'
+import { PrerequisiteNotice } from '@/components/learning/PrerequisiteNotice'
+import { ProblemNavigation } from '@/components/learning/ProblemNavigation'
 import { ProblemRenderer } from '@/components/problems/ProblemRenderer'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -13,8 +16,9 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
-import { getLesson, getProblem } from '@/curriculum'
+import { getLesson, getProblem, lessons } from '@/curriculum'
 import { formatSlug } from '@/lib/format'
+import { getProblemNavigation } from '@/state/learningFlow'
 import { useProgress } from '@/state/progressContext'
 
 export function ProblemPage() {
@@ -55,6 +59,8 @@ export function ProblemPage() {
 
   const isCompleted = progress.isProblemCompleted(lesson.slug, problem.id)
   const completionDescription = getCompletionDescription(problem.kind)
+  const navigation = getProblemNavigation(lessons, lesson.slug, problem.id)
+  const lessonStatus = progress.getLessonStatus(lesson, lessons, progress.state)
 
   return (
     <div className="mx-auto grid max-w-7xl gap-4">
@@ -80,8 +86,16 @@ export function ProblemPage() {
               Concept
             </Link>
           </Button>
+          <ConceptReferenceSheet lesson={lesson} />
         </div>
       </section>
+
+      {lessonStatus === 'ahead-of-path' ? (
+        <PrerequisiteNotice
+          lesson={lesson}
+          recommendedLesson={progress.recommendedLesson}
+        />
+      ) : null}
 
       <section className="grid gap-4">
         <Card className="min-w-0">
@@ -105,6 +119,10 @@ export function ProblemPage() {
         </Card>
 
         <ProblemRenderer lesson={lesson} problem={problem} />
+        <ProblemNavigation
+          next={navigation.next}
+          previous={navigation.previous}
+        />
       </section>
     </div>
   )

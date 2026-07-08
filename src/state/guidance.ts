@@ -12,16 +12,8 @@ export type LessonStatus =
   | 'completed'
   | 'in-progress'
   | 'recommended'
-  | 'focus'
   | 'ahead-of-path'
   | 'untouched'
-
-export type LearningPathState = {
-  mode: 'guided' | 'self-directed'
-  recommendedLessonSlug?: string
-  focusLessonSlug?: string
-  queuedLessonSlugs: string[]
-}
 
 export function getLessonCompletion(
   lesson: Lesson,
@@ -83,23 +75,6 @@ export function getRecommendedProblem(lesson: Lesson, progress: ProgressState) {
   )
 }
 
-export function getActiveLesson(lessons: Lesson[], progress: ProgressState) {
-  if (
-    progress.learningPath.mode === 'self-directed' &&
-    progress.learningPath.focusLessonSlug
-  ) {
-    const focusedLesson = lessons.find(
-      (lesson) => lesson.slug === progress.learningPath.focusLessonSlug,
-    )
-
-    if (focusedLesson) {
-      return focusedLesson
-    }
-  }
-
-  return getRecommendedLesson(lessons, progress) ?? lessons[0]
-}
-
 export function getLessonStatus(
   lesson: Lesson,
   lessons: Lesson[],
@@ -110,13 +85,6 @@ export function getLessonStatus(
 
   if (completion.isComplete) {
     return 'completed'
-  }
-
-  if (
-    progress.learningPath.mode === 'self-directed' &&
-    progress.learningPath.focusLessonSlug === lesson.slug
-  ) {
-    return 'focus'
   }
 
   if (recommendedLesson?.slug === lesson.slug) {
@@ -144,7 +112,7 @@ export function getProgressCounts(
 
       if (status === 'completed') {
         counts.completed += 1
-      } else if (status === 'in-progress' || status === 'recommended' || status === 'focus') {
+      } else if (status === 'in-progress' || status === 'recommended') {
         counts.inProgress += 1
       } else if (status === 'ahead-of-path') {
         counts.aheadOfPath += 1
@@ -156,18 +124,6 @@ export function getProgressCounts(
     },
     { completed: 0, inProgress: 0, untouched: 0, aheadOfPath: 0 },
   )
-}
-
-export function getLearningPathState(
-  lessons: Lesson[],
-  progress: ProgressState,
-): LearningPathState {
-  return {
-    mode: progress.learningPath.mode,
-    recommendedLessonSlug: getRecommendedLesson(lessons, progress)?.slug,
-    focusLessonSlug: progress.learningPath.focusLessonSlug,
-    queuedLessonSlugs: progress.learningPath.queuedLessonSlugs,
-  }
 }
 
 function hasProblemActivity(
@@ -185,11 +141,13 @@ function hasProblemActivity(
     return true
   }
 
-  return lesson.problems.some(
-    (problem) =>
-      progress.languages[problemKey] ||
-      progress.drafts[getDraftKey(lesson.slug, problem.id, 'ts')] ||
-      progress.drafts[getDraftKey(lesson.slug, problem.id, 'py')],
-  )
-}
+  return lesson.problems.some((problem) => {
+    const currentProblemKey = getProblemKey(lesson.slug, problem.id)
 
+    return (
+      progress.languages[currentProblemKey] ||
+      progress.drafts[getDraftKey(lesson.slug, problem.id, 'ts')] ||
+      progress.drafts[getDraftKey(lesson.slug, problem.id, 'py')]
+    )
+  })
+}

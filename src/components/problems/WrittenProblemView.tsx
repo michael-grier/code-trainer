@@ -1,4 +1,5 @@
 import { CheckCircle2, PencilLine } from 'lucide-react'
+import { toast } from 'sonner'
 
 import { ReferenceAnswer } from '@/components/problems/ReferenceAnswer'
 import { RubricReview } from '@/components/problems/RubricReview'
@@ -38,6 +39,7 @@ export function WrittenProblemView({
 
   const handleComplete = () => {
     progress.markComplete(lessonSlug, problem.id)
+    toast.success('Written review completed')
   }
 
   return (
@@ -95,4 +97,3 @@ export function WrittenProblemView({
     </div>
   )
 }
-
