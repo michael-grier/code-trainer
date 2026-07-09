@@ -48,7 +48,7 @@ export function MdxCodeBlock({
     return (
       <pre
         className={cn(
-          'mb-4 overflow-x-auto rounded-md border bg-muted p-4 text-sm',
+          'mb-4 max-w-full overflow-x-auto rounded-md border bg-muted p-4 text-sm',
           className,
         )}
         {...props}
@@ -61,7 +61,7 @@ export function MdxCodeBlock({
   return (
     <pre
       className={cn(
-        'mb-4 overflow-x-auto rounded-md border bg-muted p-4 text-sm leading-6',
+        'mb-4 max-w-full overflow-x-auto rounded-md border bg-muted p-4 text-sm leading-6',
         className,
       )}
       {...props}

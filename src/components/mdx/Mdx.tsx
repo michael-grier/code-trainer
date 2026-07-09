@@ -1,4 +1,12 @@
-import type { ComponentProps, ComponentType } from 'react'
+import {
+  Children,
+  Fragment,
+  isValidElement,
+  type ComponentProps,
+  type ComponentType,
+  type ReactElement,
+  type ReactNode,
+} from 'react'
 
 import { cn } from '@/lib/cn'
 
@@ -11,6 +19,8 @@ type MdxComponent = ComponentType<{
 type MdxProps = {
   component: ComponentType
 }
+
+const exampleLabelPattern = /^(Example (?:prompt|input|output)):\s*/
 
 const mdxComponents = {
   h1: ({ className, ...props }: ComponentProps<'h1'>) => (
@@ -31,9 +41,29 @@ const mdxComponents = {
       {...props}
     />
   ),
-  p: ({ className, ...props }: ComponentProps<'p'>) => (
-    <p className={cn('mb-4 leading-7 text-muted-foreground', className)} {...props} />
-  ),
+  p: ({ className, children, ...props }: ComponentProps<'p'>) => {
+    const exampleLabel = getExampleLabel(children)
+
+    if (exampleLabel) {
+      return (
+        <p
+          className={cn(
+            'mb-4 rounded-md border border-primary/25 bg-primary/5 px-3 py-2 text-sm leading-6 text-foreground',
+            className,
+          )}
+          {...props}
+        >
+          {renderExampleChildren(children, exampleLabel)}
+        </p>
+      )
+    }
+
+    return (
+      <p className={cn('mb-4 leading-7 text-muted-foreground', className)} {...props}>
+        {children}
+      </p>
+    )
+  },
   ul: ({ className, ...props }: ComponentProps<'ul'>) => (
     <ul className={cn('mb-4 ml-5 list-disc space-y-2', className)} {...props} />
   ),
@@ -85,8 +115,60 @@ export function Mdx({ component }: MdxProps) {
   const Component = component as MdxComponent
 
   return (
-    <article className="max-w-none">
+    <article className="min-w-0 max-w-none">
       <Component components={mdxComponents} />
     </article>
   )
+}
+
+function getExampleLabel(children: ReactNode) {
+  const text = getTextContent(children).trimStart()
+  const match = text.match(exampleLabelPattern)
+
+  return match?.[1]
+}
+
+function renderExampleChildren(children: ReactNode, label: string) {
+  let replacedLabel = false
+
+  return Children.toArray(children).map((child, index) => {
+    if (!replacedLabel && typeof child === 'string') {
+      const match = child.match(exampleLabelPattern)
+
+      if (match) {
+        replacedLabel = true
+
+        const rest = child.slice(match[0].length)
+
+        return (
+          <Fragment key={`example-${label}-${index}`}>
+            <span className="mr-2 inline-flex rounded-md bg-primary/15 px-2 py-0.5 text-xs font-semibold uppercase tracking-normal text-primary">
+              {label}
+            </span>
+            {rest ? rest : ' '}
+          </Fragment>
+        )
+      }
+    }
+
+    return child
+  })
+}
+
+function getTextContent(children: ReactNode): string {
+  if (typeof children === 'string' || typeof children === 'number') {
+    return String(children)
+  }
+
+  if (Array.isArray(children)) {
+    return children.map(getTextContent).join('')
+  }
+
+  if (isValidElement(children)) {
+    const element = children as ReactElement<{ children?: ReactNode }>
+
+    return getTextContent(element.props.children)
+  }
+
+  return ''
 }

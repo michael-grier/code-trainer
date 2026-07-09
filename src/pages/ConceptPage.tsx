@@ -62,10 +62,10 @@ export function ConceptPage() {
   const lessonCompletion = progress.getLessonCompletion(lesson, progress.state)
 
   return (
-    <div className="mx-auto grid max-w-5xl gap-6">
+    <div className="mx-auto grid w-full min-w-0 max-w-5xl gap-6">
       <section className="grid gap-4 rounded-lg border bg-card p-5 shadow-sm">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="grid gap-2">
+        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="grid min-w-0 gap-2">
             <Badge variant="outline">Concept lesson</Badge>
             <h1 className="text-3xl font-semibold tracking-normal">
               {lesson.title}
@@ -79,7 +79,7 @@ export function ConceptPage() {
               complete
             </Badge>
           </div>
-          <Button asChild>
+          <Button asChild className="shrink-0">
             <Link to={`/lesson/${lesson.slug}/problem/${nextProblem.id}`}>
               <Play className="size-4" />
               Start practice
@@ -95,23 +95,20 @@ export function ConceptPage() {
         />
       ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_18rem]">
-        <Card>
+      <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
+        <Card className="min-w-0">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <BookOpen className="size-5 text-primary" />
               Lesson content
             </CardTitle>
-            <CardDescription>
-              Placeholder MDX content is registered for this lesson.
-            </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="min-w-0">
             <Mdx component={lesson.concept} />
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="min-w-0">
           <CardHeader>
             <CardTitle>Practice</CardTitle>
             <CardDescription>Sequential by default</CardDescription>
@@ -119,20 +116,20 @@ export function ConceptPage() {
           <CardContent className="grid gap-3">
             {lesson.problems.map((problem) => (
               <Link
-                className="group rounded-md border p-3 outline-none transition hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+                className="group min-w-0 rounded-md border p-3 outline-none transition hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
                 key={problem.id}
                 to={`/lesson/${lesson.slug}/problem/${problem.id}`}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="flex items-center gap-2 text-sm font-medium">
+                  <span className="flex min-w-0 items-center gap-2 text-sm font-medium">
                     {progress.isProblemCompleted(lesson.slug, problem.id) ? (
-                      <CheckCircle2 className="size-4 text-primary" />
+                      <CheckCircle2 className="size-4 shrink-0 text-primary" />
                     ) : (
-                      <Circle className="size-3 text-muted-foreground" />
+                      <Circle className="size-3 shrink-0 text-muted-foreground" />
                     )}
-                    {problem.title}
+                    <span className="min-w-0">{problem.title}</span>
                   </span>
-                  <ArrowRight className="size-4 text-muted-foreground transition group-hover:text-foreground" />
+                  <ArrowRight className="size-4 shrink-0 text-muted-foreground transition group-hover:text-foreground" />
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {problem.kind} · {problem.estimatedMinutes ?? 10} min
