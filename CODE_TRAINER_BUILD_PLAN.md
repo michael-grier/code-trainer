@@ -1082,11 +1082,14 @@ This is preferable to three fixed-window variants that only change the wording, 
 Use these principles when replacing placeholder lessons with final curriculum content:
 
 - Prefer concrete, runnable TypeScript examples over pseudo-code. Avoid placeholder bodies, ellipses, `TODO` comments, and comments that stand in for behavior.
+- Before explaining when to choose a pattern, give a realistic prompt that would call for that pattern. The following code example should solve that prompt or a directly related version of it.
+- For prompt-rooted concept examples, state concrete example inputs before the function and the expected output after the function.
 - When introducing a representation, key, invariant, or data structure, show both how it is created and how it is used. For example, a hash key section should show the key construction and the `Map` or `Set` lookup that uses it.
 - Explain compact encodings before relying on them. If a string, tuple, bit mask, count array, or serialized key represents something meaningful, spell out how to read it.
 - State assumptions before they matter, especially input shape, casing, ordering guarantees, mutation expectations, and runtime complexity targets.
 - Keep examples small, complete, and self-contained. Define setup values before using them, and prefer a short named function over a detached snippet when the reader needs inputs, output, control flow, and return behavior.
-- Add short instructional comments to longer code examples. Comments should mark the reasoning steps, invariants, or pointer/key updates, not narrate obvious syntax.
+- Use whiteboard-style comments in teaching examples and reference approaches. Comments should outline the reasoning steps an engineer would say aloud, then the code below each comment should perform that step.
+- Use plain, literal language in comments and explanations. Prefer direct phrases such as "decrease the required count" over metaphorical wording.
 - Pair abstract language with an immediate example. If the lesson says "preserve an invariant", name the invariant in plain English and show the update that maintains it.
 - Include concrete example inputs and expected outputs in code problem prompts, especially when the function returns arrays, tuples, null, or another shape that benefits from seeing the exact result.
 - Prepopulate code problem starters with one sample `console.log(...)` call using the prompt's example input, so learners can inspect a concrete run immediately.
@@ -1103,7 +1106,10 @@ Use these principles when replacing placeholder lessons with final curriculum co
 Before treating a lesson as authored, check the following:
 
 - The concept page names the core pattern, shows self-contained examples, and does not reference undefined variables or prior context.
-- Longer code examples include short comments for reasoning steps, invariants, key construction, pointer movement, or state updates.
+- Pattern-selection sections include a concrete prompt example before the related code.
+- Prompt-rooted concept examples include concrete input before the function and expected output after the function.
+- Longer code examples use whiteboard-style comments to break the solution into reasoning steps, invariants, key construction, pointer movement, or state updates.
+- Comments and explanations use plain, literal wording and avoid idioms that could obscure the algorithm.
 - Code problem prompts include concrete example inputs and expected outputs, including exact return shape and ordering when relevant.
 - Starter code exports the required function and includes one sample `console.log(...)` call using the prompt's example input.
 - Auto-graded tests cover the main happy path, empty or minimal inputs, duplicate or repeated values when relevant, and at least one edge case that prevents a naive solution.

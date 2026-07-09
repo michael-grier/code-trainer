@@ -245,26 +245,29 @@ console.log(longestConsecutive([100, 4, 200, 1, 3, 2]))
       {
         name: 'Frequency map',
         code: `export function areAnagrams(left: string, right: string): boolean {
+  // Different lengths cannot contain the same characters.
   if (left.length !== right.length) {
     return false
   }
 
-  // Build the "still needs a match" counts.
+  // First count the characters required from the left string.
   const counts = new Map<string, number>()
 
   for (const char of left) {
     counts.set(char, (counts.get(char) ?? 0) + 1)
   }
 
+  // Then compare the right string against those required counts.
   for (const char of right) {
-    // Spend one required character.
+    // This character now needs one fewer match.
     const nextCount = (counts.get(char) ?? 0) - 1
 
+    // A negative count means right used a character too many times.
     if (nextCount < 0) {
       return false
     }
 
-    // Keep only unmatched characters in the map.
+    // Delete completed counts so counts only stores characters still needed.
     if (nextCount === 0) {
       counts.delete(char)
     } else {
@@ -272,11 +275,12 @@ console.log(longestConsecutive([100, 4, 200, 1, 3, 2]))
     }
   }
 
+  // No required characters remain unmatched.
   return counts.size === 0
 }
 `,
         explanation:
-          'Count every character in the first string, then spend those counts while scanning the second string. A missing or negative count proves the strings are not anagrams.',
+          'Count every character in the first string, then decrease those required counts while scanning the second string. A missing or negative count proves the strings are not anagrams.',
         complexity: 'O(n) time and O(k) space, where k is the number of distinct characters.',
       },
     ],
@@ -284,6 +288,7 @@ console.log(longestConsecutive([100, 4, 200, 1, 3, 2]))
       {
         name: 'Count signature',
         code: `function createSignature(word: string): string {
+  // One slot per lowercase English letter.
   const counts = new Array<number>(26).fill(0)
 
   for (const char of word) {
@@ -291,17 +296,20 @@ console.log(longestConsecutive([100, 4, 200, 1, 3, 2]))
     counts[char.charCodeAt(0) - 97] += 1
   }
 
-  // A string key can be stored in a Map.
+  // Serialize the counts so the signature can be a Map key.
   return counts.join('#')
 }
 
 export function groupAnagrams(words: string[]): string[][] {
+  // Each signature owns one output group.
   const groups = new Map<string, string[]>()
 
   for (const word of words) {
+    // Anagrams produce the same signature.
     const signature = createSignature(word)
     const group = groups.get(signature)
 
+    // Append to preserve the original word order inside the group.
     if (group) {
       group.push(word)
     } else {
@@ -309,6 +317,7 @@ export function groupAnagrams(words: string[]): string[][] {
     }
   }
 
+  // Map values preserve first-seen group order.
   return [...groups.values()]
 }
 `,
@@ -322,15 +331,17 @@ export function groupAnagrams(words: string[]): string[][] {
       {
         name: 'Set starts only',
         code: `export function longestConsecutive(nums: number[]): number {
+  // Store one copy of each number so each value is checked at most once.
   const values = new Set(nums)
   let best = 0
 
   for (const value of values) {
-    // Only start counting at the first value in a run.
+    // Only start counting from the first value in a run.
     if (values.has(value - 1)) {
       continue
     }
 
+    // Walk forward until the consecutive run ends.
     let length = 1
     let next = value + 1
 
@@ -339,6 +350,7 @@ export function groupAnagrams(words: string[]): string[][] {
       next += 1
     }
 
+    // Keep the longest run found so far.
     best = Math.max(best, length)
   }
 

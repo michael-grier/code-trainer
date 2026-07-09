@@ -184,31 +184,34 @@ console.log(maxContainerArea([1, 8, 6, 2, 5, 4, 8, 3, 7]))
   nums: number[],
   target: number,
 ): [number, number] | null {
-  // Start with the widest candidate window.
+  // Start with every pair still possible.
   let left = 0
   let right = nums.length - 1
 
   while (left < right) {
+    // Test the smallest and largest remaining values together.
     const sum = nums[left] + nums[right]
 
+    // If this pair reaches the target, return the values in scan order.
     if (sum === target) {
       return [nums[left], nums[right]]
     }
 
     if (sum < target) {
-      // The left value is too small to help.
+      // The left value is too small to pair with this right value.
       left += 1
     } else {
-      // The right value is too large to help.
+      // The right value is too large to pair with this left value.
       right -= 1
     }
   }
 
+  // No remaining pair can reach the target.
   return null
 }
 `,
         explanation:
-          'The sorted order proves which side can be discarded. A low sum means the left value is too small to work with anything at or below the current right value. A high sum means the right value is too large to work with anything at or above the current left value.',
+          'The sorted order proves which side can be discarded. A low sum means the left value is too small to pair with anything at or below the current right value. A high sum means the right value is too large to pair with anything at or above the current left value.',
         complexity: 'O(n) time and O(1) extra space.',
       },
     ],
@@ -216,22 +219,27 @@ console.log(maxContainerArea([1, 8, 6, 2, 5, 4, 8, 3, 7]))
       {
         name: 'Read and write pointers',
         code: `export function dedupeSorted(nums: number[]): number[] {
+  // There is no first value to start the result.
   if (nums.length === 0) {
     return []
   }
 
-  // Work on a copy so the input is not mutated.
+  // Work on a copy so the original input is not mutated.
   const deduped = [...nums]
+
+  // The first value is already the first unique output value.
   let write = 1
 
   for (let read = 1; read < nums.length; read += 1) {
+    // A new sorted value starts when it differs from the previous one.
     if (nums[read] !== nums[read - 1]) {
-      // Write each new value once.
+      // Place this new value at the next output position.
       deduped[write] = nums[read]
       write += 1
     }
   }
 
+  // Return only the prefix that was written with unique values.
   return deduped.slice(0, write)
 }
 `,
@@ -245,25 +253,26 @@ console.log(maxContainerArea([1, 8, 6, 2, 5, 4, 8, 3, 7]))
       {
         name: 'Move the shorter wall',
         code: `export function maxContainerArea(heights: number[]): number {
+  // Begin with the widest possible container.
   let left = 0
   let right = heights.length - 1
   let best = 0
 
   while (left < right) {
-    // Measure the area before shrinking the window.
+    // Measure the current container before moving a wall.
     const width = right - left
     const height = Math.min(heights[left], heights[right])
     best = Math.max(best, width * height)
 
+    // The shorter wall is the only wall that can improve the height.
     if (heights[left] <= heights[right]) {
-      // Replace the limiting wall.
       left += 1
     } else {
-      // Replace the limiting wall.
       right -= 1
     }
   }
 
+  // Every useful pair has been considered or eliminated.
   return best
 }
 `,

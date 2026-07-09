@@ -14,33 +14,42 @@ This lesson focuses on the first two because they cover most interview-style two
 
 Opposing pointers are a good fit when the input is sorted or when the answer depends on both ends of a range.
 
+Example prompt: Given a sorted ascending array and a target, return whether two different indexes contain values that add up to the target.
+
 For sorted pair search, the invariant is: any pair that can still reach the target must live inside the current `[left, right]` window.
+
+Example input: `nums = [1, 2, 4, 6, 10]`, `target = 8`.
 
 ```ts
 export function hasPairWithSum(nums: number[], target: number): boolean {
-  // Start with the widest candidate window.
+  // Start with every pair still possible.
   let left = 0
   let right = nums.length - 1
 
   while (left < right) {
+    // Test the smallest and largest remaining values together.
     const sum = nums[left] + nums[right]
 
+    // If this pair reaches the target, the search is done.
     if (sum === target) {
       return true
     }
 
     if (sum < target) {
-      // The left value is too small to help.
+      // The left value is too small to pair with this right value or anything smaller.
       left += 1
     } else {
-      // The right value is too large to help.
+      // The right value is too large to pair with this left value or anything larger.
       right -= 1
     }
   }
 
+  // No remaining pair can reach the target.
   return false
 }
 ```
+
+Example output: `true`.
 
 The movement rule preserves the invariant:
 
@@ -53,29 +62,40 @@ The sorted input is what makes those claims true. Without sorted order, moving a
 
 Same-direction pointers are useful when one pointer must inspect every item, but only some items should be written to the result.
 
+Example prompt: Given a sorted ascending array, return a new array containing each distinct value once, in order.
+
 For deduplicating a sorted array, the invariant is: `deduped.slice(0, write)` contains exactly the unique values found so far, in order.
+
+Example input: `nums = [1, 1, 2, 2, 3]`.
 
 ```ts
 export function dedupeSorted(nums: number[]): number[] {
+  // There is no first value to start the result.
   if (nums.length === 0) {
     return []
   }
 
-  // Work on a copy so the input is not mutated.
+  // Work on a copy so the original input is not mutated.
   const deduped = [...nums]
+
+  // The first value is already the first unique output value.
   let write = 1
 
   for (let read = 1; read < nums.length; read += 1) {
+    // In a sorted array, a new value starts when it differs from the previous one.
     if (nums[read] !== nums[read - 1]) {
-      // Write each new value once.
+      // Place this new value at the next output position.
       deduped[write] = nums[read]
       write += 1
     }
   }
 
+  // Return only the prefix that was written with unique values.
   return deduped.slice(0, write)
 }
 ```
+
+Example output: `[1, 2, 3]`.
 
 Here `read` always advances because every value must be inspected. `write` only advances when a new unique value is found.
 

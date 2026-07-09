@@ -11,32 +11,39 @@ Most array and hashing solutions follow the same loop:
 3. On each item, check the structure before or after updating it.
 4. Keep an invariant you can explain in one sentence.
 
-For a two-sum style problem, the key is the number you have already seen. For an anagram problem, the key is a character or a canonical character-count signature. For deduplication, the key is usually an ID.
+Example prompt: Given two lowercase strings, return whether they contain the same characters with the same frequencies.
+
+For a two-sum style problem, the key is the number you have already seen. For an anagram problem like this one, the key is a character or a canonical character-count signature. For deduplication, the key is usually an ID.
 
 For valid anagrams, a useful invariant is: after each character from `right` is processed, `counts` stores exactly the characters from `left` that still need to be matched.
 
+Example input: `left = "listen"`, `right = "silent"`.
+
 ```ts
 export function areAnagrams(left: string, right: string): boolean {
+  // Different lengths cannot contain the same characters.
   if (left.length !== right.length) {
     return false
   }
 
-  // Build the "still needs a match" counts.
+  // First count the characters required from the left string.
   const counts = new Map<string, number>()
 
   for (const char of left) {
     counts.set(char, (counts.get(char) ?? 0) + 1)
   }
 
+  // Then compare the right string against those required counts.
   for (const char of right) {
-    // Spend one required character.
+    // This character now needs one fewer match.
     const remaining = (counts.get(char) ?? 0) - 1
 
+    // A negative count means right used a character too many times.
     if (remaining < 0) {
       return false
     }
 
-    // Keep only unmatched characters in the map.
+    // Delete completed counts so counts only stores characters still needed.
     if (remaining === 0) {
       counts.delete(char)
     } else {
@@ -44,21 +51,36 @@ export function areAnagrams(left: string, right: string): boolean {
     }
   }
 
+  // No required characters remain unmatched.
   return counts.size === 0
 }
 ```
+
+Example output: `true`.
 
 ## Frequency maps
 
 Use a frequency map when the count matters, not just whether something exists.
 
-```ts
-const counts = new Map<string, number>()
+Example prompt: Given a lowercase word, return how many times each character appears.
 
-for (const char of word) {
-  counts.set(char, (counts.get(char) ?? 0) + 1)
+Example input: `word = "banana"`.
+
+```ts
+export function countCharacters(word: string): Map<string, number> {
+  // The map stores character -> number of times seen.
+  const counts = new Map<string, number>()
+
+  for (const char of word) {
+    // Missing characters start at zero, then increase by one.
+    counts.set(char, (counts.get(char) ?? 0) + 1)
+  }
+
+  return counts
 }
 ```
+
+Example output: `Map { "b" => 1, "a" => 3, "n" => 2 }`.
 
 The important detail is the default value. A missing key is usually a count of zero, and forgetting that default is a common source of `NaN`, negative counts, or false positives.
 
@@ -73,27 +95,39 @@ Frequency maps are a good fit for:
 
 Use a `Set` when membership is the only question.
 
+Example prompt: Given an array of numbers, return whether any number appears more than once.
+
+Example input: `nums = [3, 1, 4, 1]`.
+
 ```ts
 export function hasDuplicate(nums: number[]): boolean {
+  // Keep every number seen so far.
   const seen = new Set<number>()
 
   for (const num of nums) {
+    // Check before adding so the second copy is detected.
     if (seen.has(num)) {
       return true
     }
 
+    // Record this number for later membership checks.
     seen.add(num)
   }
 
+  // No number ever appeared twice.
   return false
 }
 ```
 
-A set is also useful when duplicates should not affect the answer. In longest consecutive sequence, duplicates can be collapsed because the problem asks for distinct integer runs.
+Example output: `true`.
+
+A set is also useful when duplicates should not affect the answer. In longest consecutive sequence, duplicate values can be stored once because the problem asks for distinct integer runs.
 
 ## Choosing a key
 
 The key is the design choice. A weak key makes different inputs collide; an expensive key can erase the benefit of hashing.
+
+Example prompt: Given lowercase English words, group words that are anagrams of each other.
 
 For grouped anagrams, sorting every word gives a clear key:
 
@@ -110,8 +144,11 @@ For lowercase English words, a 26-count signature also works. The array has one 
 
 That signature becomes the actual key in the map:
 
+Example input: `words = ["eat", "tea", "bat"]`.
+
 ```ts
 function createSignature(word: string): string {
+  // One slot per lowercase English letter.
   const counts = new Array<number>(26).fill(0)
 
   for (const char of word) {
@@ -120,16 +157,29 @@ function createSignature(word: string): string {
     counts[alphabetIndex] += 1
   }
 
-  // A string key can be stored in a Map.
+  // Serialize the counts so the signature can be a Map key.
   return counts.join('#')
 }
 
-const groups = new Map<string, string[]>()
-const key = createSignature('tea')
-const currentGroup = groups.get(key) ?? []
+export function groupAnagrams(words: string[]): string[][] {
+  // Each signature owns one output group.
+  const groups = new Map<string, string[]>()
 
-groups.set(key, [...currentGroup, 'tea'])
+  for (const word of words) {
+    // Anagrams produce the same signature.
+    const key = createSignature(word)
+    const currentGroup = groups.get(key) ?? []
+
+    // Append to preserve the original word order inside the group.
+    groups.set(key, [...currentGroup, word])
+  }
+
+  // Map values preserve first-seen group order.
+  return [...groups.values()]
+}
 ```
+
+Example output: `[["eat", "tea"], ["bat"]]`.
 
 The sorted key is simpler. The count key avoids sorting cost and makes the character-frequency idea explicit.
 

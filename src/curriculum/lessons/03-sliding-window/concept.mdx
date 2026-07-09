@@ -1,14 +1,147 @@
 # Sliding Window
 
-This placeholder concept page reserves the lesson slot for **Sliding Window**. The content pass will replace it with the final interview-focused MDX lesson.
+Sliding window problems ask about a contiguous range inside an array or string. Instead of rebuilding that range from scratch for every start index, you keep a moving window and update only the values that enter or leave it.
 
-## What this lesson will cover
+The core invariant is: the variables you maintain must describe exactly the current window from `left` through `right`.
 
-- Core interview signals for sliding window.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+## Fixed-size windows
+
+Use a fixed-size window when the prompt gives a size such as `k`, `3 days`, or `5 characters`.
+
+Example prompt: Given daily sales numbers and a window size `k`, return the largest total sales across any `k` consecutive days.
+
+For maximum fixed-window sum, the invariant is: once the first full window exists, `windowSum` equals the sum of the most recent `k` values.
+
+Example input: `nums = [2, 1, 5, 1, 3, 2]`, `k = 3`.
+
+```ts
+export function maxFixedWindowSum(nums: number[], k: number): number | null {
+  // Reject window sizes that cannot form one full window.
+  if (k <= 0 || k > nums.length) {
+    return null
+  }
+
+  // windowSum tracks the current k-sized window once it exists.
+  let windowSum = 0
+  let best = Number.NEGATIVE_INFINITY
+
+  for (let right = 0; right < nums.length; right += 1) {
+    // Grow the window by including the new right value.
+    windowSum += nums[right]
+
+    if (right >= k) {
+      // Shrink back to size k by removing the value that fell out.
+      windowSum -= nums[right - k]
+    }
+
+    if (right >= k - 1) {
+      // Now the window is exactly size k, so it can update the answer.
+      best = Math.max(best, windowSum)
+    }
+  }
+
+  return best
+}
+```
+
+Example output: `9`.
+
+## Variable-size windows
+
+Use a variable-size window when the window grows until it breaks a rule, then shrinks until it becomes valid again.
+
+Example prompt: Given a string, return the length of the longest contiguous substring that contains no repeated characters.
+
+For longest substring without repeated characters, the invariant is: `seen` contains exactly the characters currently inside `input.slice(left, right + 1)`.
+
+Example input: `input = "abcabcbb"`.
+
+```ts
+export function longestUniqueSubstring(input: string): number {
+  // seen represents the characters in the current window.
+  const seen = new Set<string>()
+  let left = 0
+  let best = 0
+
+  for (let right = 0; right < input.length; right += 1) {
+    // Try to add the next character on the right.
+    const char = input[right]
+
+    while (seen.has(char)) {
+      // Move left until adding char would not create a duplicate.
+      seen.delete(input[left])
+      left += 1
+    }
+
+    // The window is valid again, so include char and measure it.
+    seen.add(char)
+    best = Math.max(best, right - left + 1)
+  }
+
+  return best
+}
+```
+
+Example output: `3`.
+
+The key is the shrink condition. If the condition is wrong, the window may still contain invalid state when you update the answer.
+
+## Grow and shrink for thresholds
+
+Some windows grow until they satisfy a threshold, then shrink while the threshold remains satisfied.
+
+Example prompt: Given positive numbers and a positive target, return the length of the shortest contiguous subarray with sum at least the target.
+
+For minimum subarray length with a target sum, assume all numbers are positive. That assumption matters because removing a left value always makes the sum smaller or equal, so shrinking has predictable behavior.
+
+Example input: `nums = [2, 3, 1, 2, 4, 3]`, `target = 7`.
+
+```ts
+export function minSubarrayLengthAtLeast(
+  nums: number[],
+  target: number,
+): number {
+  // sum tracks the current [left, right] window.
+  let left = 0
+  let sum = 0
+  let best = Number.POSITIVE_INFINITY
+
+  for (let right = 0; right < nums.length; right += 1) {
+    // Grow the window until it reaches or passes the target.
+    sum += nums[right]
+
+    while (sum >= target) {
+      // This window reaches the target, so record its length.
+      best = Math.min(best, right - left + 1)
+
+      // Then shrink from the left to look for a smaller valid window.
+      sum -= nums[left]
+      left += 1
+    }
+  }
+
+  // If no valid window was recorded, report 0.
+  return best === Number.POSITIVE_INFINITY ? 0 : best
+}
+```
+
+Example output: `2`.
+
+If negative numbers were allowed, this approach would need a different proof because shrinking could increase the chance of reaching a target later.
+
+## Common mistakes
+
+- Updating the answer before the window is valid.
+- Forgetting to remove the item that leaves the window.
+- Moving `left` once when the window may need to shrink multiple times.
+- Using a sliding window when the input allows negative values that break the movement rule.
+- Treating subsequence problems as sliding window problems. Sliding window is for contiguous ranges.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+You will build this topic in layers:
+
+1. Track a fixed-size numeric window.
+2. Maintain a duplicate-free string window.
+3. Grow and shrink a positive-number window to meet a target sum.
+4. Explain the invariant and shrink condition for a sliding-window solution.
