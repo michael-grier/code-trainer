@@ -1,4 +1,4 @@
-import { Loader2, Play, RotateCcw } from 'lucide-react'
+import { Loader2, Play, RotateCcw, Terminal } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -6,7 +6,7 @@ import { CodeEditor } from '@/components/editor/CodeEditor'
 import { DiffEditor } from '@/components/editor/DiffEditor'
 import { ApproachesPanel } from '@/components/problems/ApproachesPanel'
 import { StaticCheckResults } from '@/components/problems/StaticCheckResults'
-import { TestResults } from '@/components/problems/TestResults'
+import { ProblemResults } from '@/components/problems/TestResults'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -50,8 +50,11 @@ export function RunnableProblemView({
   const starterCode = getProblemStarterCode(problem)
   const savedDraft = progress.getDraft(lessonSlug, problem.id)
   const [code, setCode] = useState(savedDraft ?? starterCode)
-  const [runResult, setRunResult] = useState<CodeRunResult>()
-  const [isRunning, setIsRunning] = useState(false)
+  const [consoleResult, setConsoleResult] = useState<CodeRunResult>()
+  const [testResult, setTestResult] = useState<CodeRunResult>()
+  const [isEvaluating, setIsEvaluating] = useState(false)
+  const [isLogging, setIsLogging] = useState(false)
+  const isBusy = isEvaluating || isLogging
   const staticCheckResults = useMemo(
     () =>
       problem.kind === 'refactor'
@@ -70,19 +73,56 @@ export function RunnableProblemView({
   }
 
   const handleReset = () => {
-    setRunResult(undefined)
+    setConsoleResult(undefined)
+    setTestResult(undefined)
     setCode(starterCode)
     progress.saveDraft(lessonSlug, problem.id, starterCode)
   }
 
-  const handleRun = async () => {
+  const handleLogResult = async () => {
+    setIsLogging(true)
+    setConsoleResult(undefined)
+
+    try {
+      const result = await runCode({
+        code,
+        functionName: problem.functionName,
+        tests: problem.tests.slice(0, 1),
+      })
+
+      setConsoleResult(result)
+
+      if (result.error) {
+        toast.error('Unable to log result', {
+          description: result.error,
+        })
+      }
+    } catch (error) {
+      const message = errorToMessage(error)
+
+      setConsoleResult({
+        status: 'error',
+        durationMs: 0,
+        tests: [],
+        logs: [],
+        error: message,
+      })
+      toast.error('Unable to log result', {
+        description: message,
+      })
+    } finally {
+      setIsLogging(false)
+    }
+  }
+
+  const handleEvaluate = async () => {
     const checkResults =
       problem.kind === 'refactor'
         ? runStaticChecks(code, problem.staticChecks)
         : []
 
-    setIsRunning(true)
-    setRunResult(undefined)
+    setIsEvaluating(true)
+    setTestResult(undefined)
 
     try {
       const result = await runCode({
@@ -91,7 +131,7 @@ export function RunnableProblemView({
         tests: problem.tests,
       })
 
-      setRunResult(result)
+      setTestResult(result)
 
       if (
         result.status === 'passed' &&
@@ -106,25 +146,25 @@ export function RunnableProblemView({
           description: 'Tests passed, but the refactor checks are not complete.',
         })
       } else {
-        toast.error('Tests did not pass', {
+        toast.error('Evaluation did not pass', {
           description: getRunFailureDescription(result),
         })
       }
     } catch (error) {
       const message = errorToMessage(error)
 
-      setRunResult({
+      setTestResult({
         status: 'error',
         durationMs: 0,
         tests: [],
         logs: [],
         error: message,
       })
-      toast.error('Unable to run tests', {
+      toast.error('Unable to evaluate tests', {
         description: message,
       })
     } finally {
-      setIsRunning(false)
+      setIsEvaluating(false)
     }
   }
 
@@ -133,34 +173,58 @@ export function RunnableProblemView({
       <section className="grid min-w-0 gap-4">
         <Card className="min-w-0">
           <CardHeader className="gap-3">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-              <div className="grid gap-1">
+            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
+              <div className="grid min-w-0 gap-1">
                 <CardTitle>Solution</CardTitle>
                 <CardDescription className="flex flex-wrap items-center gap-1">
                   <span>Export</span>
                   <code className="rounded bg-muted px-1.5 py-0.5 text-xs text-foreground">
                     {problem.functionName}
                   </code>
-                  <span>and run the provided tests.</span>
+                  <span>and inspect the sample</span>
+                  <code className="rounded bg-muted px-1.5 py-0.5 text-xs text-foreground">
+                    console.log
+                  </code>
+                  <span>before evaluating.</span>
                 </CardDescription>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2 lg:justify-end">
                 <Badge variant="muted">TypeScript</Badge>
-                <Button onClick={handleReset} type="button" variant="outline">
+                <Button
+                  onClick={handleReset}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                >
                   <RotateCcw className="size-4" />
                   Reset
                 </Button>
                 <Button
-                  disabled={isRunning || code.trim().length === 0}
-                  onClick={handleRun}
+                  disabled={isBusy || code.trim().length === 0}
+                  onClick={handleLogResult}
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                >
+                  {isLogging ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Terminal className="size-4" />
+                  )}
+                  Log result
+                </Button>
+                <Button
+                  disabled={isBusy || code.trim().length === 0}
+                  onClick={handleEvaluate}
+                  size="sm"
                   type="button"
                 >
-                  {isRunning ? (
+                  {isEvaluating ? (
                     <Loader2 className="size-4 animate-spin" />
                   ) : (
                     <Play className="size-4" />
                   )}
-                  Run tests
+                  Evaluate
                 </Button>
               </div>
             </div>
@@ -183,7 +247,12 @@ export function RunnableProblemView({
           {problem.kind === 'refactor' ? (
             <StaticCheckResults results={staticCheckResults} />
           ) : null}
-          <TestResults isRunning={isRunning} result={runResult} />
+          <ProblemResults
+            consoleResult={consoleResult}
+            isEvaluating={isEvaluating}
+            isLogging={isLogging}
+            testResult={testResult}
+          />
         </div>
       </section>
 

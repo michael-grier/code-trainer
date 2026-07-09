@@ -21,6 +21,7 @@ export function areAnagrams(left: string, right: string): boolean {
     return false
   }
 
+  // Build the "still needs a match" counts.
   const counts = new Map<string, number>()
 
   for (const char of left) {
@@ -28,12 +29,14 @@ export function areAnagrams(left: string, right: string): boolean {
   }
 
   for (const char of right) {
+    // Spend one required character.
     const remaining = (counts.get(char) ?? 0) - 1
 
     if (remaining < 0) {
       return false
     }
 
+    // Keep only unmatched characters in the map.
     if (remaining === 0) {
       counts.delete(char)
     } else {
@@ -112,10 +115,12 @@ function createSignature(word: string): string {
   const counts = new Array<number>(26).fill(0)
 
   for (const char of word) {
+    // "a" maps to 0, "b" maps to 1, and so on.
     const alphabetIndex = char.charCodeAt(0) - 97
     counts[alphabetIndex] += 1
   }
 
+  // A string key can be stored in a Map.
   return counts.join('#')
 }
 

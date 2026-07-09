@@ -698,9 +698,10 @@ UI:
 
 - Prompt and constraints on the left.
 - Monaco editor on the right.
-- Run button.
-- Cmd/Ctrl+Enter runs tests.
-- Test results below editor.
+- Log result button for console output. It should run the first sample test case only and must not mark completion.
+- Evaluate button for running completion tests. It should run the full test set and mark completion only when all checks pass.
+- Cmd/Ctrl+Enter evaluates tests.
+- Console output and test results appear below the editor in one tabbed results panel.
 - Approaches panel hidden until requested or completion.
 
 Completion:
@@ -1085,13 +1086,31 @@ Use these principles when replacing placeholder lessons with final curriculum co
 - Explain compact encodings before relying on them. If a string, tuple, bit mask, count array, or serialized key represents something meaningful, spell out how to read it.
 - State assumptions before they matter, especially input shape, casing, ordering guarantees, mutation expectations, and runtime complexity targets.
 - Keep examples small, complete, and self-contained. Define setup values before using them, and prefer a short named function over a detached snippet when the reader needs inputs, output, control flow, and return behavior.
+- Add short instructional comments to longer code examples. Comments should mark the reasoning steps, invariants, or pointer/key updates, not narrate obvious syntax.
 - Pair abstract language with an immediate example. If the lesson says "preserve an invariant", name the invariant in plain English and show the update that maintains it.
+- Include concrete example inputs and expected outputs in code problem prompts, especially when the function returns arrays, tuples, null, or another shape that benefits from seeing the exact result.
+- Prepopulate code problem starters with one sample `console.log(...)` call using the prompt's example input, so learners can inspect a concrete run immediately.
 - Make output ordering deterministic for auto-graded problems. If multiple answers could be valid, either require a specific order in the prompt or choose a problem shape that avoids ambiguous equality.
 - Teach the mistake as well as the method. Call out common failure modes such as missing default values, off-by-one updates, stale state, mutation leaks, unsafe narrowing, missing authorization checks, or unbounded memory.
 - Keep each section connected to the practice path. The code, written prompt, and design prompt should exercise concepts that were introduced in the lesson text.
 - Use reference approaches to model production-quality clarity, not only the shortest passing answer. Prefer readable names, explicit guards, and complexity notes.
 - Avoid broad survey writing. Each lesson should focus on the decisions the learner needs for the attached problems, with links between concept, examples, edge cases, and practice.
+- Use language-tagged code fences such as `ts` for TypeScript examples so MDX code highlighting can improve readability.
 - Use pseudo-code only when real TypeScript would distract from the point. If pseudo-code is necessary, label it explicitly and keep it out of runnable-looking code fences.
+
+### 15.3 Lesson Content Review Checklist
+
+Before treating a lesson as authored, check the following:
+
+- The concept page names the core pattern, shows self-contained examples, and does not reference undefined variables or prior context.
+- Longer code examples include short comments for reasoning steps, invariants, key construction, pointer movement, or state updates.
+- Code problem prompts include concrete example inputs and expected outputs, including exact return shape and ordering when relevant.
+- Starter code exports the required function and includes one sample `console.log(...)` call using the prompt's example input.
+- Auto-graded tests cover the main happy path, empty or minimal inputs, duplicate or repeated values when relevant, and at least one edge case that prevents a naive solution.
+- Expected outputs are deterministic. If multiple answers could be valid, the prompt defines the required ordering or the problem is reshaped.
+- Reference approaches use readable TypeScript, include concise reasoning comments for non-obvious steps, and state time and space complexity.
+- Written and design problems include reference answers or rubrics that connect directly to the lesson text.
+- Run the targeted lesson test, then `bun run lint`, `bun run test`, and `bun run build` before the checkpoint summary.
 
 ### Track 1: Algorithmic Problem Solving
 

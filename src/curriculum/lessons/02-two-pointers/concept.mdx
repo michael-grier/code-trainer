@@ -18,6 +18,7 @@ For sorted pair search, the invariant is: any pair that can still reach the targ
 
 ```ts
 export function hasPairWithSum(nums: number[], target: number): boolean {
+  // Start with the widest candidate window.
   let left = 0
   let right = nums.length - 1
 
@@ -29,8 +30,10 @@ export function hasPairWithSum(nums: number[], target: number): boolean {
     }
 
     if (sum < target) {
+      // The left value is too small to help.
       left += 1
     } else {
+      // The right value is too large to help.
       right -= 1
     }
   }
@@ -58,11 +61,13 @@ export function dedupeSorted(nums: number[]): number[] {
     return []
   }
 
+  // Work on a copy so the input is not mutated.
   const deduped = [...nums]
   let write = 1
 
   for (let read = 1; read < nums.length; read += 1) {
     if (nums[read] !== nums[read - 1]) {
+      // Write each new value once.
       deduped[write] = nums[read]
       write += 1
     }

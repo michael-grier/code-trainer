@@ -16,12 +16,14 @@ export const lesson: Lesson = {
       completionMode: 'all-tests-pass',
       title: 'Valid anagram',
       prompt:
-        'Implement `areAnagrams`. Return true when two lowercase strings contain the same characters with the same frequencies. Return false when length or character counts differ.',
+        'Implement `areAnagrams`. Return true when two lowercase strings contain the same characters with the same frequencies. Return false when length or character counts differ. Example: `areAnagrams("listen", "silent")` returns `true`; `areAnagrams("rat", "tarp")` returns `false`.',
       estimatedMinutes: 12,
       functionName: 'areAnagrams',
       starter: `export function areAnagrams(left: string, right: string): boolean {
   return false
 }
+
+console.log(areAnagrams('listen', 'silent'))
 `,
       tests: [
         {
@@ -57,12 +59,14 @@ export const lesson: Lesson = {
       completionMode: 'all-tests-pass',
       title: 'Group anagrams',
       prompt:
-        'Implement `groupAnagrams` for lowercase English words. Words with the same character frequencies belong in the same group. Preserve the order of groups by the first word that creates each group, and preserve word order inside each group.',
+        'Implement `groupAnagrams` for lowercase English words. Words with the same character frequencies belong in the same group. Preserve the order of groups by the first word that creates each group, and preserve word order inside each group. Example: `groupAnagrams(["eat", "tea", "bat"])` returns `[["eat", "tea"], ["bat"]]`.',
       estimatedMinutes: 16,
       functionName: 'groupAnagrams',
       starter: `export function groupAnagrams(words: string[]): string[][] {
   return []
 }
+
+console.log(groupAnagrams(['eat', 'tea', 'bat']))
 `,
       tests: [
         {
@@ -98,12 +102,14 @@ export const lesson: Lesson = {
       completionMode: 'all-tests-pass',
       title: 'Longest consecutive sequence',
       prompt:
-        'Implement `longestConsecutive`. Given an unsorted array of numbers, return the length of the longest run of consecutive integer values. Aim for O(n) time by using a set and only starting scans at the first value in a run.',
+        'Implement `longestConsecutive`. Given an unsorted array of numbers, return the length of the longest run of consecutive integer values. Aim for O(n) time by using a set and only starting scans at the first value in a run. Example: `longestConsecutive([100, 4, 200, 1, 3, 2])` returns `4` for the run `1, 2, 3, 4`.',
       estimatedMinutes: 18,
       functionName: 'longestConsecutive',
       starter: `export function longestConsecutive(nums: number[]): number {
   return 0
 }
+
+console.log(longestConsecutive([100, 4, 200, 1, 3, 2]))
 `,
       tests: [
         {
@@ -243,6 +249,7 @@ export const lesson: Lesson = {
     return false
   }
 
+  // Build the "still needs a match" counts.
   const counts = new Map<string, number>()
 
   for (const char of left) {
@@ -250,12 +257,14 @@ export const lesson: Lesson = {
   }
 
   for (const char of right) {
+    // Spend one required character.
     const nextCount = (counts.get(char) ?? 0) - 1
 
     if (nextCount < 0) {
       return false
     }
 
+    // Keep only unmatched characters in the map.
     if (nextCount === 0) {
       counts.delete(char)
     } else {
@@ -278,9 +287,11 @@ export const lesson: Lesson = {
   const counts = new Array<number>(26).fill(0)
 
   for (const char of word) {
+    // "a" maps to 0, "b" maps to 1, and so on.
     counts[char.charCodeAt(0) - 97] += 1
   }
 
+  // A string key can be stored in a Map.
   return counts.join('#')
 }
 
@@ -315,6 +326,7 @@ export function groupAnagrams(words: string[]): string[][] {
   let best = 0
 
   for (const value of values) {
+    // Only start counting at the first value in a run.
     if (values.has(value - 1)) {
       continue
     }

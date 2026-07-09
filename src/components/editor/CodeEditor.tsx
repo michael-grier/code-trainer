@@ -14,7 +14,7 @@ type CodeEditorProps = {
 
 export function CodeEditor({
   className,
-  height = '30rem',
+  height = '22rem',
   label,
   onChange,
   readOnly = false,

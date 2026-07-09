@@ -16,7 +16,7 @@ export const lesson: Lesson = {
       completionMode: 'all-tests-pass',
       title: 'Sorted pair sum',
       prompt:
-        'Implement `findPairWithSum`. Given a sorted ascending array and a target, return the first pair of values found by the standard inward two-pointer scan. Return null when no pair exists. The two values must come from different indexes.',
+        'Implement `findPairWithSum`. Given a sorted ascending array and a target, return the first pair of values found by the standard inward two-pointer scan. Return null when no pair exists. The two values must come from different indexes. Example: `findPairWithSum([1, 2, 4, 6, 10], 8)` returns `[2, 6]`.',
       estimatedMinutes: 12,
       functionName: 'findPairWithSum',
       starter: `export function findPairWithSum(
@@ -25,6 +25,8 @@ export const lesson: Lesson = {
 ): [number, number] | null {
   return null
 }
+
+console.log(findPairWithSum([1, 2, 4, 6, 10], 8))
 `,
       tests: [
         {
@@ -60,12 +62,14 @@ export const lesson: Lesson = {
       completionMode: 'all-tests-pass',
       title: 'Dedupe sorted array',
       prompt:
-        'Implement `dedupeSorted`. Given a sorted ascending array, return a new array containing each distinct value once, in order. Do not use a Set; practice a read pointer and a write pointer instead.',
+        'Implement `dedupeSorted`. Given a sorted ascending array, return a new array containing each distinct value once, in order. Do not use a Set; practice a read pointer and a write pointer instead. Example: `dedupeSorted([1, 1, 2, 2, 3])` returns `[1, 2, 3]`.',
       estimatedMinutes: 14,
       functionName: 'dedupeSorted',
       starter: `export function dedupeSorted(nums: number[]): number[] {
   return nums
 }
+
+console.log(dedupeSorted([1, 1, 2, 2, 3]))
 `,
       tests: [
         {
@@ -101,12 +105,14 @@ export const lesson: Lesson = {
       completionMode: 'all-tests-pass',
       title: 'Container with most water',
       prompt:
-        'Implement `maxContainerArea`. Each number is a vertical wall height. Choose two indexes and return the largest area between them. Move inward from both ends, and use the shorter wall to decide which pointer can still improve the answer.',
+        'Implement `maxContainerArea`. Each number is a vertical wall height. Choose two indexes and return the largest area between them. Move inward from both ends, and use the shorter wall to decide which pointer can still improve the answer. Example: `maxContainerArea([1, 8, 6, 2, 5, 4, 8, 3, 7])` returns `49`.',
       estimatedMinutes: 20,
       functionName: 'maxContainerArea',
       starter: `export function maxContainerArea(heights: number[]): number {
   return 0
 }
+
+console.log(maxContainerArea([1, 8, 6, 2, 5, 4, 8, 3, 7]))
 `,
       tests: [
         {
@@ -178,6 +184,7 @@ export const lesson: Lesson = {
   nums: number[],
   target: number,
 ): [number, number] | null {
+  // Start with the widest candidate window.
   let left = 0
   let right = nums.length - 1
 
@@ -189,8 +196,10 @@ export const lesson: Lesson = {
     }
 
     if (sum < target) {
+      // The left value is too small to help.
       left += 1
     } else {
+      // The right value is too large to help.
       right -= 1
     }
   }
@@ -211,11 +220,13 @@ export const lesson: Lesson = {
     return []
   }
 
+  // Work on a copy so the input is not mutated.
   const deduped = [...nums]
   let write = 1
 
   for (let read = 1; read < nums.length; read += 1) {
     if (nums[read] !== nums[read - 1]) {
+      // Write each new value once.
       deduped[write] = nums[read]
       write += 1
     }
@@ -239,13 +250,16 @@ export const lesson: Lesson = {
   let best = 0
 
   while (left < right) {
+    // Measure the area before shrinking the window.
     const width = right - left
     const height = Math.min(heights[left], heights[right])
     best = Math.max(best, width * height)
 
     if (heights[left] <= heights[right]) {
+      // Replace the limiting wall.
       left += 1
     } else {
+      // Replace the limiting wall.
       right -= 1
     }
   }

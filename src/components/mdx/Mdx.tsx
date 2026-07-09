@@ -2,6 +2,8 @@ import type { ComponentProps, ComponentType } from 'react'
 
 import { cn } from '@/lib/cn'
 
+import { MdxCodeBlock } from './MdxCodeBlock'
+
 type MdxComponent = ComponentType<{
   components?: typeof mdxComponents
 }>
@@ -50,15 +52,7 @@ const mdxComponents = {
       {...props}
     />
   ),
-  pre: ({ className, ...props }: ComponentProps<'pre'>) => (
-    <pre
-      className={cn(
-        'mb-4 overflow-x-auto rounded-md border bg-muted p-4 text-sm',
-        className,
-      )}
-      {...props}
-    />
-  ),
+  pre: MdxCodeBlock,
   code: ({ className, ...props }: ComponentProps<'code'>) => (
     <code
       className={cn(
@@ -96,4 +90,3 @@ export function Mdx({ component }: MdxProps) {
     </article>
   )
 }
-
