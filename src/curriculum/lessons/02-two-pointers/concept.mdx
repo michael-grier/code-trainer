@@ -1,14 +1,103 @@
 # Two Pointers
 
-This placeholder concept page reserves the lesson slot for **Two Pointers**. The content pass will replace it with the final interview-focused MDX lesson.
+Two pointers means using two indexes with specific roles. The technique is useful when a single scan can prove that parts of the input are no longer useful.
 
-## What this lesson will cover
+The most common versions are:
 
-- Core interview signals for two pointers.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+- Opposing pointers: one pointer starts at the left edge and one starts at the right edge.
+- Same-direction pointers: one pointer reads each item while another records the next useful position.
+- Paired scans: two arrays or strings are scanned together.
+
+This lesson focuses on the first two because they cover most interview-style two-pointer problems.
+
+## Opposing pointers
+
+Opposing pointers are a good fit when the input is sorted or when the answer depends on both ends of a range.
+
+For sorted pair search, the invariant is: any pair that can still reach the target must live inside the current `[left, right]` window.
+
+```ts
+export function hasPairWithSum(nums: number[], target: number): boolean {
+  let left = 0
+  let right = nums.length - 1
+
+  while (left < right) {
+    const sum = nums[left] + nums[right]
+
+    if (sum === target) {
+      return true
+    }
+
+    if (sum < target) {
+      left += 1
+    } else {
+      right -= 1
+    }
+  }
+
+  return false
+}
+```
+
+The movement rule preserves the invariant:
+
+- If the sum is too small, `nums[left]` cannot pair with `nums[right]` or any smaller value to reach the target, so moving `left` is safe.
+- If the sum is too large, `nums[right]` cannot pair with `nums[left]` or any larger value to reach the target, so moving `right` is safe.
+
+The sorted input is what makes those claims true. Without sorted order, moving a pointer would skip values without proof.
+
+## Same-direction pointers
+
+Same-direction pointers are useful when one pointer must inspect every item, but only some items should be written to the result.
+
+For deduplicating a sorted array, the invariant is: `deduped.slice(0, write)` contains exactly the unique values found so far, in order.
+
+```ts
+export function dedupeSorted(nums: number[]): number[] {
+  if (nums.length === 0) {
+    return []
+  }
+
+  const deduped = [...nums]
+  let write = 1
+
+  for (let read = 1; read < nums.length; read += 1) {
+    if (nums[read] !== nums[read - 1]) {
+      deduped[write] = nums[read]
+      write += 1
+    }
+  }
+
+  return deduped.slice(0, write)
+}
+```
+
+Here `read` always advances because every value must be inspected. `write` only advances when a new unique value is found.
+
+## Choosing the movement rule
+
+Before writing the loop, name the evidence that justifies each pointer move.
+
+- Pair sum in a sorted array: the current sum is too small or too large.
+- Deduping sorted values: the current value is equal to or different from the previous value.
+- Container with most water: the shorter wall limits the current area, so moving the taller wall cannot improve the answer while the shorter wall remains.
+
+The movement rule should be something you can defend without saying "try the next one." It should explain what candidates were eliminated and why.
+
+## Common mistakes
+
+- Using opposing pointers when the input is not sorted and no other ordering rule exists.
+- Moving both pointers after a failed check and skipping possible candidates.
+- Using `left <= right` when the two pointers must refer to different items.
+- Forgetting to handle empty arrays before reading `nums[0]`.
+- Mutating an input array when the prompt asks for a returned copy.
+- Returning a non-deterministic answer when multiple pairs could be valid.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+You will build this topic in layers:
+
+1. Search a sorted array for a pair that reaches a target.
+2. Dedupe a sorted array with read and write pointers.
+3. Solve container with most water by moving the pointer that can still improve the answer.
+4. Explain the invariant and movement rule for a two-pointer solution.
