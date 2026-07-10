@@ -1082,6 +1082,8 @@ This is preferable to three fixed-window variants that only change the wording, 
 Use these principles when replacing placeholder lessons with final curriculum content:
 
 - Prefer concrete, runnable TypeScript examples over pseudo-code. Avoid placeholder bodies, ellipses, `TODO` comments, and comments that stand in for behavior.
+- Prefer interview-realistic problems based on commonly reported public patterns and practical engineering scenarios. Learner fit, scaffolding, and progressive difficulty are more important than exact company provenance.
+- Do not claim a problem was asked by a specific company unless the lesson records a reliable public source. Avoid copying proprietary, confidential, or paywalled prompts; adapt wording, constraints, examples, and tests to the lesson goal.
 - Before explaining when to choose a pattern, give a realistic prompt that would call for that pattern. The following code example should solve that prompt or a directly related version of it.
 - For prompt-rooted concept examples, state concrete example inputs before the function and the expected output after the function.
 - When introducing a representation, key, invariant, or data structure, show both how it is created and how it is used. For example, a hash key section should show the key construction and the `Map` or `Set` lookup that uses it.
@@ -1106,6 +1108,7 @@ Use these principles when replacing placeholder lessons with final curriculum co
 Before treating a lesson as authored, check the following:
 
 - The concept page names the core pattern, shows self-contained examples, and does not reference undefined variables or prior context.
+- Practice problems map to recognizable interview patterns or practical engineering scenarios without making unsupported company-specific claims.
 - Pattern-selection sections include a concrete prompt example before the related code.
 - Prompt-rooted concept examples include concrete input before the function and expected output after the function.
 - Longer code examples use whiteboard-style comments to break the solution into reasoning steps, invariants, key construction, pointer movement, or state updates.
