@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { lesson as arraysAndHashing } from './lessons/01-arrays-and-hashing'
+import { lesson as prefixSumsAndDifferenceArrays } from './lessons/04-prefix-sums-and-difference-arrays'
 import { lesson as slidingWindow } from './lessons/03-sliding-window'
 import { lesson as twoPointers } from './lessons/02-two-pointers'
 
@@ -10,6 +11,7 @@ const authoredAlgorithmLessons = [
   arraysAndHashing,
   twoPointers,
   slidingWindow,
+  prefixSumsAndDifferenceArrays,
 ]
 
 const unsupportedCompanyClaimPattern =
