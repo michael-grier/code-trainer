@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest'
 
 import { lesson as arraysAndHashing } from './lessons/01-arrays-and-hashing'
 import { lesson as binarySearch } from './lessons/05-binary-search'
+import { lesson as linkedLists } from './lessons/09-linked-lists'
 import { lesson as prefixSumsAndDifferenceArrays } from './lessons/04-prefix-sums-and-difference-arrays'
+import { lesson as queuesAndDeques } from './lessons/08-queues-and-deques'
 import { lesson as slidingWindow } from './lessons/03-sliding-window'
 import { lesson as sortingAndComparisonPatterns } from './lessons/06-sorting-and-comparison-patterns'
 import { lesson as stacksAndMonotonicStacks } from './lessons/07-stacks-and-monotonic-stacks'
+import { lesson as treesAndRecursion } from './lessons/10-trees-and-recursion'
 import { lesson as twoPointers } from './lessons/02-two-pointers'
 
 import type { Approach, Lesson, Problem } from './types'
@@ -18,6 +21,9 @@ const authoredAlgorithmLessons = [
   binarySearch,
   sortingAndComparisonPatterns,
   stacksAndMonotonicStacks,
+  queuesAndDeques,
+  linkedLists,
+  treesAndRecursion,
 ]
 
 const unsupportedCompanyClaimPattern =

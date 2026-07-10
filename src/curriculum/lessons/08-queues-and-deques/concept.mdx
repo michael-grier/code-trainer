@@ -1,14 +1,175 @@
 # Queues and Deques
 
-This placeholder concept page reserves the lesson slot for **Queues and Deques**. The content pass will replace it with the final interview-focused MDX lesson.
+A queue processes items in first-in, first-out order. Add items at the back and remove items from the front. A deque supports adding and removing at both the front and the back.
 
-## What this lesson will cover
+In TypeScript, an array plus numeric indexes can represent these structures without the repeated reindexing cost of `Array.shift()`.
 
-- Core interview signals for queues and deques.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+## Process work in arrival order
+
+Example prompt: Jobs receive a fixed amount of processing time. Process the first queued job, then add it to the back if work remains. Return the processing order.
+
+The queue invariant is:
+
+> Every entry from `head` through the end of `queue` is pending work in the order it must next be processed.
+
+Example input: `jobs = [{ id: "a", duration: 5 }, { id: "b", duration: 2 }, { id: "c", duration: 3 }]`, `quantum = 2`.
+
+```ts
+type Job = {
+  id: string
+  duration: number
+}
+
+export function roundRobinOrder(jobs: Job[], quantum: number): string[] {
+  // Copy each job because remaining duration changes during the simulation.
+  const queue = jobs.map((job) => ({ ...job }))
+  const order: string[] = []
+  let head = 0
+
+  while (head < queue.length) {
+    // Read the oldest queued job, then advance the queue front.
+    const job = queue[head]
+    head += 1
+    order.push(job.id)
+
+    const remaining = job.duration - quantum
+
+    if (remaining > 0) {
+      // Add unfinished work to the back as a new queue entry.
+      queue.push({ id: job.id, duration: remaining })
+    }
+  }
+
+  return order
+}
+```
+
+Example output: `["a", "b", "c", "a", "c", "a"]`.
+
+Advancing `head` is O(1). Calling `shift()` would move every remaining array entry one index to the left and can cost O(n) per removal.
+
+## Keep only possible window maxima
+
+Example prompt: Given an array and a window size `k`, return the maximum value in every contiguous window of exactly `k` values.
+
+Store indexes in a deque. Their values decrease from front to back. Before adding a new index:
+
+1. Remove the front index if it is no longer inside the window.
+2. Remove indexes from the back while their values are less than or equal to the new value.
+3. Add the new index at the back.
+
+A removed smaller value cannot be a future maximum because the new value is at least as large and remains in every future window for longer.
+
+Example input: `nums = [1, 3, -1, -3, 5, 3, 6, 7]`, `k = 3`.
+
+```ts
+export function slidingWindowMaximum(
+  nums: number[],
+  k: number,
+): number[] {
+  if (k <= 0 || k > nums.length) {
+    return []
+  }
+
+  // Active deque entries are stored in indexes [front, back).
+  const deque = new Array<number>(nums.length)
+  const result: number[] = []
+  let front = 0
+  let back = 0
+
+  for (let right = 0; right < nums.length; right += 1) {
+    if (front < back && deque[front] <= right - k) {
+      // This index is no longer inside the current window.
+      front += 1
+    }
+
+    while (front < back && nums[deque[back - 1]] <= nums[right]) {
+      // The new value is no smaller and remains available longer.
+      back -= 1
+    }
+
+    deque[back] = right
+    back += 1
+
+    if (right >= k - 1) {
+      result.push(nums[deque[front]])
+    }
+  }
+
+  return result
+}
+```
+
+Example output: `[3, 3, 5, 5, 6, 7]`.
+
+Each index is added once and removed at most once, so all deque operations take O(n) time.
+
+## Use prefix sums with a monotonic deque
+
+Example prompt: Values may be negative. Return the shortest non-empty contiguous subarray whose sum is at least a positive target.
+
+A standard sliding window cannot decide which pointer to move when negative values are present. Instead, calculate prefix sums. A subarray from prefix index `left` to prefix index `right` has sum `prefix[right] - prefix[left]`.
+
+Keep possible left indexes in increasing prefix-sum order. Remove from the front when a valid subarray is found. Remove from the back when the current prefix is less than or equal to an earlier prefix, because the current prefix gives a future subarray at least as large and no longer.
+
+Example input: `nums = [2, -1, 2]`, `target = 3`.
+
+```ts
+export function shortestSubarrayAtLeastTarget(
+  nums: number[],
+  target: number,
+): number {
+  const prefix = new Array<number>(nums.length + 1).fill(0)
+
+  for (let index = 0; index < nums.length; index += 1) {
+    prefix[index + 1] = prefix[index] + nums[index]
+  }
+
+  const deque = new Array<number>(prefix.length)
+  let front = 0
+  let back = 0
+  let best = Number.POSITIVE_INFINITY
+
+  for (let right = 0; right < prefix.length; right += 1) {
+    while (
+      front < back &&
+      prefix[right] - prefix[deque[front]] >= target
+    ) {
+      // This front index creates a valid subarray ending at right.
+      best = Math.min(best, right - deque[front])
+      front += 1
+    }
+
+    while (front < back && prefix[deque[back - 1]] >= prefix[right]) {
+      // The current prefix is smaller and later, so the back cannot be better.
+      back -= 1
+    }
+
+    deque[back] = right
+    back += 1
+  }
+
+  return best === Number.POSITIVE_INFINITY ? 0 : best
+}
+```
+
+Example output: `3`.
+
+## Common mistakes
+
+- Calling `shift()` for every queue removal and changing an O(n) traversal into O(n²) work.
+- Storing values when the result needs indexes, distances, or expiration checks.
+- Reading the front of a deque before removing an expired index.
+- Removing smaller values from the front instead of the back.
+- Keeping an earlier prefix that is greater than or equal to a later prefix.
+- Applying a positive-only sliding-window rule when negative values are allowed.
+- Assuming the nested `while` loops make the algorithm O(n²); each index is removed at most once.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+You will practice the concepts in this order:
+
+1. Simulate FIFO processing with a queue and head index.
+2. Maintain decreasing candidates for sliding-window maximums.
+3. Combine prefix sums with an increasing deque for negative-value inputs.
+4. Explain queue operations, deque removal rules, and total runtime.

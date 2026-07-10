@@ -1,14 +1,164 @@
 # Linked Lists
 
-This placeholder concept page reserves the lesson slot for **Linked Lists**. The content pass will replace it with the final interview-focused MDX lesson.
+A linked list stores each value in a node with a reference to the next node. The list does not provide direct access by numeric index. Traversal follows `next` references from the head until `null`.
 
-## What this lesson will cover
+This lesson uses nodes with this shape:
 
-- Core interview signals for linked lists.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+```ts
+type ListNode = {
+  value: number
+  next: ListNode | null
+}
+```
+
+The notation `1 -> 2 -> 3 -> null` means that the node containing `1` points to the node containing `2`, the node containing `2` points to the node containing `3`, and the final node points to `null`.
+
+## Reverse links without losing nodes
+
+Example prompt: Reverse a singly linked list and return its new head. Input nodes may be modified.
+
+Before changing `current.next`, store its original value. The invariant is:
+
+> `previous` is the head of the reversed part, and `current` is the head of the unprocessed part.
+
+Example input: `1 -> 2 -> 3 -> null`.
+
+```ts
+export function reverseLinkedList(head: ListNode | null): ListNode | null {
+  let previous: ListNode | null = null
+  let current = head
+
+  while (current) {
+    // Save the unprocessed list before changing current.next.
+    const next = current.next
+
+    // Point the current node toward the reversed part.
+    current.next = previous
+    previous = current
+    current = next
+  }
+
+  return previous
+}
+```
+
+Example output: `3 -> 2 -> 1 -> null`.
+
+Changing `current.next` before saving it would remove the only reference to the remaining nodes. The local `next` variable preserves that reference.
+
+## Use a dummy node for head changes
+
+Example prompt: Remove the node that is `n` positions from the end of a linked list in one scan.
+
+A dummy node points to the real head. It provides a predecessor even when the real head must be removed. Move `fast` forward `n` nodes, then move `fast` and `slow` together until `fast` reaches the final node. At that point, `slow.next` is the node to remove.
+
+Example input: `head = 1 -> 2 -> 3 -> 4 -> 5 -> null`, `n = 2`.
+
+```ts
+export function removeNthFromEnd(
+  head: ListNode | null,
+  n: number,
+): ListNode | null {
+  // The dummy node provides a predecessor when the head is removed.
+  const dummy: ListNode = { value: 0, next: head }
+  let fast: ListNode = dummy
+  let slow: ListNode = dummy
+
+  for (let step = 0; step < n; step += 1) {
+    fast = fast.next!
+  }
+
+  while (fast.next) {
+    fast = fast.next
+    slow = slow.next!
+  }
+
+  // slow is immediately before the node that must be removed.
+  slow.next = slow.next!.next
+  return dummy.next
+}
+```
+
+Example output: `1 -> 2 -> 3 -> 5 -> null`.
+
+The prompt guarantees that `n` is valid. The `!` tells TypeScript that a node exists because that guarantee and the loop conditions have already proved it.
+
+## Compose several pointer operations
+
+Example prompt: Reorder `first -> second -> ... -> last` into `first -> last -> second -> second-last -> ...` by changing links in place.
+
+Use three explicit steps:
+
+1. Find the end of the first half with slow and fast pointers.
+2. Disconnect and reverse the second half.
+3. Alternate nodes from the first half and reversed second half.
+
+Example input: `1 -> 2 -> 3 -> 4 -> 5 -> null`.
+
+```ts
+export function reorderLinkedList(head: ListNode | null): ListNode | null {
+  if (!head || !head.next) {
+    return head
+  }
+
+  // Find the end of the first half.
+  let slow = head
+  let fast = head
+
+  while (fast.next && fast.next.next) {
+    slow = slow.next!
+    fast = fast.next.next
+  }
+
+  // Separate and reverse the second half.
+  let second = slow.next
+  slow.next = null
+  let previous: ListNode | null = null
+
+  while (second) {
+    const next = second.next
+    second.next = previous
+    previous = second
+    second = next
+  }
+
+  // Insert one reversed node after each first-half node.
+  let first: ListNode | null = head
+  second = previous
+
+  while (second) {
+    const firstNext = first!.next
+    const secondNext = second.next
+    first!.next = second
+    second.next = firstNext
+    first = firstNext
+    second = secondNext
+  }
+
+  return head
+}
+```
+
+Example output: `1 -> 5 -> 2 -> 4 -> 3 -> null`.
+
+Disconnecting the halves with `slow.next = null` prevents the old link from creating a cycle. During the merge, save both next references before changing links.
+
+## Common mistakes
+
+- Changing `current.next` before saving the original next node.
+- Returning the old head after reversing a list.
+- Writing a separate head-removal branch instead of using a dummy node.
+- Moving a fast pointer without checking the references required by the loop.
+- Forgetting to disconnect two list sections before reconnecting them.
+- Advancing a pointer after its link has already been replaced.
+- Modifying input nodes when the prompt requires a new list.
+- Comparing node objects when the problem asks to compare their values.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+You will practice the concepts in this order:
+
+1. Reverse every link while preserving the unprocessed list.
+2. Remove a node from the end with a dummy node and a fixed pointer gap.
+3. Find, reverse, and merge list sections to produce a new order.
+4. Explain pointer safety, special-case removal, and mutation assumptions.

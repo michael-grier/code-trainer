@@ -1,14 +1,163 @@
 # Trees and Recursion
 
-This placeholder concept page reserves the lesson slot for **Trees and Recursion**. The content pass will replace it with the final interview-focused MDX lesson.
+A binary-tree node stores a value and references to at most two child nodes. Each child is the root of another tree, so a recursive function can use the same logic for the left and right subtrees.
 
-## What this lesson will cover
+This lesson uses nodes with this shape:
 
-- Core interview signals for trees and recursion.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+```ts
+type TreeNode = {
+  value: number
+  left: TreeNode | null
+  right: TreeNode | null
+}
+```
+
+Before writing a recursive function, define the result for a null node and state exactly what one call returns for a non-null subtree.
+
+## Choose when to process the node
+
+Example prompt: Return binary-tree values in root-left-right preorder.
+
+Preorder processes the current node before its children. The invariant for the result array is:
+
+> After `visit(node)` returns, the preorder values for that node's complete subtree have been appended.
+
+Example input: a tree with root `1`, children `2` and `3`, and children `4` and `5` under node `2`.
+
+```ts
+export function preorderTreeValues(root: TreeNode | null): number[] {
+  const values: number[] = []
+
+  const visit = (node: TreeNode | null): void => {
+    if (!node) {
+      return
+    }
+
+    // Record the node before traversing either child.
+    values.push(node.value)
+    visit(node.left)
+    visit(node.right)
+  }
+
+  visit(root)
+  return values
+}
+```
+
+Example output: `[1, 2, 4, 5, 3]`.
+
+Changing the order of the three operations produces other traversals. Root-left-right is preorder. Left-root-right is inorder. Left-right-root is postorder.
+
+## Return information from each subtree
+
+Example prompt: Return whether every node in a binary tree has left and right subtree heights that differ by at most one.
+
+The parent cannot calculate its result until both child heights are known, so use postorder. Let each call return the subtree height, or `-1` when that subtree is already unbalanced.
+
+Example input: a root with leaf nodes on both the left and right.
+
+```ts
+export function isHeightBalanced(root: TreeNode | null): boolean {
+  const height = (node: TreeNode | null): number => {
+    if (!node) {
+      // An empty subtree has height zero.
+      return 0
+    }
+
+    const leftHeight = height(node.left)
+
+    if (leftHeight === -1) {
+      return -1
+    }
+
+    const rightHeight = height(node.right)
+
+    if (rightHeight === -1) {
+      return -1
+    }
+
+    if (Math.abs(leftHeight - rightHeight) > 1) {
+      return -1
+    }
+
+    return Math.max(leftHeight, rightHeight) + 1
+  }
+
+  return height(root) !== -1
+}
+```
+
+Example output: `true`.
+
+Returning `-1` combines the height result and the balance result in one number. Each node is processed once. Calculating height again at every node would repeat subtree work and can require O(n²) time for a highly unbalanced tree.
+
+## Return a matching subtree result
+
+Example prompt: Values are unique and both targets exist. Return the deepest node whose subtree contains both target values. The tree is not necessarily a binary search tree.
+
+Each recursive call returns one of three results:
+
+- `null` when neither target was found in the subtree.
+- A target node when the current node matches.
+- The lowest common ancestor when the subtree contains both targets.
+
+Example input: root `3` with target nodes `5` in its left subtree and `1` in its right subtree.
+
+```ts
+export function lowestCommonAncestorValue(
+  root: TreeNode | null,
+  firstValue: number,
+  secondValue: number,
+): number | null {
+  const findAncestor = (node: TreeNode | null): TreeNode | null => {
+    if (!node) {
+      return null
+    }
+
+    if (node.value === firstValue || node.value === secondValue) {
+      return node
+    }
+
+    const leftMatch = findAncestor(node.left)
+    const rightMatch = findAncestor(node.right)
+
+    if (leftMatch && rightMatch) {
+      // Each target was found in a different child subtree.
+      return node
+    }
+
+    // Return the one matching subtree, or null if neither side matched.
+    return leftMatch ?? rightMatch
+  }
+
+  return findAncestor(root)?.value ?? null
+}
+```
+
+Example output: `3`.
+
+If both child calls return a node, the current node is the first node reached from below that contains both targets. If only one child returns a node, pass that result to the parent.
+
+## Recursion depth
+
+Recursive traversal uses O(h) call-stack space for tree height `h`. A balanced tree has O(log n) height. A tree with only one child at each node has O(n) height and may exceed the JavaScript call-stack limit when it is very deep. Use an explicit stack or queue when the input depth may be large or unknown.
+
+## Common mistakes
+
+- Omitting the null-node base case.
+- Calling the recursive function without returning or using its result.
+- Processing the parent before its children when the parent depends on child results.
+- Recalculating subtree heights at every node.
+- Treating a general binary tree as if it had binary-search-tree ordering.
+- Comparing target values without stating whether tree values are unique.
+- Ignoring call-stack space in the complexity analysis.
+- Using shared mutable state without resetting it for a new function call.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+You will practice the concepts in this order:
+
+1. Produce deterministic preorder traversal output.
+2. Return subtree heights and report imbalance in one postorder traversal.
+3. Return target matches upward to identify a lowest common ancestor.
+4. Explain recursive contracts, traversal order, and depth limits.
