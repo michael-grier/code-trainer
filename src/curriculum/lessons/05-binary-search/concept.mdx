@@ -1,14 +1,169 @@
 # Binary Search
 
-This placeholder concept page reserves the lesson slot for **Binary Search**. The content pass will replace it with the final interview-focused MDX lesson.
+Binary search applies when candidates have a known order and one comparison can prove that many candidates are invalid. Each step checks a middle candidate and removes one half of the active interval.
 
-## What this lesson will cover
+The main work is not calculating the middle index. The main work is defining the active interval and proving that each update keeps every possible answer.
 
-- Core interview signals for binary search.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+## Exact search in sorted data
+
+Example prompt: Given a sorted ascending array of distinct numbers and a target, return the target index or `-1` if it is absent.
+
+Use a closed interval `[left, right]`. Both endpoints are active candidates. The invariant is:
+
+> If the target exists, its index is between `left` and `right`, inclusive.
+
+Example input: `nums = [-4, 0, 3, 7, 12]`, `target = 7`.
+
+```ts
+export function findSortedIndex(nums: number[], target: number): number {
+  // Every possible target index is inside [left, right].
+  let left = 0
+  let right = nums.length - 1
+
+  while (left <= right) {
+    // Select an index inside the active interval.
+    const middle = left + Math.floor((right - left) / 2)
+
+    if (nums[middle] === target) {
+      return middle
+    }
+
+    if (nums[middle] < target) {
+      // Sorted order removes middle and every smaller index.
+      left = middle + 1
+    } else {
+      // Sorted order removes middle and every larger index.
+      right = middle - 1
+    }
+  }
+
+  return -1
+}
+```
+
+Example output: `3`.
+
+The loop uses `left <= right` because a closed interval with one index still contains a candidate. Both updates exclude `middle` because equality was already checked.
+
+## Search for the first qualifying index
+
+Some prompts ask for a boundary rather than one exact value.
+
+Example prompt: Given a sorted ascending array that may contain duplicates, return the first index whose value is greater than or equal to `target`.
+
+The condition `nums[index] >= target` is false for an initial part of the array and true for the remaining part. Search for the first true index with a half-open interval `[left, right)`. The invariant is:
+
+> Every array index before `left` is below the target, and every array index at or after `right` is greater than or equal to the target.
+
+Example input: `nums = [1, 3, 3, 5, 8]`, `target = 3`.
+
+```ts
+export function firstIndexAtLeast(
+  nums: number[],
+  target: number,
+): number {
+  // nums.length represents the case where no index qualifies.
+  let left = 0
+  let right = nums.length
+
+  while (left < right) {
+    const middle = left + Math.floor((right - left) / 2)
+
+    if (nums[middle] >= target) {
+      // middle qualifies, but an earlier index may also qualify.
+      right = middle
+    } else {
+      // middle does not qualify, so the answer must be after it.
+      left = middle + 1
+    }
+  }
+
+  return left === nums.length ? -1 : left
+}
+```
+
+Example output: `1`.
+
+When `middle` qualifies, do not subtract one from it. The half-open interval update `right = middle` keeps `middle` as a possible answer. When `middle` does not qualify, `left = middle + 1` removes it.
+
+## Search over numeric answers
+
+Binary search can also test possible answers that are not array indexes.
+
+Example prompt: Jobs run one at a time. A job of size `job` takes `Math.ceil(job / rate)` hours at an integer processing rate. Return the smallest rate that finishes all jobs within a given number of hours.
+
+For a fixed rate, the answer to “can all jobs finish?” is deterministic. Increasing the rate never increases the required hours. The condition is false for rates that are too small, then true for every sufficiently large rate.
+
+Assume every job size is positive and `hours` is at least the number of jobs. Each job requires at least one hour, so no valid rate exists when fewer hours are available.
+
+Example input: `workloads = [3, 6, 7, 11]`, `hours = 8`.
+
+```ts
+export function minimumProcessingRate(
+  workloads: number[],
+  hours: number,
+): number {
+  if (workloads.length === 0) {
+    return 0
+  }
+
+  // Find the largest job without passing the array as function arguments.
+  let low = 1
+  let high = 0
+
+  for (const workload of workloads) {
+    high = Math.max(high, workload)
+  }
+
+  const canFinish = (rate: number): boolean => {
+    let requiredHours = 0
+
+    for (const workload of workloads) {
+      requiredHours += Math.ceil(workload / rate)
+
+      if (requiredHours > hours) {
+        return false
+      }
+    }
+
+    return true
+  }
+
+  while (low < high) {
+    const middle = low + Math.floor((high - low) / 2)
+
+    if (canFinish(middle)) {
+      // middle meets the time limit, so test it and smaller rates.
+      high = middle
+    } else {
+      // middle is too slow, so remove it and every slower rate.
+      low = middle + 1
+    }
+  }
+
+  return low
+}
+```
+
+Example output: `4`.
+
+The lower and upper bounds must include every possible answer. Here a rate of `1` is the smallest allowed rate, and the largest job size is always sufficient because each job then takes one hour.
+
+## Common mistakes
+
+- Mixing closed and half-open interval rules in one loop.
+- Using `left < right` for exact search and failing to test the final candidate.
+- Setting `right = middle - 1` during a half-open first-true search and removing a possible answer.
+- Returning immediately when a duplicate target is found even though the prompt asks for the first target index.
+- Searching numeric answers without proving that the condition changes in only one direction.
+- Choosing bounds that exclude a possible answer.
+- Calculating `middle` without `Math.floor` in TypeScript.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+You will practice the concepts in this order:
+
+1. Find an exact value in a sorted array of distinct numbers.
+2. Find the first value that satisfies a boundary condition.
+3. Search possible processing rates for the minimum feasible answer.
+4. Explain the interval and update rules for exact and boundary searches.

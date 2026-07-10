@@ -1,14 +1,160 @@
 # Sorting and Comparison Patterns
 
-This placeholder concept page reserves the lesson slot for **Sorting and Comparison Patterns**. The content pass will replace it with the final interview-focused MDX lesson.
+Sorting is useful when a known order makes later decisions simpler. After sorting, values that may belong together are often adjacent, and a single scan can process them.
 
-## What this lesson will cover
+Before calling `sort`, define the exact order, every tie-breaker, and whether modifying the input is allowed.
 
-- Core interview signals for sorting and comparison patterns.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+## Write a complete comparator
+
+Example prompt: Given candidates with a name and score, return their names ordered by score from highest to lowest, then by name in ascending order when scores are equal.
+
+A TypeScript comparator must return:
+
+- A negative number when the first item must be ordered before the second.
+- Zero when the items are equal under every ordering rule.
+- A positive number when the first item must be ordered after the second.
+
+Example input:
+
+```ts
+const candidates = [
+  { name: 'bea', score: 8 },
+  { name: 'ari', score: 10 },
+  { name: 'cal', score: 8 },
+]
+```
+
+```ts
+type Candidate = {
+  name: string
+  score: number
+}
+
+export function rankCandidates(candidates: Candidate[]): string[] {
+  // Copy the array because sort changes the array it receives.
+  return [...candidates]
+    .sort((left, right) => {
+      // Order higher scores first.
+      if (left.score !== right.score) {
+        return right.score - left.score
+      }
+
+      // Equal scores use ascending name order.
+      if (left.name < right.name) {
+        return -1
+      }
+
+      if (left.name > right.name) {
+        return 1
+      }
+
+      return 0
+    })
+    .map((candidate) => candidate.name)
+}
+```
+
+Example output: `["ari", "bea", "cal"]`.
+
+Do not return a boolean from a comparator. JavaScript converts `false` to `0` and `true` to `1`, so a boolean does not represent all three required outcomes. Also remember that `Array.prototype.sort` modifies its array. Copy the array first when the prompt requires the input to remain unchanged.
+
+## Sort before combining ranges
+
+Example prompt: Given inclusive intervals, combine every pair of intervals that overlaps and return the result ordered by start.
+
+Sorting by start means the next interval can only overlap the last interval in the result. The invariant is:
+
+> `merged` contains the complete combined result for every sorted interval processed so far.
+
+Example input: `intervals = [[5, 7], [1, 3], [2, 6]]`.
+
+```ts
+type Interval = [number, number]
+
+export function mergeOverlappingIntervals(
+  intervals: Interval[],
+): Interval[] {
+  // Copy each tuple so neither the outer array nor an inner tuple is modified.
+  const sorted = intervals
+    .map(([start, end]): Interval => [start, end])
+    .sort((left, right) => left[0] - right[0] || left[1] - right[1])
+
+  const merged: Interval[] = []
+
+  for (const [start, end] of sorted) {
+    const previous = merged[merged.length - 1]
+
+    if (!previous || start > previous[1]) {
+      // This interval begins after the previous interval ends.
+      merged.push([start, end])
+    } else {
+      // The intervals overlap, so update the previous end when needed.
+      previous[1] = Math.max(previous[1], end)
+    }
+  }
+
+  return merged
+}
+```
+
+Example output: `[[1, 7]]`.
+
+The comparison `start > previous[1]` matches inclusive endpoints. If `start` equals the previous end, the intervals share that endpoint and are combined.
+
+## Compare two possible pair orders
+
+Sometimes a value does not have a useful independent sort key. The correct order depends on how two values interact.
+
+Example prompt: Arrange non-negative integers so their decimal strings form the largest possible concatenated number.
+
+For strings `a` and `b`, compare `a + b` with `b + a`. If `a + b` is larger, order `a` first. This directly compares the result produced by the two possible pair orders.
+
+Example input: `nums = [3, 30, 34, 5, 9]`.
+
+```ts
+export function largestConcatenatedNumber(nums: number[]): string {
+  const parts = nums.map(String)
+
+  parts.sort((left, right) => {
+    // Test which pair order produces the larger combined string.
+    const leftFirst = left + right
+    const rightFirst = right + left
+
+    if (leftFirst === rightFirst) {
+      return 0
+    }
+
+    return leftFirst > rightFirst ? -1 : 1
+  })
+
+  const result = parts.join('')
+
+  // Several zero values should produce "0", not "000".
+  return result.startsWith('0') ? '0' : result
+}
+```
+
+Example output: `"9534330"`.
+
+Sorting by numeric value or string length is incorrect. For example, `"12" + "121"` is larger than `"121" + "12"`, so `12` must come before `121` even though it has fewer digits.
+
+## Common mistakes
+
+- Returning a boolean from a comparator.
+- Defining the primary order but omitting a required tie-breaker.
+- Returning inconsistent results for the same pair of values.
+- Defining rules where `a` sorts before `b` and `b` sorts before `c`, but `a` does not sort before `c`.
+- Forgetting that `sort` modifies the array.
+- Copying the outer interval array but then modifying the original inner tuples.
+- Sorting intervals by end when the scan assumes they are ordered by start.
+- Comparing concatenated-number inputs by numeric value instead of comparing both pair orders.
+- Returning multiple zero characters when every input value is zero.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+You will practice the concepts in this order:
+
+1. Sort records with a primary rule and a deterministic tie-breaker.
+2. Sort intervals before combining overlaps in one scan.
+3. Define a comparator by comparing both possible concatenation orders.
+4. Explain comparator results, tie-breakers, consistency, and input mutation.

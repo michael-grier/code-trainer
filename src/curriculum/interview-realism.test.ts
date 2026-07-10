@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
 import { lesson as arraysAndHashing } from './lessons/01-arrays-and-hashing'
+import { lesson as binarySearch } from './lessons/05-binary-search'
 import { lesson as prefixSumsAndDifferenceArrays } from './lessons/04-prefix-sums-and-difference-arrays'
 import { lesson as slidingWindow } from './lessons/03-sliding-window'
+import { lesson as sortingAndComparisonPatterns } from './lessons/06-sorting-and-comparison-patterns'
+import { lesson as stacksAndMonotonicStacks } from './lessons/07-stacks-and-monotonic-stacks'
 import { lesson as twoPointers } from './lessons/02-two-pointers'
 
 import type { Approach, Lesson, Problem } from './types'
@@ -12,6 +15,9 @@ const authoredAlgorithmLessons = [
   twoPointers,
   slidingWindow,
   prefixSumsAndDifferenceArrays,
+  binarySearch,
+  sortingAndComparisonPatterns,
+  stacksAndMonotonicStacks,
 ]
 
 const unsupportedCompanyClaimPattern =

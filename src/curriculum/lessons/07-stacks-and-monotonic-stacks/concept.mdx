@@ -1,14 +1,146 @@
 # Stacks and Monotonic Stacks
 
-This placeholder concept page reserves the lesson slot for **Stacks and Monotonic Stacks**. The content pass will replace it with the final interview-focused MDX lesson.
+A stack stores items in last-in, first-out order. In TypeScript, an array usually provides the required operations: `push` adds an item to the end, and `pop` removes the most recently added item.
 
-## What this lesson will cover
+Use a stack when the current item must be compared with the most recent unresolved item. Use a monotonic stack when unresolved numeric values must remain in increasing or decreasing order.
 
-- Core interview signals for stacks and monotonic stacks.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+## Match nested structures
+
+Example prompt: Given a string containing only bracket characters, return whether every opening bracket is closed by the correct bracket in the correct nested order.
+
+Each stack entry is an opening bracket that has not been matched. The invariant is:
+
+> The stack contains exactly the unmatched opening brackets, in their original order.
+
+Example input: `input = "{[()]}"`.
+
+```ts
+export function hasValidBrackets(input: string): boolean {
+  const openingForClosing = new Map<string, string>([
+    [')', '('],
+    [']', '['],
+    ['}', '{'],
+  ])
+  const openings = new Set(['(', '[', '{'])
+  const stack: string[] = []
+
+  for (const bracket of input) {
+    if (openings.has(bracket)) {
+      // Store this opening bracket until a closing bracket is processed.
+      stack.push(bracket)
+      continue
+    }
+
+    // The latest unmatched opening bracket must match this close.
+    if (stack.pop() !== openingForClosing.get(bracket)) {
+      return false
+    }
+  }
+
+  // No opening bracket may remain unmatched.
+  return stack.length === 0
+}
+```
+
+Example output: `true`.
+
+Checking only the bracket counts is insufficient. `"([)]"` has equal counts, but the closing order is invalid. A stack checks the required order as well as the counts.
+
+## Resolve next-greater questions
+
+Example prompt: For each daily temperature, return the number of days until a strictly warmer temperature occurs. Return zero if no later day is warmer.
+
+Store indexes rather than temperatures because the result needs a distance between days. The temperatures at the stored indexes remain non-increasing from the beginning to the end of the stack. Each stored index represents a day whose first warmer day is still unknown.
+
+Example input: `temperatures = [73, 74, 75, 71, 69, 72, 76, 73]`.
+
+```ts
+export function daysUntilWarmer(temperatures: number[]): number[] {
+  const result = new Array<number>(temperatures.length).fill(0)
+  const unresolved: number[] = []
+
+  for (let day = 0; day < temperatures.length; day += 1) {
+    while (
+      unresolved.length > 0 &&
+      temperatures[unresolved[unresolved.length - 1]] < temperatures[day]
+    ) {
+      // This is the first warmer day for the latest stored day.
+      const earlierDay = unresolved.pop()!
+      result[earlierDay] = day - earlierDay
+    }
+
+    // Store this day because no later temperature has been processed yet.
+    unresolved.push(day)
+  }
+
+  return result
+}
+```
+
+Example output: `[1, 1, 4, 2, 1, 1, 0, 0]`.
+
+The comparison uses `<`, not `<=`, because an equal temperature is not warmer. Equal temperatures remain unresolved until a strictly greater value appears.
+
+Each index is added once and removed at most once. The total time is O(n), even though the code contains a `while` loop inside a `for` loop.
+
+TypeScript gives `pop()` the return type `T | undefined`. In these examples, the length check proves that an item exists before `pop()` runs. The `!` after `pop()` tells TypeScript about that proof.
+
+## Store the earliest valid start
+
+Example prompt: Given histogram bar heights, return the largest rectangle formed by consecutive bars.
+
+For each height, store the earliest index where a rectangle of that height may begin. When a smaller height appears, it ends every taller rectangle stored at the end of the stack. Calculate each ended rectangle before removing it.
+
+Example input: `heights = [2, 1, 5, 6, 2, 3]`.
+
+```ts
+export function largestHistogramRectangle(heights: number[]): number {
+  // Each entry is [earliest start index, rectangle height].
+  const stack: [number, number][] = []
+  let best = 0
+
+  for (let index = 0; index <= heights.length; index += 1) {
+    // A final zero causes every remaining height to be calculated.
+    const height = index === heights.length ? 0 : heights[index]
+    let start = index
+
+    while (stack.length > 0 && stack[stack.length - 1][1] > height) {
+      const [rectangleStart, rectangleHeight] = stack.pop()!
+
+      // The current index is the first index this height cannot include.
+      best = Math.max(best, rectangleHeight * (index - rectangleStart))
+      start = rectangleStart
+    }
+
+    if (stack.length === 0 || stack[stack.length - 1][1] < height) {
+      // This height can begin where the removed taller heights began.
+      stack.push([start, height])
+    }
+  }
+
+  return best
+}
+```
+
+Example output: `10`.
+
+When a taller entry is removed, its start index is assigned to `start`. The current shorter height can include every index that the taller height included, so the stored start must be preserved. The final zero is not an input bar; it only causes every remaining positive height to be calculated.
+
+## Common mistakes
+
+- Removing from the beginning of an array instead of the end and changing stack operations from O(1) to O(n).
+- Comparing a closing bracket with any earlier opening bracket instead of the most recent unmatched one.
+- Storing only values when the answer requires an index or distance.
+- Removing equal values when the prompt asks for a strictly greater value.
+- Forgetting that unresolved indexes keep the default result of zero.
+- Failing to calculate monotonic-stack entries that remain after the input ends.
+- Discarding the earliest start index when a shorter histogram bar replaces taller bars.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+You will practice the concepts in this order:
+
+1. Validate nested brackets with an opening-bracket stack.
+2. Resolve next-warmer distances with a decreasing stack of indexes.
+3. Calculate histogram rectangles with increasing heights and earliest start indexes.
+4. Explain what each stack entry represents and when it is removed.
