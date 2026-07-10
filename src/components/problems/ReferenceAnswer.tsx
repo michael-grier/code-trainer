@@ -52,7 +52,11 @@ export function ReferenceAnswer({
       </CardHeader>
       <CardContent>
         {isRevealed ? (
-          <ReadOnlyCode className="max-h-none whitespace-pre-wrap" code={answer} />
+          <ReadOnlyCode
+            className="max-h-none whitespace-pre-wrap"
+            code={answer}
+            language="text"
+          />
         ) : (
           <div className="rounded-md border border-dashed bg-muted/30 p-4 text-sm text-muted-foreground">
             Enter an answer before revealing the reference.
@@ -62,4 +66,3 @@ export function ReferenceAnswer({
     </Card>
   )
 }
-

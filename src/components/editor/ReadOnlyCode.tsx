@@ -1,11 +1,18 @@
 import { cn } from '@/lib/cn'
 
+import { SyntaxHighlightedCode } from './SyntaxHighlightedCode'
+
 type ReadOnlyCodeProps = {
   code: string
   className?: string
+  language?: 'text' | 'typescript'
 }
 
-export function ReadOnlyCode({ className, code }: ReadOnlyCodeProps) {
+export function ReadOnlyCode({
+  className,
+  code,
+  language = 'typescript',
+}: ReadOnlyCodeProps) {
   return (
     <pre
       className={cn(
@@ -13,8 +20,11 @@ export function ReadOnlyCode({ className, code }: ReadOnlyCodeProps) {
         className,
       )}
     >
-      <code>{code}</code>
+      {language === 'typescript' ? (
+        <SyntaxHighlightedCode code={code} />
+      ) : (
+        <code>{code}</code>
+      )}
     </pre>
   )
 }
-
