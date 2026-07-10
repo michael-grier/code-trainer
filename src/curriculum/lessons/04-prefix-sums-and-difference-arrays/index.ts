@@ -5,7 +5,7 @@ import type { Lesson } from '../../types'
 export const lesson: Lesson = {
   slug: 'prefix-sums-and-difference-arrays',
   title: 'Prefix Sums and Difference Arrays',
-  summary: 'Precompute cumulative structure to answer range questions and batch updates.',
+  summary: 'Use cumulative totals to answer range questions and apply many range updates efficiently.',
   track: 'algorithms',
   order: 4,
   concept: Concept,
@@ -67,7 +67,7 @@ console.log(answerRangeSums([3, -2, 5, 1], [[0, 2], [1, 3], [2, 2]]))
       completionMode: 'all-tests-pass',
       title: 'Count target-sum subarrays',
       prompt:
-        'Implement `countTargetSumSubarrays`. Given an array that may contain positive, negative, and zero values, return the number of contiguous subarrays whose sum equals `target`. Use prefix-sum frequencies so negative values do not break the approach. Example: `countTargetSumSubarrays([1, -1, 0], 0)` returns `3` for `[1, -1]`, `[1, -1, 0]`, and `[0]`.',
+        'Implement `countTargetSumSubarrays`. Given an array that may contain positive, negative, and zero values, return the number of contiguous subarrays whose sum equals `target`. Use prefix-sum frequencies because this method works correctly when the input contains negative values. Example: `countTargetSumSubarrays([1, -1, 0], 0)` returns `3` for `[1, -1]`, `[1, -1, 0]`, and `[0]`.',
       estimatedMinutes: 18,
       functionName: 'countTargetSumSubarrays',
       starter: `export function countTargetSumSubarrays(
@@ -169,16 +169,16 @@ console.log(applyRangeUpdates(5, [[1, 3, 2], [2, 4, 3], [0, 2, -2]]))
       completionMode: 'submitted-with-reference-review',
       title: 'Choose the cumulative pattern',
       prompt:
-        'Compare prefix sums, a prefix-sum frequency map, a sliding window, and a difference array. For each one, name the prompt signal that makes it appropriate, the invariant it maintains, and one assumption or boundary mistake you would check.',
+        'Compare prefix sums, a prefix-sum frequency map, a sliding window, and a difference array. For each one, describe the type of problem it solves, the invariant it maintains, and one assumption or boundary mistake you would check. The invariant should state exactly what the stored values represent.',
       estimatedMinutes: 10,
       starter:
         'I would start by asking whether the prompt repeats range queries, counts subarrays, moves one window, or batches range updates...',
       referenceAnswer:
-        'A strong answer uses a prefix array for many immutable range-sum queries: prefix[i] stores the sum before index i, so an inclusive [left, right] sum is prefix[right + 1] - prefix[left]. It uses a prefix-sum frequency map to count target-sum subarrays, including when values are negative: before adding the current prefix, the map records how many earlier prefixes equal currentPrefix - target, and it starts with prefix 0 seen once. It uses a sliding window when one contiguous range moves under a monotonic rule, such as positive values making a sum shrink predictably; negative values can invalidate that movement proof. It uses a difference array for many range updates when only the final values are needed: add delta at start, subtract it after end, then integrate once. Important checks include the extra prefix zero, right + 1 for inclusive queries, counting before recording the current prefix, and placing the difference-array stop marker after the inclusive end.',
+        'A strong answer uses a prefix array for many range-sum queries when the input does not change: prefix[i] stores the sum before index i, so an inclusive [left, right] sum is prefix[right + 1] - prefix[left]. It uses a prefix-sum frequency map to count target-sum subarrays, including when values are negative: before adding the current prefix, the map records how many previous prefixes equal currentPrefix - target, and it starts with prefix 0 recorded once. It uses a sliding window when pointer movement has a predictable effect, such as removing a positive left value always decreasing the sum; negative values can make that movement rule incorrect. It uses a difference array for many range updates when only the final values are needed: add delta at start, subtract it after end, then calculate the prefix sum once. Important checks include the extra prefix zero, right + 1 for inclusive queries, counting before recording the current prefix, and placing the difference-array end marker after the inclusive end.',
       rubric: [
         {
           id: 'signals',
-          label: 'Matches signals to patterns',
+          label: 'Matches problems to patterns',
           description:
             'Separates repeated range queries, target-sum counting, moving windows, and batched range updates.',
         },
@@ -192,7 +192,7 @@ console.log(applyRangeUpdates(5, [[1, 3, 2], [2, 4, 3], [0, 2, -2]]))
           id: 'boundaries',
           label: 'Checks boundaries and assumptions',
           description:
-            'Calls out inclusive endpoints, the initial zero prefix, update stop markers, and any monotonicity requirement.',
+            'Identifies inclusive endpoints, the initial zero prefix, update end markers, and any requirement that values change in one direction.',
         },
       ],
     },
@@ -209,18 +209,18 @@ console.log(applyRangeUpdates(5, [[1, 3, 2], [2, 4, 3], [0, 2, -2]]))
   const prefix = new Array<number>(nums.length + 1).fill(0)
 
   for (let index = 0; index < nums.length; index += 1) {
-    // Extend the cumulative sum by one input value.
+    // Add this input value to the previous cumulative sum.
     prefix[index + 1] = prefix[index] + nums[index]
   }
 
   return queries.map(([left, right]) => {
-    // Remove everything before left from the sum through right.
+    // Subtract the sum before left from the sum before right + 1.
     return prefix[right + 1] - prefix[left]
   })
 }
 `,
         explanation:
-          'Store a leading zero so prefix[i] always means the sum before index i. An inclusive range then becomes the sum through right minus the sum before left, with no special case for ranges that start at zero.',
+          'Store a leading zero so prefix[i] always means the sum before index i. For an inclusive range, subtract the sum before left from the sum before right + 1. The same formula works when left is zero.',
         complexity:
           'O(n + q) time and O(n) space, where n is the array length and q is the number of queries.',
       },
@@ -238,7 +238,7 @@ console.log(applyRangeUpdates(5, [[1, 3, 2], [2, 4, 3], [0, 2, -2]]))
   let count = 0
 
   for (const num of nums) {
-    // Extend the prefix through the current value.
+    // Add the current value to the sum from index zero.
     prefix += num
 
     // An earlier prefix of prefix - target creates a target-sum subarray.
@@ -253,7 +253,7 @@ console.log(applyRangeUpdates(5, [[1, 3, 2], [2, 4, 3], [0, 2, -2]]))
 }
 `,
         explanation:
-          'If two prefix sums differ by target, the values between them sum to target. Count how often each earlier prefix occurred, query the required earlier value before inserting the current prefix, and keep the initial zero prefix so ranges starting at index zero are counted.',
+          'If two prefix sums differ by target, the values between their indexes sum to target. Count how often each previous prefix occurred, query the required previous value before inserting the current prefix, and record the initial zero prefix so ranges starting at index zero are counted.',
         complexity: 'O(n) average time and O(n) space.',
       },
     ],
@@ -288,7 +288,7 @@ console.log(applyRangeUpdates(5, [[1, 3, 2], [2, 4, 3], [0, 2, -2]]))
 }
 `,
         explanation:
-          'Each update records only where its effect starts and where it stops. Summing the difference markers from left to right reconstructs the combined value at every index, so overlapping updates are handled without touching each covered element repeatedly.',
+          'Each update records the index where its value begins and the index after its value ends. Summing the difference markers from left to right calculates the combined value at every index. This avoids updating every covered array index for every update.',
         complexity:
           'O(u + n) time and O(n) space, where u is the number of updates and n is the result length.',
       },
