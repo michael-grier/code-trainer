@@ -5,6 +5,7 @@ import { Link, useParams } from 'react-router-dom'
 import { ConceptReferenceSheet } from '@/components/learning/ConceptReferenceSheet'
 import { PrerequisiteNotice } from '@/components/learning/PrerequisiteNotice'
 import { ProblemNavigation } from '@/components/learning/ProblemNavigation'
+import { ProblemPrompt } from '@/components/problems/ProblemPromptContent'
 import { ProblemRenderer } from '@/components/problems/ProblemRenderer'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -106,7 +107,7 @@ export function ProblemPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 text-sm text-muted-foreground lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start">
-            <p className="max-w-4xl">{problem.prompt}</p>
+            <ProblemPrompt prompt={problem.prompt} />
             <Separator className="lg:hidden" />
             <div className="grid gap-2">
               <div className="flex items-center gap-2 text-foreground">
