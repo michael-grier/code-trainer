@@ -1,14 +1,248 @@
 # Heaps and Priority Queues
 
-This placeholder concept page reserves the lesson slot for **Heaps and Priority Queues**. The content pass will replace it with the final interview-focused MDX lesson.
+A priority queue removes items by priority instead of arrival order. A binary heap stores the highest-priority item at index `0`. For a node at index `i`, its children are at `2 * i + 1` and `2 * i + 2`.
 
-## What this lesson will cover
+<HeapDiagram />
 
-- Core interview signals for heaps and priority queues.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+The first two examples use these complete min-heap operations for numbers:
+
+```ts
+function pushMin(heap: number[], value: number): void {
+  heap.push(value)
+  let index = heap.length - 1
+
+  while (index > 0) {
+    const parent = Math.floor((index - 1) / 2)
+
+    if (heap[parent] <= heap[index]) {
+      break
+    }
+
+    const parentValue = heap[parent]
+    heap[parent] = heap[index]
+    heap[index] = parentValue
+    index = parent
+  }
+}
+
+function popMin(heap: number[]): number {
+  const minimum = heap[0]
+  const last = heap.pop()!
+
+  if (heap.length === 0) {
+    return minimum
+  }
+
+  heap[0] = last
+  let index = 0
+
+  while (true) {
+    const left = index * 2 + 1
+    const right = left + 1
+    let smallest = index
+
+    if (left < heap.length && heap[left] < heap[smallest]) {
+      smallest = left
+    }
+
+    if (right < heap.length && heap[right] < heap[smallest]) {
+      smallest = right
+    }
+
+    if (smallest === index) {
+      break
+    }
+
+    const currentValue = heap[index]
+    heap[index] = heap[smallest]
+    heap[smallest] = currentValue
+    index = smallest
+  }
+
+  return minimum
+}
+```
+
+## Keep a bounded top-k set
+
+Example prompt: Return the kth-largest number without sorting the complete input.
+
+Use a min-heap with at most `k` values. It stores the k largest values seen, and its root is the smallest retained value.
+
+Example input: `nums = [3, 2, 1, 5, 6, 4]`, `k = 2`.
+
+```ts
+export function kthLargestValue(nums: number[], k: number): number {
+  const heap: number[] = []
+
+  for (const num of nums) {
+    pushMin(heap, num)
+    if (heap.length > k) popMin(heap)
+  }
+
+  return heap[0]
+}
+```
+
+Example output: `5`.
+
+`pushMin` adds at the end and swaps upward while the parent is larger. `popMin` moves the last value to the root and swaps downward with the smaller child. Each operation costs O(log k).
+
+## Prioritize the earliest ending work
+
+Example prompt: Return the minimum rooms required for half-open meeting intervals.
+
+Sort meetings by start. A min-heap stores end times for active meetings. Remove end times less than or equal to the next start, then add the current end.
+
+Example input: `meetings = [[0, 30], [5, 10], [15, 20]]`.
+
+```ts
+export function minimumMeetingRooms(meetings: [number, number][]): number {
+  const sorted = meetings.map(([start, end]) => [start, end] as [number, number])
+    .sort((left, right) => left[0] - right[0])
+  const endTimes: number[] = []
+  let maximumRooms = 0
+
+  for (const [start, end] of sorted) {
+    while (endTimes.length > 0 && endTimes[0] <= start) popMin(endTimes)
+    pushMin(endTimes, end)
+    maximumRooms = Math.max(maximumRooms, endTimes.length)
+  }
+
+  return maximumRooms
+}
+```
+
+Example output: `2`.
+
+## Merge several sorted sources
+
+Example prompt: Merge several ascending arrays into one ascending result.
+
+The heap contains at most one current value from each array. When one value is removed, add the next value from the same array.
+
+Example input: `arrays = [[1, 4, 7], [2, 5], [3, 6, 8]]`.
+
+```ts
+type Entry = {
+  value: number
+  arrayIndex: number
+  itemIndex: number
+}
+
+export function mergeSortedArrays(arrays: number[][]): number[] {
+  const heap: Entry[] = []
+  const hasHigherPriority = (left: Entry, right: Entry): boolean => {
+    if (left.value !== right.value) {
+      return left.value < right.value
+    }
+
+    return left.arrayIndex < right.arrayIndex
+  }
+
+  const push = (entry: Entry): void => {
+    heap.push(entry)
+    let index = heap.length - 1
+
+    while (index > 0) {
+      const parent = Math.floor((index - 1) / 2)
+
+      if (hasHigherPriority(heap[parent], heap[index])) {
+        break
+      }
+
+      const parentEntry = heap[parent]
+      heap[parent] = heap[index]
+      heap[index] = parentEntry
+      index = parent
+    }
+  }
+
+  const pop = (): Entry => {
+    const minimum = heap[0]
+    const last = heap.pop()!
+
+    if (heap.length === 0) {
+      return minimum
+    }
+
+    heap[0] = last
+    let index = 0
+
+    while (true) {
+      const left = index * 2 + 1
+      const right = left + 1
+      let smallest = index
+
+      if (
+        left < heap.length &&
+        hasHigherPriority(heap[left], heap[smallest])
+      ) {
+        smallest = left
+      }
+
+      if (
+        right < heap.length &&
+        hasHigherPriority(heap[right], heap[smallest])
+      ) {
+        smallest = right
+      }
+
+      if (smallest === index) {
+        break
+      }
+
+      const currentEntry = heap[index]
+      heap[index] = heap[smallest]
+      heap[smallest] = currentEntry
+      index = smallest
+    }
+
+    return minimum
+  }
+
+  arrays.forEach((array, arrayIndex) => {
+    if (array.length > 0) {
+      push({ value: array[0], arrayIndex, itemIndex: 0 })
+    }
+  })
+
+  const result: number[] = []
+
+  while (heap.length > 0) {
+    const entry = pop()
+    result.push(entry.value)
+    const nextIndex = entry.itemIndex + 1
+
+    if (nextIndex < arrays[entry.arrayIndex].length) {
+      push({
+        value: arrays[entry.arrayIndex][nextIndex],
+        arrayIndex: entry.arrayIndex,
+        itemIndex: nextIndex,
+      })
+    }
+  }
+
+  return result
+}
+```
+
+Example output: `[1, 2, 3, 4, 5, 6, 7, 8]`.
+
+The comparator first uses the value, then the source-array position when values are equal. That second comparison makes removal order predictable.
+
+## Common mistakes
+
+- Using a max-heap when the smallest retained top-k value must be replaced.
+- Reversing the comparator and removing the wrong priority.
+- Forgetting deterministic tie-breakers for record entries.
+- Reading the root after removing the final heap item without checking length.
+- Sorting the full input while claiming O(n log k) time.
+- Adding every value from every sorted source to the heap at once.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+1. Maintain a size-k min-heap.
+2. Track active meeting end times.
+3. Merge sorted sources with one queued entry per source.
+4. Explain heap direction, comparators, and sorting tradeoffs.

@@ -11,6 +11,21 @@ import {
 import { cn } from '@/lib/cn'
 
 import { MdxCodeBlock } from './MdxCodeBlock'
+import {
+  BacktrackingDiagram,
+  BinarySearchDiagram,
+  BinarySearchTreeDiagram,
+  BinaryTreeDiagram,
+  DifferenceArrayDiagram,
+  GraphDiagram,
+  HeapDiagram,
+  LinkedListDiagram,
+  QueueDequeDiagram,
+  SlidingWindowDiagram,
+  StackDiagram,
+  TwoPointersDiagram,
+  WeightedGraphDiagram,
+} from './StructureDiagrams'
 
 type MdxComponent = ComponentType<{
   components?: typeof mdxComponents
@@ -23,6 +38,19 @@ type MdxProps = {
 const exampleLabelPattern = /^(Example (?:prompt|input|output)):\s*/
 
 const mdxComponents = {
+  BacktrackingDiagram,
+  BinarySearchDiagram,
+  BinarySearchTreeDiagram,
+  BinaryTreeDiagram,
+  DifferenceArrayDiagram,
+  GraphDiagram,
+  HeapDiagram,
+  LinkedListDiagram,
+  QueueDequeDiagram,
+  SlidingWindowDiagram,
+  StackDiagram,
+  TwoPointersDiagram,
+  WeightedGraphDiagram,
   h1: ({ className, ...props }: ComponentProps<'h1'>) => (
     <h1
       className={cn('mb-4 text-3xl font-semibold tracking-normal', className)}

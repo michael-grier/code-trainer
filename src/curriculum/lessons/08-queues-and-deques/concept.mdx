@@ -4,6 +4,8 @@ A queue processes items in first-in, first-out order. Add items at the back and 
 
 In TypeScript, an array plus numeric indexes can represent these structures without the repeated reindexing cost of `Array.shift()`.
 
+<QueueDequeDiagram />
+
 ## Process work in arrival order
 
 Example prompt: Jobs receive a fixed amount of processing time. Process the first queued job, then add it to the back if work remains. Return the processing order.

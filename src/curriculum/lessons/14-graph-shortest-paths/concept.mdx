@@ -1,14 +1,235 @@
 # Graph Shortest Paths
 
-This placeholder concept page reserves the lesson slot for **Graph Shortest Paths**. The content pass will replace it with the final interview-focused MDX lesson.
+A shortest route depends on what an edge costs and which routes are allowed. Before choosing an algorithm, ask three direct questions: Are all edge costs equal? Are all weights nonnegative? Is there a limit on the number of edges?
 
-## What this lesson will cover
+<WeightedGraphDiagram />
 
-- Core interview signals for graph shortest paths.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+## Equal edge costs: breadth-first search
+
+Example prompt: Return the smallest number of directed edges from `start` to `target`, or `-1` when the target cannot be reached.
+
+Breadth-first search visits routes in increasing edge count. When it first reaches a vertex, no later route can reach that vertex with fewer edges.
+
+Example input: `graph = [[1, 2], [3], [3], []]`, `start = 0`, `target = 3`.
+
+```ts
+export function shortestUnweightedDistance(
+  graph: number[][],
+  start: number,
+  target: number,
+): number {
+  if (
+    start < 0 ||
+    start >= graph.length ||
+    target < 0 ||
+    target >= graph.length
+  ) {
+    return -1
+  }
+
+  const distances = Array<number>(graph.length).fill(-1)
+  distances[start] = 0
+  const queue = [start]
+  let readIndex = 0
+
+  while (readIndex < queue.length) {
+    const vertex = queue[readIndex]
+    readIndex += 1
+
+    if (vertex === target) {
+      return distances[vertex]
+    }
+
+    for (const neighbor of graph[vertex]) {
+      if (distances[neighbor] === -1) {
+        distances[neighbor] = distances[vertex] + 1
+        queue.push(neighbor)
+      }
+    }
+  }
+
+  return -1
+}
+```
+
+Example output: `2`.
+
+The distance array also serves as visited state. A value of `-1` means the vertex has not entered the queue.
+
+## Nonnegative weights: Dijkstra's algorithm
+
+Example prompt: A signal follows directed edges with nonnegative travel times. Return the earliest time when every vertex has received it, or `-1` when a vertex is unreachable.
+
+Dijkstra's algorithm keeps the shortest known distance to each vertex. A min-heap supplies the route with the smallest current distance. When a shorter route to a vertex is found, record it and add a new heap entry. An older entry may remain in the heap, so skip it when its distance no longer matches the recorded distance.
+
+Example input: `nodeCount = 3`, `edges = [[0, 1, 2], [0, 2, 5], [1, 2, 1]]`, `start = 0`.
+
+```ts
+type DistanceEntry = [distance: number, vertex: number]
+
+// These helpers maintain the smallest distance at index zero.
+function pushDistance(heap: DistanceEntry[], entry: DistanceEntry): void {
+  heap.push(entry)
+  let index = heap.length - 1
+
+  while (index > 0) {
+    const parent = Math.floor((index - 1) / 2)
+
+    if (heap[parent][0] <= heap[index][0]) {
+      break
+    }
+
+    const parentEntry = heap[parent]
+    heap[parent] = heap[index]
+    heap[index] = parentEntry
+    index = parent
+  }
+}
+
+function popDistance(heap: DistanceEntry[]): DistanceEntry {
+  const closest = heap[0]
+  const last = heap.pop()!
+
+  if (heap.length === 0) {
+    return closest
+  }
+
+  heap[0] = last
+  let index = 0
+
+  while (true) {
+    const left = index * 2 + 1
+    const right = left + 1
+    let smallest = index
+
+    if (left < heap.length && heap[left][0] < heap[smallest][0]) {
+      smallest = left
+    }
+
+    if (right < heap.length && heap[right][0] < heap[smallest][0]) {
+      smallest = right
+    }
+
+    if (smallest === index) {
+      break
+    }
+
+    const currentEntry = heap[index]
+    heap[index] = heap[smallest]
+    heap[smallest] = currentEntry
+    index = smallest
+  }
+
+  return closest
+}
+
+export function networkDelayTime(
+  nodeCount: number,
+  edges: Array<[number, number, number]>,
+  start: number,
+): number {
+  const graph = Array.from({ length: nodeCount }, () =>
+    [] as Array<[vertex: number, time: number]>,
+  )
+
+  for (const [from, to, time] of edges) {
+    graph[from].push([to, time])
+  }
+
+  const distances = Array<number>(nodeCount).fill(Infinity)
+  distances[start] = 0
+  const heap: DistanceEntry[] = [[0, start]]
+
+  while (heap.length > 0) {
+    const [distance, vertex] = popDistance(heap)
+
+    if (distance !== distances[vertex]) {
+      continue
+    }
+
+    for (const [neighbor, travelTime] of graph[vertex]) {
+      const nextDistance = distance + travelTime
+
+      if (nextDistance < distances[neighbor]) {
+        distances[neighbor] = nextDistance
+        pushDistance(heap, [nextDistance, neighbor])
+      }
+    }
+  }
+
+  let delay = 0
+
+  for (const distance of distances) {
+    if (distance === Infinity) {
+      return -1
+    }
+
+    delay = Math.max(delay, distance)
+  }
+
+  return delay
+}
+```
+
+Example output: `3`.
+
+Nonnegative weights are required. A negative edge could later create a shorter route to a vertex whose distance had already been treated as final.
+
+## Limited edges: copied relaxation rounds
+
+Example prompt: Return the cheapest flight route using at most `maxStops` intermediate cities.
+
+At most `maxStops` intermediate cities means at most `maxStops + 1` edges. In each round, examine every flight but read only the previous round's prices. This makes one round add at most one edge.
+
+Example input: flights `[[0, 1, 100], [1, 2, 100], [0, 2, 500]]`, source `0`, destination `2`, and `maxStops = 1`.
+
+```ts
+export function cheapestRouteWithStops(
+  cityCount: number,
+  flights: Array<[number, number, number]>,
+  source: number,
+  destination: number,
+  maxStops: number,
+): number {
+  let prices = Array<number>(cityCount).fill(Infinity)
+  prices[source] = 0
+
+  for (let edgeCount = 0; edgeCount <= maxStops; edgeCount += 1) {
+    const nextPrices = [...prices]
+
+    for (const [from, to, price] of flights) {
+      if (prices[from] !== Infinity) {
+        nextPrices[to] = Math.min(nextPrices[to], prices[from] + price)
+      }
+    }
+
+    prices = nextPrices
+  }
+
+  return prices[destination] === Infinity ? -1 : prices[destination]
+}
+```
+
+Example output: `200`.
+
+Updating `prices` directly inside a round would allow a route to use several newly improved edges in that same round. That could exceed the stop limit. Copy first, write to the copy, then use it for the next round.
+
+## Common mistakes
+
+- Using depth-first search to find a shortest unweighted route.
+- Marking an unweighted vertex only after removing it from the queue.
+- Using Dijkstra's algorithm when edge weights can be negative.
+- Forgetting that a vertex may have old entries in the min-heap.
+- Returning the first weighted route that reaches the destination without proving it is cheapest.
+- Treating `maxStops` as the number of edges instead of intermediate vertices.
+- Updating the same price array that a limited relaxation round reads.
+- Returning a finite answer when some required network vertex is unreachable.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+You will practice the concepts in this order:
+
+1. Find a shortest route when every edge has equal cost.
+2. Find all shortest arrival times with nonnegative weights.
+3. Minimize price while limiting the number of intermediate vertices.
+4. Explain which shortest-path method matches each edge condition.

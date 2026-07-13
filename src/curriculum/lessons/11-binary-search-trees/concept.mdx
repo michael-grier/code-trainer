@@ -1,14 +1,128 @@
 # Binary Search Trees
 
-This placeholder concept page reserves the lesson slot for **Binary Search Trees**. The content pass will replace it with the final interview-focused MDX lesson.
+A binary search tree (BST) adds an ordering rule to a binary tree: every value in a node's left subtree is smaller, and every value in its right subtree is larger. This lesson assumes values are unique.
 
-## What this lesson will cover
+This ordering rule is the **BST invariant**.
 
-- Core interview signals for binary search trees.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+<BinarySearchTreeDiagram />
+
+The examples use this node shape:
+
+```ts
+type TreeNode = {
+  value: number
+  left: TreeNode | null
+  right: TreeNode | null
+}
+```
+
+## Use ordering during lookup
+
+Example prompt: Return whether a target exists in a valid BST.
+
+Example input: root `8`, left subtree values `3, 1, 6`, right subtree values `10, 14`, and target `6`.
+
+```ts
+export function containsBstValue(root: TreeNode | null, target: number): boolean {
+  let current = root
+
+  while (current) {
+    if (current.value === target) return true
+
+    // Ordering proves which one child can still contain target.
+    current = target < current.value ? current.left : current.right
+  }
+
+  return false
+}
+```
+
+Example output: `true`.
+
+Unlike a general-tree search, this function visits only one child at each node. Runtime is O(h) for tree height `h`.
+
+## Validate ranges from every ancestor
+
+Example prompt: Return whether a binary tree follows the strict BST ordering rule, also called the BST invariant.
+
+A parent-only comparison is insufficient. A value in the right subtree of `10` must remain greater than `10`, even when its direct parent is `15`.
+
+Example input: root `10` has left child `5` and right child `15`; node `15` has left child `6`.
+
+```ts
+export function isValidBinarySearchTree(root: TreeNode | null): boolean {
+  const validate = (
+    node: TreeNode | null,
+    lower: number,
+    upper: number,
+  ): boolean => {
+    if (!node) return true
+    if (node.value <= lower || node.value >= upper) return false
+
+    // Each child receives the new bound created by this node.
+    return validate(node.left, lower, node.value) &&
+      validate(node.right, node.value, upper)
+  }
+
+  return validate(root, Number.NEGATIVE_INFINITY, Number.POSITIVE_INFINITY)
+}
+```
+
+Example output: `false`, because `6` is below the required lower bound `10`.
+
+## Read values in sorted order
+
+Example prompt: Return the value at one-based sorted position `k` in a BST.
+
+Inorder traversal visits left subtree, node, then right subtree. Under the BST invariant, that order is ascending.
+
+Example input: BST values `[1, 3, 6, 8, 10, 14]`, `k = 4`.
+
+```ts
+export function kthSmallestBstValue(
+  root: TreeNode | null,
+  k: number,
+): number | null {
+  if (k <= 0) return null
+
+  const stack: TreeNode[] = []
+  let current = root
+  let visited = 0
+
+  while (current || stack.length > 0) {
+    while (current) {
+      stack.push(current)
+      current = current.left
+    }
+
+    current = stack.pop()!
+    visited += 1
+    if (visited === k) return current.value
+    current = current.right
+  }
+
+  return null
+}
+```
+
+Example output: `8`.
+
+## Tree height controls runtime
+
+A balanced BST has O(log n) height. Inserting already sorted values without balancing can produce a chain with O(n) height. Search and insertion then take O(n) time. State whether the tree is balanced before claiming logarithmic runtime.
+
+## Common mistakes
+
+- Comparing a node only with its parent during validation.
+- Allowing equality without a stated duplicate-value rule.
+- Searching both children even though ordering excludes one child.
+- Using preorder instead of inorder for sorted output.
+- Assuming every BST is balanced.
+- Forgetting that recursive and iterative traversal use O(h) auxiliary space.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+1. Use ordering to search one path.
+2. Validate complete ancestor bounds.
+3. Stop an inorder traversal at a requested sorted position.
+4. Explain ordering, duplicates, traversal order, and height-dependent runtime.

@@ -1,14 +1,191 @@
 # Graph Traversal
 
-This placeholder concept page reserves the lesson slot for **Graph Traversal**. The content pass will replace it with the final interview-focused MDX lesson.
+A graph contains vertices connected by edges. An adjacency list stores the neighbors of each vertex. Unlike a tree, a graph can contain cycles and several routes to the same vertex, so traversal must record which vertices have already been scheduled.
 
-## What this lesson will cover
+<GraphDiagram />
 
-- Core interview signals for graph traversal.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+## Visit vertices by distance from the start
+
+Example prompt: Starting at one vertex, return reachable vertices in breadth-first order. Use each adjacency-list row's given neighbor order.
+
+Breadth-first search uses a queue. Mark a vertex visited when it enters the queue. Waiting until removal can allow several neighbors to add the same vertex.
+
+Example input: `graph = [[1, 2], [3], [3], []]`, `start = 0`.
+
+```ts
+export function breadthFirstTraversal(
+  graph: number[][],
+  start: number,
+): number[] {
+  if (start < 0 || start >= graph.length) {
+    return []
+  }
+
+  const visited = new Set<number>([start])
+  const queue = [start]
+  const order: number[] = []
+  let readIndex = 0
+
+  while (readIndex < queue.length) {
+    const vertex = queue[readIndex]
+    readIndex += 1
+    order.push(vertex)
+
+    for (const neighbor of graph[vertex]) {
+      if (!visited.has(neighbor)) {
+        visited.add(neighbor)
+        queue.push(neighbor)
+      }
+    }
+  }
+
+  return order
+}
+```
+
+Example output: `[0, 1, 2, 3]`.
+
+The read position moves forward through the array. This preserves queue order without repeatedly calling `shift()`, which would move every remaining element.
+
+## Treat a grid as a graph
+
+Example prompt: Count groups of land cells connected through shared top, bottom, left, or right edges. Diagonal contact does not connect land.
+
+Each grid cell is a vertex. The four allowed moves define its possible edges. Start a search at each unvisited land cell and mark the complete connected region.
+
+Example input: `grid = ["110", "010", "101"]`.
+
+```ts
+export function countGridIslands(grid: string[]): number {
+  if (grid.length === 0 || grid[0].length === 0) {
+    return 0
+  }
+
+  const rowCount = grid.length
+  const columnCount = grid[0].length
+  const visited = Array.from({ length: rowCount }, () =>
+    Array<boolean>(columnCount).fill(false),
+  )
+  const directions = [
+    [-1, 0],
+    [1, 0],
+    [0, -1],
+    [0, 1],
+  ]
+  let islandCount = 0
+
+  for (let row = 0; row < rowCount; row += 1) {
+    for (let column = 0; column < columnCount; column += 1) {
+      if (grid[row][column] !== '1' || visited[row][column]) {
+        continue
+      }
+
+      islandCount += 1
+      visited[row][column] = true
+      const stack: Array<[number, number]> = [[row, column]]
+
+      while (stack.length > 0) {
+        const [currentRow, currentColumn] = stack.pop()!
+
+        for (const [rowChange, columnChange] of directions) {
+          const nextRow = currentRow + rowChange
+          const nextColumn = currentColumn + columnChange
+          const isInside =
+            nextRow >= 0 &&
+            nextRow < rowCount &&
+            nextColumn >= 0 &&
+            nextColumn < columnCount
+
+          if (
+            isInside &&
+            grid[nextRow][nextColumn] === '1' &&
+            !visited[nextRow][nextColumn]
+          ) {
+            visited[nextRow][nextColumn] = true
+            stack.push([nextRow, nextColumn])
+          }
+        }
+      }
+    }
+  }
+
+  return islandCount
+}
+```
+
+Example output: `3`.
+
+The separate `visited` grid leaves the input unchanged. If changing the input were allowed, replacing visited land with water could serve the same purpose.
+
+## Find whether a directed order exists
+
+Example prompt: Each pair `[course, prerequisite]` requires one course before another. Return whether every course can be completed.
+
+Direct each edge from prerequisite to course. Count each course's remaining incoming edges. A course with zero incoming edges can be completed now. Completing it removes one incoming edge from every course that follows it.
+
+Example input: `courseCount = 3`, `prerequisites = [[1, 0], [2, 1]]`.
+
+```ts
+export function canFinishAllCourses(
+  courseCount: number,
+  prerequisites: Array<[number, number]>,
+): boolean {
+  const nextCourses = Array.from({ length: courseCount }, () => [] as number[])
+  const remainingPrerequisites = Array<number>(courseCount).fill(0)
+
+  for (const [course, prerequisite] of prerequisites) {
+    nextCourses[prerequisite].push(course)
+    remainingPrerequisites[course] += 1
+  }
+
+  const queue: number[] = []
+
+  for (let course = 0; course < courseCount; course += 1) {
+    if (remainingPrerequisites[course] === 0) {
+      queue.push(course)
+    }
+  }
+
+  let readIndex = 0
+  let finishedCount = 0
+
+  while (readIndex < queue.length) {
+    const course = queue[readIndex]
+    readIndex += 1
+    finishedCount += 1
+
+    for (const nextCourse of nextCourses[course]) {
+      remainingPrerequisites[nextCourse] -= 1
+
+      if (remainingPrerequisites[nextCourse] === 0) {
+        queue.push(nextCourse)
+      }
+    }
+  }
+
+  return finishedCount === courseCount
+}
+```
+
+Example output: `true`.
+
+If a directed cycle remains, every course in that cycle still depends on another course in the same cycle. None can enter the queue, so the finished count is smaller than the course count.
+
+## Common mistakes
+
+- Traversing a graph without visited state.
+- Marking a vertex visited only after removing it from the queue or stack.
+- Using `shift()` repeatedly for a large breadth-first queue.
+- Assuming every vertex is reachable from the chosen start.
+- Connecting diagonal grid cells when only shared edges are allowed.
+- Reversing the direction of a prerequisite edge.
+- Checking only one connected part when a cycle may exist elsewhere.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+You will practice the concepts in this order:
+
+1. Produce a deterministic breadth-first traversal.
+2. Find connected regions in a grid without changing the input.
+3. Detect whether directed prerequisites allow a complete order.
+4. Explain traversal choice, visited timing, grid movement, and directed cycles.

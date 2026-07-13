@@ -1,15 +1,20 @@
 import { describe, expect, it } from 'vitest'
 
 import { lesson as arraysAndHashing } from './lessons/01-arrays-and-hashing'
-import { lesson as binarySearch } from './lessons/05-binary-search'
-import { lesson as linkedLists } from './lessons/09-linked-lists'
-import { lesson as prefixSumsAndDifferenceArrays } from './lessons/04-prefix-sums-and-difference-arrays'
-import { lesson as queuesAndDeques } from './lessons/08-queues-and-deques'
+import { lesson as twoPointers } from './lessons/02-two-pointers'
 import { lesson as slidingWindow } from './lessons/03-sliding-window'
+import { lesson as prefixSumsAndDifferenceArrays } from './lessons/04-prefix-sums-and-difference-arrays'
+import { lesson as binarySearch } from './lessons/05-binary-search'
 import { lesson as sortingAndComparisonPatterns } from './lessons/06-sorting-and-comparison-patterns'
 import { lesson as stacksAndMonotonicStacks } from './lessons/07-stacks-and-monotonic-stacks'
+import { lesson as queuesAndDeques } from './lessons/08-queues-and-deques'
+import { lesson as linkedLists } from './lessons/09-linked-lists'
 import { lesson as treesAndRecursion } from './lessons/10-trees-and-recursion'
-import { lesson as twoPointers } from './lessons/02-two-pointers'
+import { lesson as binarySearchTrees } from './lessons/11-binary-search-trees'
+import { lesson as heapsAndPriorityQueues } from './lessons/12-heaps-and-priority-queues'
+import { lesson as graphTraversal } from './lessons/13-graph-traversal'
+import { lesson as graphShortestPaths } from './lessons/14-graph-shortest-paths'
+import { lesson as backtracking } from './lessons/15-backtracking'
 
 import type { Approach, Lesson, Problem } from './types'
 
@@ -24,6 +29,11 @@ const authoredAlgorithmLessons = [
   queuesAndDeques,
   linkedLists,
   treesAndRecursion,
+  binarySearchTrees,
+  heapsAndPriorityQueues,
+  graphTraversal,
+  graphShortestPaths,
+  backtracking,
 ]
 
 const unsupportedCompanyClaimPattern =

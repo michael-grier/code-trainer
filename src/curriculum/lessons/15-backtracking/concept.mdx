@@ -1,14 +1,165 @@
 # Backtracking
 
-This placeholder concept page reserves the lesson slot for **Backtracking**. The content pass will replace it with the final interview-focused MDX lesson.
+Backtracking explores possible results one choice at a time. One recursive call represents a partial result. It adds an allowed choice, explores everything that begins with that choice, then removes the choice before trying another.
 
-## What this lesson will cover
+<BacktrackingDiagram />
 
-- Core interview signals for backtracking.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+The repeated pattern is:
+
+1. Record a complete result or stop an impossible branch.
+2. Loop through allowed next choices.
+3. Add one choice to the current state.
+4. Search from the new state.
+5. Remove the choice and restore related state.
+
+## Record every partial selection
+
+Example prompt: Return every subset of distinct input values. Preserve input order within each subset.
+
+Every partial selection is already a valid subset, including the empty selection. Record a copy at the start of each call. Then add each value at or after the start position.
+
+Example input: `values = [1, 2]`.
+
+```ts
+export function generateAllSubsets(values: number[]): number[][] {
+  const subsets: number[][] = []
+  const current: number[] = []
+
+  const search = (startIndex: number): void => {
+    subsets.push([...current])
+
+    for (let index = startIndex; index < values.length; index += 1) {
+      current.push(values[index])
+      search(index + 1)
+      current.pop()
+    }
+  }
+
+  search(0)
+  return subsets
+}
+```
+
+Example output: `[[], [1], [1, 2], [2]]`.
+
+Store `[...current]`, not `current`. The search changes the same `current` array many times. Storing the array itself would make all recorded results refer to one changing value.
+
+## Stop a branch that cannot reach the target
+
+Example prompt: Return combinations of ascending positive candidates that add to a target. Each candidate may be used several times.
+
+The remaining sum describes how much the partial combination still needs. A remaining sum of zero completes one result. Passing the current index into the next call allows that candidate to be chosen again.
+
+Example input: `candidates = [2, 3, 6, 7]`, `target = 7`.
+
+```ts
+export function reusableCombinationSums(
+  candidates: number[],
+  target: number,
+): number[][] {
+  const combinations: number[][] = []
+  const current: number[] = []
+
+  const search = (startIndex: number, remaining: number): void => {
+    if (remaining === 0) {
+      combinations.push([...current])
+      return
+    }
+
+    for (let index = startIndex; index < candidates.length; index += 1) {
+      const candidate = candidates[index]
+
+      if (candidate > remaining) {
+        break
+      }
+
+      current.push(candidate)
+      search(index, remaining - candidate)
+      current.pop()
+    }
+  }
+
+  search(0, target)
+  return combinations
+}
+```
+
+Example output: `[[2, 2, 3], [7]]`.
+
+Because candidates are positive and ascending, no later candidate can fit after one candidate exceeds the remaining sum. The loop can stop at that point.
+
+## Track constraints without scanning old choices
+
+Example prompt: Place one queen in each row of an `n × n` board. Return how many arrangements contain no shared column or diagonal.
+
+Place rows from top to bottom. Sets record which columns and diagonals are already attacked. For a cell at `(row, column)`, `row - column` identifies its downward diagonal and `row + column` identifies its upward diagonal.
+
+Example input: `n = 4`.
+
+```ts
+export function countNQueensArrangements(n: number): number {
+  const usedColumns = new Set<number>()
+  const usedDownDiagonals = new Set<number>()
+  const usedUpDiagonals = new Set<number>()
+
+  const search = (row: number): number => {
+    if (row === n) {
+      return 1
+    }
+
+    let count = 0
+
+    for (let column = 0; column < n; column += 1) {
+      const downDiagonal = row - column
+      const upDiagonal = row + column
+
+      if (
+        usedColumns.has(column) ||
+        usedDownDiagonals.has(downDiagonal) ||
+        usedUpDiagonals.has(upDiagonal)
+      ) {
+        continue
+      }
+
+      usedColumns.add(column)
+      usedDownDiagonals.add(downDiagonal)
+      usedUpDiagonals.add(upDiagonal)
+
+      count += search(row + 1)
+
+      usedColumns.delete(column)
+      usedDownDiagonals.delete(downDiagonal)
+      usedUpDiagonals.delete(upDiagonal)
+    }
+
+    return count
+  }
+
+  return search(0)
+}
+```
+
+Example output: `2`.
+
+Each set addition belongs to one proposed queen. Delete all three values after the recursive call so the next column is tested against only the queens that are still on the board.
+
+## Common mistakes
+
+- Recording a mutable result array without copying it.
+- Adding a choice without removing it after the recursive call.
+- Removing the array choice but forgetting to restore a related set or counter.
+- Generating the same combination in different orders.
+- Passing `index + 1` when a value may be reused.
+- Passing `index` when a value may be used only once.
+- Continuing a branch after positive ascending values have exceeded the target.
+- Checking every old queen instead of storing occupied columns and diagonals.
+- Reporting only the recursion depth and ignoring the number of possible branches.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+You will practice the concepts in this order:
+
+1. Record every partial selection as a subset.
+2. Reuse choices while stopping branches that cannot reach a target sum.
+3. Maintain and restore several placement constraints.
+4. Explain partial state, completion, early stopping, copies, and restoration.

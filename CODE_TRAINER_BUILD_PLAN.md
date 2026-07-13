@@ -1090,6 +1090,7 @@ Use these principles when replacing placeholder lessons with final curriculum co
 - Explain compact encodings before relying on them. If a string, tuple, bit mask, count array, or serialized key represents something meaningful, spell out how to read it.
 - State assumptions before they matter, especially input shape, casing, ordering guarantees, mutation expectations, and runtime complexity targets.
 - Keep examples small, complete, and self-contained. Define setup values before using them, and prefer a short named function over a detached snippet when the reader needs inputs, output, control flow, and return behavior.
+- Add a simple diagram after the initial explanation when a visual representation would make the concept easier to understand. Diagrams are especially useful for spatial relationships, data-structure shape, pointer or boundary movement, and branching control flow. Include them only when they clarify the lesson; do not add decorative or repetitive visuals.
 - Use whiteboard-style comments in teaching examples and reference approaches. Comments should outline the reasoning steps an engineer would say aloud, then the code below each comment should perform that step.
 - Use plain, literal language in comments and explanations. Prefer direct phrases such as "decrease the required count" over metaphorical wording.
 - Pair abstract language with an immediate example. If the lesson says "preserve an invariant", name the invariant in plain English and show the update that maintains it.
@@ -1108,6 +1109,7 @@ Use these principles when replacing placeholder lessons with final curriculum co
 Before treating a lesson as authored, check the following:
 
 - The concept page names the core pattern, shows self-contained examples, and does not reference undefined variables or prior context.
+- When a visual representation would aid understanding, the concept page includes a simple diagram immediately after the initial explanation. The diagram has a plain-language caption, works in light and dark themes, remains contained on mobile, and does not rely on visual details alone to convey required information.
 - Practice problems map to recognizable interview patterns or practical engineering scenarios without making unsupported company-specific claims.
 - Pattern-selection sections include a concrete prompt example before the related code.
 - Prompt-rooted concept examples include concrete input before the function and expected output after the function.
