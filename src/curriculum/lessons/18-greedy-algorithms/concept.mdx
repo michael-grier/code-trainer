@@ -1,14 +1,193 @@
 # Greedy Algorithms
 
-This placeholder concept page reserves the lesson slot for **Greedy Algorithms**. The content pass will replace it with the final interview-focused MDX lesson.
+A greedy algorithm makes one preferred choice at a time and does not reconsider earlier choices. This is safe only when that choice cannot remove a better complete answer. The rule needs a correctness argument, not only examples where it works.
 
-## What this lesson will cover
+<GreedyAlgorithmDiagram />
 
-- Core interview signals for greedy algorithms.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+A common proof compares the greedy choice with a choice in an optimal answer. If the optimal choice can be replaced by the greedy choice without making the result worse, the rest of the problem remains valid.
+
+## Keep only the farthest reachable boundary
+
+Example prompt: Each array value gives the maximum forward jump from its index. Return whether the final index is reachable.
+
+Every index at or before `farthestReachable` can be visited by some sequence of jumps. Individual routes no longer matter after their largest reachable boundary is known.
+
+Example input: `maximumJumps = [2, 3, 1, 1, 4]`.
+
+```ts
+export function canReachLastIndex(maximumJumps: number[]): boolean {
+  let farthestReachable = 0
+
+  for (let index = 0; index <= farthestReachable; index += 1) {
+    farthestReachable = Math.max(
+      farthestReachable,
+      index + maximumJumps[index],
+    )
+
+    if (farthestReachable >= maximumJumps.length - 1) {
+      return true
+    }
+  }
+
+  return false
+}
+```
+
+Example output: `true`.
+
+The loop stops when `index` moves beyond the reachable boundary. A zero inside the boundary is harmless if an earlier index already reaches beyond it.
+
+## Leave the most room for later intervals
+
+Example prompt: Return the maximum number of half-open meetings one person can attend without overlap.
+
+Sort meetings by end time and select the next compatible meeting that ends earliest. Replacing a later-ending first choice with this meeting cannot reduce the time available afterward.
+
+Example input: `meetings = [[1, 3], [2, 4], [3, 5], [0, 7], [5, 7]]`.
+
+```ts
+type Meeting = [start: number, end: number]
+
+export function maximumNonOverlappingMeetings(meetings: Meeting[]): number {
+  const sorted = meetings
+    .map(([start, end]): Meeting => [start, end])
+    .sort((left, right) => left[1] - right[1] || left[0] - right[0])
+
+  let selectedCount = 0
+  let previousEnd = Number.NEGATIVE_INFINITY
+
+  for (const [start, end] of sorted) {
+    if (start >= previousEnd) {
+      selectedCount += 1
+      previousEnd = end
+    }
+  }
+
+  return selectedCount
+}
+```
+
+Example output: `3`.
+
+Sorting by start time does not provide the same guarantee. An early-starting meeting may occupy most of the schedule and block several shorter meetings.
+
+## Delay a choice until it becomes necessary
+
+Example prompt: Minimize refueling stops while traveling through stations with known positions and fuel amounts.
+
+Store the fuel amount from every station inside the current reachable range, but delay committing to a stop. When the recorded range is insufficient, choose the largest stored amount. This represents deciding that the vehicle stopped at that earlier station.
+
+Example input: `target = 100`, `startFuel = 10`, `stations = [[10, 60], [20, 30], [30, 30], [60, 40]]`.
+
+```ts
+function pushMax(heap: number[], value: number): void {
+  heap.push(value)
+  let index = heap.length - 1
+
+  while (index > 0) {
+    const parent = Math.floor((index - 1) / 2)
+
+    if (heap[parent] >= heap[index]) {
+      break
+    }
+
+    const parentValue = heap[parent]
+    heap[parent] = heap[index]
+    heap[index] = parentValue
+    index = parent
+  }
+}
+
+function popMax(heap: number[]): number {
+  const maximum = heap[0]
+  const last = heap.pop()!
+
+  if (heap.length === 0) {
+    return maximum
+  }
+
+  heap[0] = last
+  let index = 0
+
+  while (true) {
+    const left = index * 2 + 1
+    const right = left + 1
+    let largest = index
+
+    if (left < heap.length && heap[left] > heap[largest]) {
+      largest = left
+    }
+
+    if (right < heap.length && heap[right] > heap[largest]) {
+      largest = right
+    }
+
+    if (largest === index) {
+      break
+    }
+
+    const currentValue = heap[index]
+    heap[index] = heap[largest]
+    heap[largest] = currentValue
+    index = largest
+  }
+
+  return maximum
+}
+
+export function minimumRefuelStops(
+  target: number,
+  startFuel: number,
+  stations: Array<[position: number, fuel: number]>,
+): number {
+  const availableFuel: number[] = []
+  let reachablePosition = startFuel
+  let stationIndex = 0
+  let stopCount = 0
+
+  while (reachablePosition < target) {
+    while (
+      stationIndex < stations.length &&
+      stations[stationIndex][0] <= reachablePosition
+    ) {
+      pushMax(availableFuel, stations[stationIndex][1])
+      stationIndex += 1
+    }
+
+    if (availableFuel.length === 0) {
+      return -1
+    }
+
+    reachablePosition += popMax(availableFuel)
+    stopCount += 1
+  }
+
+  return stopCount
+}
+```
+
+Example output: `2`.
+
+The heap supplies the largest unused fuel amount from stations inside the reachable range. The greedy decision is which reachable station to count as a stop when more range becomes necessary.
+
+## When a greedy rule is unsafe
+
+Coin denominations `[1, 3, 4]` show why a plausible local rule is not enough. Repeatedly choosing the largest coin for amount `6` uses `4 + 1 + 1`, but `3 + 3` uses fewer coins. Without a proof that the local rule preserves an optimal result, use dynamic programming or another complete search method.
+
+## Common mistakes
+
+- Calling an algorithm greedy without stating its local choice.
+- Supporting the rule with examples but no replacement or boundary argument.
+- Tracking every jump route when only the farthest boundary matters.
+- Sorting intervals by start time when the goal is to maximize the count.
+- Treating half-open intervals that share an endpoint as overlapping.
+- Refueling immediately at every station instead of delaying the decision.
+- Using the smallest available fuel when each required stop should add the most reach.
+- Applying a coin-selection rule that is not valid for every denomination set.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+1. Summarize all reachable jump routes with one boundary.
+2. Select intervals by earliest compatible finish.
+3. Delay refueling choices and take the largest past option when required.
+4. Explain the local rule, correctness argument, and signs that greedy choice is unsafe.

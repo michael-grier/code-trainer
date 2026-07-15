@@ -1,14 +1,131 @@
 # Advanced Dynamic Programming
 
-This placeholder concept page reserves the lesson slot for **Advanced Dynamic Programming**. The content pass will replace it with the final interview-focused MDX lesson.
+Some dynamic programming states need more than one position. A grid path depends on row and column, a comparison between two strings depends on a position in each string, and a selection problem may depend on both the next item and remaining capacity.
 
-## What this lesson will cover
+<AdvancedDynamicProgrammingDiagram />
 
-- Core interview signals for advanced dynamic programming.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+Add a dimension only when it changes the answer independently. Then write the state meaning before choosing a table shape or storage optimization.
+
+## Read neighboring grid states
+
+Example prompt: Move right or down through a nonnegative grid and return the minimum sum from the top-left cell to the bottom-right cell.
+
+Let the state at `(row, column)` be the minimum sum of a path ending at that cell. The final move comes from above or the left.
+
+Example input: `grid = [[1, 3, 1], [1, 5, 1], [4, 2, 1]]`.
+
+```ts
+export function minimumGridPathSum(grid: number[][]): number {
+  const columnCount = grid[0].length
+  const minimumSums = Array<number>(columnCount).fill(Infinity)
+  minimumSums[0] = 0
+
+  for (let row = 0; row < grid.length; row += 1) {
+    for (let column = 0; column < columnCount; column += 1) {
+      const fromAbove = minimumSums[column]
+      const fromLeft = column > 0 ? minimumSums[column - 1] : Infinity
+
+      minimumSums[column] = grid[row][column] + Math.min(fromAbove, fromLeft)
+    }
+  }
+
+  return minimumSums[columnCount - 1]
+}
+```
+
+Example output: `7`.
+
+Before an entry is updated, it contains the result from the row above. After the previous entry is updated, that entry contains the current row's result from the left. This allows one array to represent both table rows.
+
+## Use one position from each string
+
+Example prompt: Return the longest length that appears as a subsequence of two strings. Characters may be skipped but not reordered.
+
+Let `lengths[i][j]` be the longest common subsequence length between the first `i` characters of `left` and the first `j` characters of `right`.
+
+Example input: `left = "abcde"`, `right = "ace"`.
+
+```ts
+export function longestCommonSubsequenceLength(
+  left: string,
+  right: string,
+): number {
+  const lengths = Array.from({ length: left.length + 1 }, () =>
+    Array<number>(right.length + 1).fill(0),
+  )
+
+  for (let leftLength = 1; leftLength <= left.length; leftLength += 1) {
+    for (let rightLength = 1; rightLength <= right.length; rightLength += 1) {
+      if (left[leftLength - 1] === right[rightLength - 1]) {
+        lengths[leftLength][rightLength] =
+          lengths[leftLength - 1][rightLength - 1] + 1
+      } else {
+        lengths[leftLength][rightLength] = Math.max(
+          lengths[leftLength - 1][rightLength],
+          lengths[leftLength][rightLength - 1],
+        )
+      }
+    }
+  }
+
+  return lengths[left.length][right.length]
+}
+```
+
+Example output: `3`.
+
+Empty prefixes produce the zero-filled first row and column. When final characters match, extend the result for both shorter prefixes. Otherwise, skip the final character from one input and keep the better result.
+
+## Preserve one-use choices during compression
+
+Example prompt: Select items at most once and maximize value without exceeding a weight capacity.
+
+A two-dimensional definition can use item count and capacity. It can be compressed to one capacity array, but update direction becomes part of correctness.
+
+Example input: `capacity = 5`, `weights = [1, 2, 3]`, `values = [6, 10, 12]`.
+
+```ts
+export function maximumKnapsackValue(
+  capacity: number,
+  weights: number[],
+  values: number[],
+): number {
+  const bestValues = Array<number>(capacity + 1).fill(0)
+
+  for (let item = 0; item < weights.length; item += 1) {
+    const weight = weights[item]
+    const value = values[item]
+
+    for (let currentCapacity = capacity; currentCapacity >= weight; currentCapacity -= 1) {
+      bestValues[currentCapacity] = Math.max(
+        bestValues[currentCapacity],
+        bestValues[currentCapacity - weight] + value,
+      )
+    }
+  }
+
+  return bestValues[capacity]
+}
+```
+
+Example output: `22`.
+
+Descending capacity prevents the current item from reading a state that the same item just updated. Ascending capacity would allow that item to be counted again.
+
+## Common mistakes
+
+- Adding dimensions without defining what each coordinate means.
+- Filling a table in an order that reads unfinished dependencies.
+- Confusing a subsequence with a contiguous substring.
+- Omitting the empty-prefix row or column in a string table.
+- Updating one-use knapsack capacity upward and reusing an item.
+- Compressing a table without checking whether overwritten values are still needed.
+- Returning only the optimal value when the prompt also requires the selected path or items.
+- Reporting table dimensions without including the time spent on every transition.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+1. Combine grid states from above and the left.
+2. Use one prefix position from each of two strings.
+3. Compress item-and-capacity state without allowing item reuse.
+4. Explain state dimensions, dependency order, reverse updates, and storage compression.

@@ -1,14 +1,127 @@
 # Big-O Analysis and Tradeoffs
 
-This placeholder concept page reserves the lesson slot for **Big-O Analysis and Tradeoffs**. The content pass will replace it with the final interview-focused MDX lesson.
+Big-O notation describes how runtime or storage grows as input size grows. It does not measure exact seconds. Define the input size first, identify the work that grows, and state the assumptions behind collection or library operations.
 
-## What this lesson will cover
+<ComplexityGrowthDiagram />
 
-- Core interview signals for big-o analysis and tradeoffs.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+Ignore constant multipliers and lower-growth terms when describing the final growth class. For example, O(3n + 8) becomes O(n), while O(n² + n) becomes O(n²).
+
+## Exchange memory for fewer comparisons
+
+Example prompt: Return whether an array contains a duplicate. Aim for O(n) average time and do not modify the input.
+
+Comparing every pair takes O(n²) time. A Set records earlier values so each new value needs one average O(1) membership check.
+
+Example input: `values = [4, 2, 7, 2]`.
+
+```ts
+export function hasDuplicateValue(values: number[]): boolean {
+  const seen = new Set<number>()
+
+  for (const value of values) {
+    if (seen.has(value)) {
+      return true
+    }
+
+    seen.add(value)
+  }
+
+  return false
+}
+```
+
+Example output: `true`.
+
+The improvement uses O(n) auxiliary space. State that Set lookup is O(1) on average rather than presenting it as an unconditional worst-case guarantee.
+
+## Retain the summary that removes a nested loop
+
+Example prompt: Choose one buy followed by one later sale and return the maximum nonnegative profit in O(n) time and O(1) space.
+
+A direct solution compares every valid buy-and-sell pair. For each selling time, only the cheapest earlier price is needed.
+
+Example input: `prices = [7, 1, 5, 3, 6, 4]`.
+
+```ts
+export function maximumSingleTradeProfit(prices: number[]): number {
+  let minimumEarlierPrice = Infinity
+  let bestProfit = 0
+
+  for (const price of prices) {
+    bestProfit = Math.max(bestProfit, price - minimumEarlierPrice)
+    minimumEarlierPrice = Math.min(minimumEarlierPrice, price)
+  }
+
+  return bestProfit
+}
+```
+
+Example output: `5`.
+
+The loop is O(n) because each price is processed once. The two numeric variables use O(1) auxiliary space. Updating profit before the minimum also ensures a price is not used as both buy and sale at the same time.
+
+## Use the input as bounded storage
+
+Example prompt: Return the smallest missing positive integer in O(n) time and O(1) extra space. The input may be modified.
+
+For an array of length `n`, the answer is between `1` and `n + 1`. Values below `1` or above `n` cannot fill a required index. Place each relevant value `v` at index `v - 1`, then scan for the first mismatch.
+
+Example input: `values = [3, 4, -1, 1]`.
+
+```ts
+export function smallestMissingPositive(values: number[]): number {
+  for (let index = 0; index < values.length; index += 1) {
+    while (
+      values[index] >= 1 &&
+      values[index] <= values.length &&
+      values[values[index] - 1] !== values[index]
+    ) {
+      const destination = values[index] - 1
+      const destinationValue = values[destination]
+      values[destination] = values[index]
+      values[index] = destinationValue
+    }
+  }
+
+  for (let index = 0; index < values.length; index += 1) {
+    if (values[index] !== index + 1) {
+      return index + 1
+    }
+  }
+
+  return values.length + 1
+}
+```
+
+Example output: `2`.
+
+The nested `while` does not make the algorithm O(n²). Every successful swap places at least one relevant value at its final index, so at most O(n) successful swaps occur across the complete outer loop.
+
+## Analyze the complete operation
+
+- Consecutive full scans add: O(n) + O(n) is O(n).
+- Independent nested full scans multiply: O(n) × O(n) is O(n²).
+- Repeatedly halving an active interval takes O(log n) steps.
+- Comparison sorting takes O(n log n) time in the general case.
+- Building an output of length n requires O(n) output space even when auxiliary space is O(1).
+- Recursive call depth counts toward auxiliary space.
+- Two independent input lengths should use separate variables such as `n` and `m`.
+
+## Common mistakes
+
+- Using `n` without stating what it measures.
+- Calling every nested loop O(n²) without counting total inner iterations.
+- Adding complexities for independent nested loops instead of multiplying them.
+- Ignoring sorting, slicing, spreading, or helper-function work.
+- Treating average O(1) hash lookup as an unconditional guarantee.
+- Ignoring recursion depth in space analysis.
+- Combining output space and auxiliary space without saying which is required.
+- Claiming O(1) extra space while allocating a Set, Map, or proportional array.
+- Optimizing a solution before the prompt's constraints require the added complexity.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+1. Use additional memory to remove repeated pair comparisons.
+2. Retain one summary value to replace a nested scan.
+3. Use input positions as storage to meet both time and space constraints.
+4. Explain input variables, dominant work, auxiliary space, and justified tradeoffs.

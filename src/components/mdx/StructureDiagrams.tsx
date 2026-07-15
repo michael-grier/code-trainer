@@ -738,3 +738,140 @@ export function BacktrackingDiagram() {
     </DiagramFrame>
   )
 }
+
+export function DynamicProgrammingDiagram() {
+  const arrowId = useArrowId('dynamic-programming-arrow')
+
+  return (
+    <DiagramFrame
+      caption="The result for step 5 reuses the stored results for steps 3 and 4 instead of calculating those smaller problems again."
+      viewBox="0 0 620 210"
+    >
+      <ArrowMarker id={arrowId} />
+      <ArrayCell index={3} label="3 ways" width={112} x={90} y={45} />
+      <ArrayCell index={4} label="5 ways" width={112} x={254} y={45} />
+      <ArrayCell emphasized index={5} label="8 ways" width={112} x={418} y={125} />
+      <Edge arrowId={arrowId} x1={190} x2={430} y1={99} y2={136} />
+      <Edge arrowId={arrowId} x1={350} x2={450} y1={99} y2={129} />
+    </DiagramFrame>
+  )
+}
+
+export function AdvancedDynamicProgrammingDiagram() {
+  const arrowId = useArrowId('advanced-dynamic-programming-arrow')
+  const values = [
+    ['1', '4', '5'],
+    ['2', '7', '6'],
+    ['6', '8', '7'],
+  ]
+
+  return (
+    <DiagramFrame
+      caption="A grid state has a row and column. This cell reads completed states from above and from the left."
+      viewBox="0 0 620 255"
+    >
+      <ArrowMarker id={arrowId} />
+      <text className="fill-muted-foreground text-sm font-medium" x="150" y="42">
+        column
+      </text>
+      <text className="fill-muted-foreground text-sm font-medium" x="110" y="122">
+        row
+      </text>
+      {values.flatMap((rowValues, row) =>
+        rowValues.map((value, column) => (
+          <ArrayCell
+            emphasized={row === 2 && column === 2}
+            key={`${row}-${column}`}
+            label={value}
+            width={64}
+            x={210 + column * 72}
+            y={30 + row * 60}
+          />
+        )),
+      )}
+      <Edge arrowId={arrowId} x1={386} x2={386} y1={142} y2={153} />
+      <Edge arrowId={arrowId} x1={346} x2={353} y1={176} y2={176} />
+      <text className="fill-muted-foreground text-xs" x="415" y="144">
+        from above
+      </text>
+      <text className="fill-muted-foreground text-xs" x="274" y="221">
+        from left
+      </text>
+    </DiagramFrame>
+  )
+}
+
+export function GreedyAlgorithmDiagram() {
+  return (
+    <DiagramFrame
+      caption="Selecting the compatible meeting that ends earliest leaves the largest remaining part of the timeline for later meetings."
+      viewBox="0 0 620 245"
+    >
+      <line className="stroke-muted-foreground" strokeWidth="2" x1="75" x2="555" y1="200" y2="200" />
+      {[0, 1, 2, 3, 4, 5, 6, 7].map((time) => (
+        <g key={time}>
+          <line
+            className="stroke-muted-foreground"
+            strokeWidth="1.5"
+            x1={95 + time * 62}
+            x2={95 + time * 62}
+            y1="194"
+            y2="206"
+          />
+          <text
+            className="fill-muted-foreground text-xs"
+            textAnchor="middle"
+            x={95 + time * 62}
+            y="225"
+          >
+            {time}
+          </text>
+        </g>
+      ))}
+      <rect className="fill-accent stroke-primary" height="30" rx="6" strokeWidth="2" width="124" x="157" y="35" />
+      <rect className="fill-muted stroke-border" height="30" rx="6" strokeWidth="1.5" width="124" x="219" y="75" />
+      <rect className="fill-accent stroke-primary" height="30" rx="6" strokeWidth="2" width="124" x="281" y="115" />
+      <rect className="fill-accent stroke-primary" height="30" rx="6" strokeWidth="2" width="124" x="405" y="155" />
+      <text className="fill-foreground text-xs font-medium" textAnchor="middle" x="219" y="55">
+        select [1, 3)
+      </text>
+      <text className="fill-muted-foreground text-xs" textAnchor="middle" x="281" y="95">
+        skip [2, 4)
+      </text>
+      <text className="fill-foreground text-xs font-medium" textAnchor="middle" x="343" y="135">
+        select [3, 5)
+      </text>
+      <text className="fill-foreground text-xs font-medium" textAnchor="middle" x="467" y="175">
+        select [5, 7)
+      </text>
+    </DiagramFrame>
+  )
+}
+
+export function ComplexityGrowthDiagram() {
+  return (
+    <DiagramFrame
+      caption="As input grows, constant and logarithmic work grow least, followed by linear, n log n, and quadratic work."
+      viewBox="0 0 620 285"
+    >
+      <line className="stroke-muted-foreground" strokeWidth="2" x1="70" x2="560" y1="235" y2="235" />
+      <line className="stroke-muted-foreground" strokeWidth="2" x1="70" x2="70" y1="35" y2="235" />
+      <text className="fill-muted-foreground text-sm font-medium" textAnchor="middle" x="315" y="268">
+        input size
+      </text>
+      <text className="fill-muted-foreground text-sm font-medium" transform="rotate(-90 24 135)" x="24" y="135">
+        work
+      </text>
+      <path className="fill-none stroke-muted-foreground" d="M 80 215 L 535 215" strokeWidth="2" />
+      <path className="fill-none stroke-primary" d="M 80 225 C 170 205, 300 188, 535 170" strokeWidth="2" />
+      <path className="fill-none stroke-sky-500" d="M 80 225 L 535 105" strokeWidth="2" />
+      <path className="fill-none stroke-amber-500" d="M 80 225 C 230 212, 390 170, 535 72" strokeWidth="2" />
+      <path className="fill-none stroke-destructive" d="M 80 225 C 310 220, 465 145, 535 40" strokeWidth="2" />
+      <text className="fill-muted-foreground text-xs font-medium" x="540" y="219">O(1)</text>
+      <text className="fill-primary text-xs font-medium" x="540" y="174">O(log n)</text>
+      <text className="fill-sky-600 text-xs font-medium dark:fill-sky-400" x="540" y="109">O(n)</text>
+      <text className="fill-amber-600 text-xs font-medium dark:fill-amber-400" x="470" y="102">O(n log n)</text>
+      <text className="fill-destructive text-xs font-medium" x="500" y="38">O(n²)</text>
+    </DiagramFrame>
+  )
+}

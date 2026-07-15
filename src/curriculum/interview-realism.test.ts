@@ -15,6 +15,10 @@ import { lesson as heapsAndPriorityQueues } from './lessons/12-heaps-and-priorit
 import { lesson as graphTraversal } from './lessons/13-graph-traversal'
 import { lesson as graphShortestPaths } from './lessons/14-graph-shortest-paths'
 import { lesson as backtracking } from './lessons/15-backtracking'
+import { lesson as dynamicProgrammingFundamentals } from './lessons/16-dynamic-programming-fundamentals'
+import { lesson as advancedDynamicProgramming } from './lessons/17-advanced-dynamic-programming'
+import { lesson as greedyAlgorithms } from './lessons/18-greedy-algorithms'
+import { lesson as bigOAnalysisAndTradeoffs } from './lessons/19-big-o-analysis-and-tradeoffs'
 
 import type { Approach, Lesson, Problem } from './types'
 
@@ -34,12 +38,22 @@ const authoredAlgorithmLessons = [
   graphTraversal,
   graphShortestPaths,
   backtracking,
+  dynamicProgrammingFundamentals,
+  advancedDynamicProgramming,
+  greedyAlgorithms,
+  bigOAnalysisAndTradeoffs,
 ]
 
 const unsupportedCompanyClaimPattern =
   /\b(?:asked by|asked at|asked in|reported by|seen at|from (?:Google|Meta|Facebook|Amazon|Microsoft|Apple|Netflix|Uber|Airbnb|Stripe|OpenAI))\b/i
 
 describe('interview-realistic authored lessons', () => {
+  it('covers the complete algorithms track', () => {
+    expect(authoredAlgorithmLessons.map((lesson) => lesson.order)).toEqual(
+      Array.from({ length: 19 }, (_, index) => index + 1),
+    )
+  })
+
   it('uses adapted interview patterns without unsupported company claims', () => {
     for (const lesson of authoredAlgorithmLessons) {
       expect(getLessonText(lesson)).not.toMatch(unsupportedCompanyClaimPattern)

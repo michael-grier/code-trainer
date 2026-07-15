@@ -12,12 +12,16 @@ import { cn } from '@/lib/cn'
 
 import { MdxCodeBlock } from './MdxCodeBlock'
 import {
+  AdvancedDynamicProgrammingDiagram,
   BacktrackingDiagram,
   BinarySearchDiagram,
   BinarySearchTreeDiagram,
   BinaryTreeDiagram,
+  ComplexityGrowthDiagram,
   DifferenceArrayDiagram,
+  DynamicProgrammingDiagram,
   GraphDiagram,
+  GreedyAlgorithmDiagram,
   HeapDiagram,
   LinkedListDiagram,
   QueueDequeDiagram,
@@ -38,12 +42,16 @@ type MdxProps = {
 const exampleLabelPattern = /^(Example (?:prompt|input|output)):\s*/
 
 const mdxComponents = {
+  AdvancedDynamicProgrammingDiagram,
   BacktrackingDiagram,
   BinarySearchDiagram,
   BinarySearchTreeDiagram,
   BinaryTreeDiagram,
+  ComplexityGrowthDiagram,
   DifferenceArrayDiagram,
+  DynamicProgrammingDiagram,
   GraphDiagram,
+  GreedyAlgorithmDiagram,
   HeapDiagram,
   LinkedListDiagram,
   QueueDequeDiagram,
