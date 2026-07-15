@@ -1614,7 +1614,193 @@ Tasks:
 - Add terminal transcripts and focused runtime/type diagrams where they improve
   understanding; do not add them as decoration.
 
-Acceptance criteria:
+#### Phase 8.1: JS/TS Shared Presentation Foundation
+
+Tasks:
+
+- Build `TerminalTranscript` with structured command, standard output, warning,
+  and error lines.
+- Register the component for use in MDX concept pages.
+- Reuse the terminal visual language in the runnable problem console where
+  practical.
+- Extend the existing diagram system with only the shared primitives required by
+  the JS/TS track.
+- Verify keyboard access, text selection, copy behavior, responsive overflow,
+  light and dark themes, and non-color output labels.
+- Add focused component and rendering tests.
+
+Checkpoint criteria:
+
+- A small fixture demonstrates terminal transcripts and the shared diagram
+  foundation without requiring authored JS/TS lessons.
+- No terminal-emulation dependency is introduced for static transcripts.
+
+#### Phase 8.2: Synchronous JavaScript Lessons
+
+Author:
+
+- Lesson 20: JavaScript runtime fundamentals.
+- Lesson 21: Scope, closures, and prototypes.
+
+Tasks:
+
+- Establish the runtime-track lesson style with observable behavior before the
+  mental-model explanation.
+- Add call-stack, scope-chain, and prototype-chain diagrams only where they
+  materially reduce explanation burden.
+- Use small examples that the learner can trace completely.
+- Use `trace`, `debug`, and `code` or `refactor` problems according to the
+  track-specific progression.
+- State module, strict-mode, and runtime assumptions wherever they affect the
+  result.
+
+Checkpoint criteria:
+
+- Both lessons have complete concept content, deterministic practice paths, and
+  reference material.
+- Any new execution-trace presentation need is proven by authored content before
+  a shared component is added.
+
+#### Phase 8.3: Asynchronous JavaScript Lessons
+
+Author:
+
+- Lesson 22: Event loop and task scheduling.
+- Lesson 23: Async patterns with promises.
+- Lesson 24: Cancellation, timeouts, and `AbortController`.
+
+Tasks:
+
+- Prototype deterministic scheduling evaluation before relying on it in lesson
+  problems.
+- Prefer a small injected clock or scheduler helper when it is sufficient.
+- Add `@sinonjs/fake-timers` only if repeated timer, promise, or cancellation
+  tests demonstrate that the dependency removes meaningful custom complexity.
+- Add an `ExecutionTimeline` component if the authored lessons need a shared
+  representation of the call stack, microtasks, tasks, and output order.
+- Test timeout, cancellation, cleanup, rejection, and output-order behavior
+  without depending on wall-clock timing.
+
+Checkpoint criteria:
+
+- Lessons 20 through 24 are fully authored and evaluable with deterministic
+  trace or runtime behavior checks.
+- The scheduling-test strategy and any dependency decision are documented.
+
+#### Phase 8.4: TypeScript Diagnostic Grader
+
+Tasks:
+
+- Extend the curriculum contract to represent compiler-backed type tests and
+  combined type/runtime completion requirements.
+- Add an isolated, lazily loaded TypeScript diagnostic worker using a virtual
+  file system.
+- Define and document the strict compiler configuration and TypeScript version
+  used for grading.
+- Compose learner code with hidden virtual type-test fixtures.
+- Support positive type assertions, expected diagnostics, and intentionally
+  invalid calls.
+- Normalize diagnostic codes, messages, and source locations for stable learner
+  feedback.
+- Add a diagnostics results panel without coupling authoritative grading to
+  Monaco editor state.
+- Add worker, grader, completion, error-state, and interface tests.
+- Measure the production bundle and confirm the compiler path loads only for
+  problems that require it.
+
+Vertical-slice fixture requirements:
+
+- A correct type solution passes.
+- An incorrect inferred type fails.
+- An intentionally invalid call must be rejected.
+- An unused `@ts-expect-error` fails.
+- A combined problem can require both compiler-backed type tests and runtime
+  behavior tests.
+
+Checkpoint criteria:
+
+- The complete fixture path works in the learner interface before lesson 25 is
+  authored.
+- Sucrase and text-based static checks are not treated as substitutes for the
+  TypeScript compiler.
+
+#### Phase 8.5: TypeScript Foundations Lessons
+
+Author:
+
+- Lesson 25: TypeScript strict-mode fundamentals.
+- Lesson 26: Narrowing, unions, and discriminated unions.
+
+Tasks:
+
+- Validate the new diagnostic grader against real foundation and applied
+  exercises.
+- Prefer fixing unsafe values and APIs over isolated syntax questions.
+- Pair compiler feedback with runtime tests when the code produces values or
+  handles runtime inputs.
+- Correct the problem contract or diagnostics interface here before authoring
+  advanced type-system lessons.
+
+Checkpoint criteria:
+
+- Both lessons use compiler-backed evaluation for every type-level claim.
+- Diagnostics are understandable without requiring the learner to interpret raw
+  compiler output alone.
+
+#### Phase 8.6: Reusable and Advanced Type Lessons
+
+Author:
+
+- Lesson 27: Generics and reusable abstractions.
+- Lesson 28: Utility types and mapped types.
+- Lesson 29: Conditional types and inference.
+
+Tasks:
+
+- Center exercises on readable API guarantees and reusable abstractions rather
+  than type puzzles.
+- Add inferred-type displays, type-flow diagrams, or source/result comparisons
+  only when they clarify relationships that prose and code do not show well.
+- Use hidden type tests to verify accepted inputs, rejected inputs, returned
+  types, and inference behavior.
+
+Checkpoint criteria:
+
+- Each advanced construct is connected to a practical API or domain problem.
+- Passing solutions demonstrate the intended type guarantee, not merely the
+  required source text.
+
+#### Phase 8.7: Domain Boundaries and JS/TS Module QA
+
+Author:
+
+- Lesson 30: Type-safe domain modeling.
+- Lesson 31: Runtime validation and parsing external data.
+- Lesson 32: Error handling with Result-style types.
+
+Tasks:
+
+- Combine compile-time guarantees with runtime parsing and behavior tests.
+- Include malformed, missing, and unexpected external values in validation
+  exercises.
+- Use a design problem only when domain or API modeling is the interview signal.
+- Run curriculum contract tests and verify every trace answer, type fixture,
+  runtime test, completion path, and reference answer in lessons 20 through 32.
+- Review diagnostic-worker failure and timeout handling, lazy-loading behavior,
+  compiler-version consistency, and production bundle impact.
+- Manually verify mobile layout, keyboard access, terminal transcripts, diagrams,
+  editors, diagnostics, and light and dark themes.
+
+Checkpoint criteria:
+
+- All 13 JS/TS Core lessons are fully authored and have honest, working
+  completion paths.
+- Targeted tests, `bun run lint`, `bun run test`, and `bun run build` pass.
+
+After each JS/TS Core phase, stop with a scoped diff and test summary so the
+maintainer can review, commit, and push before work begins on the next phase.
+
+Phase 8 acceptance criteria:
 
 - All 60 lessons have meaningful content.
 - All problems have valid completion paths.
