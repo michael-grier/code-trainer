@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from 'react'
 
+import { TerminalTranscript } from '@/components/terminal/TerminalTranscript'
 import { cn } from '@/lib/cn'
 
 import { MdxCodeBlock } from './MdxCodeBlock'
@@ -58,6 +59,7 @@ const mdxComponents = {
   SlidingWindowDiagram,
   StackDiagram,
   TwoPointersDiagram,
+  TerminalTranscript,
   WeightedGraphDiagram,
   h1: ({ className, ...props }: ComponentProps<'h1'>) => (
     <h1

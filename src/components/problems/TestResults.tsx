@@ -7,6 +7,11 @@ import {
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
+import {
+  TerminalTranscript,
+  type TerminalTranscriptLine,
+  type TerminalTranscriptLineType,
+} from '@/components/terminal/TerminalTranscript'
 import { Badge } from '@/components/ui/badge'
 import {
   Card,
@@ -37,7 +42,6 @@ type ProblemResultsProps = {
 }
 
 type ConsoleEntry = ConsoleMessage & {
-  key: string
   source: string
 }
 
@@ -125,7 +129,7 @@ function TestResults({ isRunning = false, result }: TestResultsProps) {
 }
 
 function ConsoleResults({ isRunning = false, result }: TestResultsProps) {
-  const consoleEntries = getConsoleEntries(result)
+  const consoleLines = getConsoleLines(result)
 
   return (
     <div className="grid gap-3">
@@ -137,16 +141,18 @@ function ConsoleResults({ isRunning = false, result }: TestResultsProps) {
         </p>
         <ConsoleBadge isRunning={isRunning} result={result} />
       </div>
-      <ConsoleOutput entries={consoleEntries} hasResult={Boolean(result)} />
+      <TerminalTranscript
+        ariaLive="polite"
+        className="mb-0"
+        emptyMessage={getEmptyConsoleMessage(Boolean(result))}
+        label="Console output"
+        lines={consoleLines}
+        title="Console"
+      />
       {isRunning ? (
         <div className="flex items-center gap-2 rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
           <CircleDashed className="size-4 animate-spin" />
           Logging result...
-        </div>
-      ) : null}
-      {result?.error ? (
-        <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-          {result.error}
         </div>
       ) : null}
     </div>
@@ -245,71 +251,55 @@ function ValueBlock({ label, value }: { label: string; value: string }) {
   )
 }
 
-function ConsoleOutput({
-  entries,
-  hasResult,
-}: {
-  entries: ConsoleEntry[]
-  hasResult: boolean
-}) {
-  const emptyMessage = hasResult
+function getEmptyConsoleMessage(hasResult: boolean) {
+  return hasResult
     ? 'No console output. Add console.log(...) and log the sample again.'
     : 'Use the sample console.log(...) or add your own, then run Log result.'
-
-  return (
-    <section
-      aria-label="Console output"
-      aria-live="polite"
-      className="grid gap-2 rounded-md border bg-muted/30 p-3 text-xs"
-    >
-      <span className="font-medium text-muted-foreground">Console output</span>
-      {entries.length ? (
-        entries.map((entry) => (
-          <div key={entry.key} className="grid gap-1">
-            {shouldShowConsoleMeta(entry) ? (
-              <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
-                <span className="uppercase">{entry.method}</span>
-                <span>{entry.source}</span>
-              </div>
-            ) : null}
-            <pre className="overflow-auto text-foreground">
-              <code className="break-words">{entry.values.join(' ')}</code>
-            </pre>
-          </div>
-        ))
-      ) : (
-        <p className="text-muted-foreground">{emptyMessage}</p>
-      )}
-    </section>
-  )
 }
 
-function shouldShowConsoleMeta(entry: ConsoleEntry) {
-  return entry.method !== 'log'
-}
-
-function getConsoleEntries(result?: CodeRunResult): ConsoleEntry[] {
+function getConsoleLines(result?: CodeRunResult): TerminalTranscriptLine[] {
   if (!result) {
     return []
   }
 
-  const entries: ConsoleEntry[] = result.logs.map((log, index) => ({
+  const entries: ConsoleEntry[] = result.logs.map((log) => ({
     ...log,
-    key: `setup-${index}`,
     source: 'Setup',
   }))
 
-  result.tests.forEach((test, testIndex) => {
-    test.logs.forEach((log, index) => {
+  result.tests.forEach((test) => {
+    test.logs.forEach((log) => {
       entries.push({
         ...log,
-        key: `test-${testIndex}-${index}`,
         source: test.name,
       })
     })
   })
 
-  return entries
+  const lines = entries.map<TerminalTranscriptLine>((entry) => ({
+    type: getTerminalLineType(entry.method),
+    label:
+      entry.method === 'log'
+        ? undefined
+        : `[${entry.method} · ${entry.source}]`,
+    text: entry.values.join(' '),
+  }))
+
+  if (result.error) {
+    lines.push({ type: 'error', text: result.error })
+  }
+
+  return lines
+}
+
+function getTerminalLineType(
+  method: ConsoleMessage['method'],
+): TerminalTranscriptLineType {
+  if (method === 'warn') {
+    return 'warning'
+  }
+
+  return method === 'log' ? 'output' : method
 }
 
 function getStatusIcon(status: TestRunResult['status']) {
