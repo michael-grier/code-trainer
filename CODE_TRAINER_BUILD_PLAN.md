@@ -901,6 +901,49 @@ Implement deterministic grading for:
 
 Normalize trivial whitespace for string answers.
 
+### 12.6 TypeScript Diagnostic Grader
+
+The Sucrase runtime runner removes TypeScript syntax before executing learner
+code. It does not prove that the submitted code is type-safe. Before authoring
+the type-system lessons beginning with lesson 25, add a browser-side diagnostic
+grader that runs independently from the runtime runner.
+
+Requirements:
+
+- Evaluate learner code under a fixed, documented strict TypeScript
+  configuration.
+- Run the grader in a Web Worker so type analysis does not block the interface.
+- Use isolated virtual source files so one problem cannot affect another.
+- Report readable compiler diagnostics with source locations.
+- Support hidden type-test fixtures that assert expected input, output, and
+  inferred types.
+- Support intentionally invalid examples through `@ts-expect-error` or an
+  equivalent expected-diagnostic contract, and fail when an expected error is
+  missing.
+- Treat unexpected compiler diagnostics as failures.
+- Run ordinary behavior tests as well when a problem has meaningful runtime
+  behavior.
+- Keep source-text static checks as additional guardrails only. A check such as
+  `no-any` must not be presented as proof that the complete type contract is
+  correct.
+
+Prefer reusing the TypeScript language service already shipped with Monaco if
+it can provide deterministic diagnostics in an isolated worker. If that path
+couples grading too closely to editor state, use the TypeScript compiler with a
+small virtual file system in a lazily loaded worker. Record the exact compiler
+version and compiler options used by each authored problem set.
+
+Completion rules:
+
+- Runtime-focused problems complete after their deterministic trace answers or
+  behavior tests pass.
+- Type-only problems complete after all compiler diagnostics and hidden type
+  tests match the expected result.
+- Problems that cross the compile-time/runtime boundary complete only after
+  both type checks and behavior tests pass.
+- Written and design explanations remain guided self-review. Do not claim that
+  prose or architectural judgment has been automatically verified.
+
 ## 13. MDX Lesson Rendering
 
 Add `src/mdx.d.ts`:
@@ -922,6 +965,25 @@ Create `Mdx.tsx` that maps MDX elements to styled components:
 - `blockquote`
 - `table`
 - `a`
+
+Add a reusable `TerminalTranscript` MDX component for commands, console output,
+compiler diagnostics, and error messages shown in concept pages. Reuse the same
+visual language in the runnable problem console where practical.
+
+`TerminalTranscript` requirements:
+
+- Render a familiar terminal surface with monospaced text, a restrained header,
+  and clear prompt, standard output, warning, and error treatments.
+- Accept structured lines rather than a preformatted HTML string.
+- Preserve whitespace and output order, allow text selection and copying, and
+  scroll horizontally on narrow screens.
+- Use semantic text markup and an accessible label or caption. Color must not be
+  the only way output kinds are distinguished.
+- Remain a presentation component. Do not imply that it is a real shell or
+  accept command input unless an actual interactive terminal becomes a future
+  curriculum requirement.
+- Prefer an in-house React component over a terminal-emulation dependency for
+  static transcripts and captured console output.
 
 Concept pages should be readable, dense, and useful. Avoid marketing-style hero sections.
 
@@ -1094,6 +1156,21 @@ Use these principles when replacing placeholder lessons with final curriculum co
 - Use whiteboard-style comments in teaching examples and reference approaches. Comments should outline the reasoning steps an engineer would say aloud, then the code below each comment should perform that step.
 - Use plain, literal language in comments and explanations. Prefer direct phrases such as "decrease the required count" over metaphorical wording.
 - Pair abstract language with an immediate example. If the lesson says "preserve an invariant", name the invariant in plain English and show the update that maintains it.
+- For JavaScript runtime topics, begin with a small behavior question or failure,
+  then explain the mental model that causes it. Prefer examples the learner can
+  trace completely over language-trivia puzzles.
+- Distinguish compile-time behavior from runtime behavior explicitly. State
+  whether an example produces a TypeScript diagnostic, throws at runtime, logs a
+  value, or returns a value, and show that result next to the example.
+- State environment assumptions when they affect behavior, including module
+  versus script execution, strict mode, browser versus Node.js APIs, and relevant
+  TypeScript compiler options.
+- For TypeScript topics, show what JavaScript remains after types are removed
+  when that distinction affects safety. Reinforce that static types do not parse
+  or validate external runtime data.
+- Present JS/TS concepts in the order: concrete behavior or failure,
+  plain-language mental model, minimal complete example, common failure mode,
+  practical rule, then practice transition.
 - Include concrete example inputs and expected outputs in code problem prompts, especially when the function returns arrays, tuples, null, or another shape that benefits from seeing the exact result.
 - Prepopulate code problem starters with one sample `console.log(...)` call using the prompt's example input, so learners can inspect a concrete run immediately.
 - Make output ordering deterministic for auto-graded problems. If multiple answers could be valid, either require a specific order in the prompt or choose a problem shape that avoids ambiguous equality.
@@ -1119,7 +1196,19 @@ Before treating a lesson as authored, check the following:
 - Starter code exports the required function and includes one sample `console.log(...)` call using the prompt's example input.
 - Auto-graded tests cover the main happy path, empty or minimal inputs, duplicate or repeated values when relevant, and at least one edge case that prevents a naive solution.
 - Expected outputs are deterministic. If multiple answers could be valid, the prompt defines the required ordering or the problem is reshaped.
+- JS/TS examples label compiler diagnostics, runtime errors, console output, and
+  returned values accurately rather than grouping them under a generic result.
+- JS/TS lessons state the execution environment and compiler assumptions that
+  affect the examples.
+- Runtime lessons test prediction and debugging without relying on obscure
+  language trivia. Type-system lessons use real compiler diagnostics rather than
+  runtime tests or text checks alone.
+- Problems involving external data test malformed runtime inputs even when the
+  submitted TypeScript passes all type checks.
 - Reference approaches use readable TypeScript, include concise reasoning comments for non-obvious steps, and state time and space complexity.
+- Reference material discusses time and space complexity when it is meaningful;
+  otherwise it explains the relevant safety guarantee, runtime behavior, API
+  tradeoff, or failure mode instead of forcing an empty complexity note.
 - Written and design problems include reference answers or rubrics that connect directly to the lesson text.
 - Run the targeted lesson test, then `bun run lint`, `bun run test`, and `bun run build` before the checkpoint summary.
 
@@ -1176,6 +1265,45 @@ Recommended problem mix:
 - Type-system lessons should lean on `code` and `refactor` because the core skill is shaping safer APIs and removing unsafe types.
 - Use `written` for tradeoffs, mental models, and edge-case explanation.
 - Use `design` sparingly; reserve it for domain modeling or API-boundary lessons where a design artifact is actually the interview signal.
+
+Lesson structure and presentation:
+
+- Runtime lessons should usually open with observable behavior, then build the
+  call-stack, scope, prototype, task-queue, promise, or cancellation mental model
+  needed to explain it.
+- Type-system lessons should usually open with an unsafe value or API boundary,
+  show what TypeScript accepts or rejects, and then refactor toward a safer
+  contract.
+- Use diagrams for scope and prototype chains, task and microtask timelines,
+  promise flow, narrowing branches, and relationships between generic types when
+  the visual removes meaningful cognitive load.
+- Use terminal transcripts for console ordering, thrown errors, compiler output,
+  and cancellation logs. Use ordinary syntax-highlighted code blocks for source
+  code.
+- Keep examples small and self-contained. Avoid tests based only on surprising
+  coercion or syntax details unless the behavior prevents a realistic bug.
+
+Default three-problem progression:
+
+1. Foundation: a deterministic `trace` or focused `debug` problem that isolates
+   the mental model taught by the lesson.
+2. Applied: a `debug`, `code`, or `refactor` problem that places the same concept
+   inside realistic code and adds relevant edge cases.
+3. Interview-depth: a `refactor`, `code`, or selective `written` problem that
+   tests API guarantees, tradeoffs, adaptation, or explanation.
+
+Evaluation rules:
+
+- Lessons 20 through 24 may use the existing trace grader and runtime behavior
+  tests, with deterministic scheduling and output expectations.
+- Do not author lessons 25 through 32 around the assumption that Sucrase or
+  source-text static checks validate TypeScript types. Complete the TypeScript
+  diagnostic grader first.
+- Type-system code and refactor problems must pass compiler-backed type tests.
+- Add runtime behavior tests when code produces values or handles external data;
+  successful compilation alone is not sufficient at a runtime boundary.
+- Use written self-review only when articulating the mental model or tradeoff is
+  itself an interview signal.
 
 ### Track 3: React and Frontend Engineering
 
@@ -1477,7 +1605,14 @@ Tasks:
 - Add test cases for code/debug/refactor problems.
 - Add trace expected answers.
 - Add written/design reference answers.
-- Add approaches and complexity notes.
+- Add approaches plus complexity notes or the more relevant safety, runtime,
+  API, and failure-mode discussion for the lesson.
+- Author JavaScript runtime lessons 20 through 24 using deterministic trace,
+  debug, and runtime-test evaluation.
+- Complete the TypeScript diagnostic grader before authoring type-system lessons
+  25 through 32, then use compiler-backed type tests for their type-level claims.
+- Add terminal transcripts and focused runtime/type diagrams where they improve
+  understanding; do not add them as decoration.
 
 Acceptance criteria:
 
