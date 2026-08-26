@@ -1,4 +1,3 @@
-import { BookOpen, CheckCircle2 } from 'lucide-react'
 import { useEffect } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
@@ -7,7 +6,6 @@ import { PrerequisiteNotice } from '@/components/learning/PrerequisiteNotice'
 import { ProblemNavigation } from '@/components/learning/ProblemNavigation'
 import { ProblemPrompt } from '@/components/problems/ProblemPromptContent'
 import { ProblemRenderer } from '@/components/problems/ProblemRenderer'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -65,27 +63,22 @@ export function ProblemPage() {
 
   return (
     <div className="mx-auto grid max-w-7xl gap-4">
-      <section className="flex flex-col gap-3 rounded-lg border bg-card p-4 shadow-sm lg:flex-row lg:items-center lg:justify-between">
-        <div className="grid gap-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="outline">Problem workspace</Badge>
-            <Badge variant="muted">{problem.kind}</Badge>
-            <Badge variant="muted">{problem.completionMode}</Badge>
-            {isCompleted ? <Badge>Completed</Badge> : null}
-          </div>
-          <h1 className="text-2xl font-semibold tracking-normal">
+      <section className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="min-w-0">
+          <p className="text-xs text-muted-foreground">
+            {lesson.title} · {problem.kind} · {problem.estimatedMinutes ?? 10}{' '}
+            min
+            {isCompleted ? (
+              <span className="text-primary"> · completed</span>
+            ) : null}
+          </p>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight">
             {problem.title}
           </h1>
-          <p className="text-sm text-muted-foreground">
-            {lesson.title} · {problem.estimatedMinutes ?? 10} min
-          </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button asChild variant="outline">
-            <Link to={`/lesson/${lesson.slug}`}>
-              <BookOpen className="size-4" />
-              Concept
-            </Link>
+            <Link to={`/lesson/${lesson.slug}`}>Concept</Link>
           </Button>
           <ConceptReferenceSheet lesson={lesson} />
         </div>
@@ -102,18 +95,12 @@ export function ProblemPage() {
         <Card className="min-w-0">
           <CardHeader>
             <CardTitle>Prompt</CardTitle>
-            <CardDescription>
-              {problem.estimatedMinutes ?? 10} minute target
-            </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 text-sm text-muted-foreground lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start">
             <ProblemPrompt prompt={problem.prompt} />
             <Separator className="lg:hidden" />
             <div className="grid gap-2">
-              <div className="flex items-center gap-2 text-foreground">
-                <CheckCircle2 className="size-4 text-primary" />
-                Completion mode
-              </div>
+              <div className="text-foreground">Completion</div>
               <p>{completionDescription}</p>
             </div>
           </CardContent>

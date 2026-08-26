@@ -1,9 +1,7 @@
-import { CheckCircle2, ListChecks, XCircle } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
 import { ReadOnlyCode } from '@/components/editor/ReadOnlyCode'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -104,7 +102,6 @@ export function TraceProblemView({ lessonSlug, problem }: TraceProblemViewProps)
                 onClick={handleGrade}
                 type="button"
               >
-                <ListChecks className="size-4" />
                 Grade trace
               </Button>
             </div>
@@ -128,9 +125,14 @@ export function TraceProblemView({ lessonSlug, problem }: TraceProblemViewProps)
           <CardHeader>
             <div className="flex items-center justify-between gap-3">
               <CardTitle>Trace explanation</CardTitle>
-              <Badge variant={summary.passed ? 'default' : 'outline'}>
+              <span
+                className={cn(
+                  'text-xs font-medium',
+                  summary.passed ? 'text-primary' : 'text-muted-foreground',
+                )}
+              >
                 {summary.passed ? 'Correct' : 'Review'}
-              </Badge>
+              </span>
             </div>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground">
@@ -250,18 +252,13 @@ function TraceAnswerInput({
 }
 
 function TraceResultBadge({ result }: { result: TraceGradeResult }) {
-  const Icon = result.passed ? CheckCircle2 : XCircle
-
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium',
-        result.passed
-          ? 'bg-primary text-primary-foreground'
-          : 'bg-destructive text-destructive-foreground',
+        'shrink-0 text-xs font-medium',
+        result.passed ? 'text-primary' : 'text-destructive',
       )}
     >
-      <Icon className="size-3.5" />
       {result.passed ? 'Correct' : 'Review'}
     </span>
   )

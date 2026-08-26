@@ -1,4 +1,4 @@
-import { Loader2, Play, RotateCcw, Terminal } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -7,7 +7,6 @@ import { DiffEditor } from '@/components/editor/DiffEditor'
 import { ApproachesPanel } from '@/components/problems/ApproachesPanel'
 import { StaticCheckResults } from '@/components/problems/StaticCheckResults'
 import { ProblemResults } from '@/components/problems/TestResults'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -189,14 +188,13 @@ export function RunnableProblemView({
                 </CardDescription>
               </div>
               <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-                <Badge variant="muted">TypeScript</Badge>
+                <span className="text-xs text-muted-foreground">TypeScript</span>
                 <Button
                   onClick={handleReset}
                   size="sm"
                   type="button"
                   variant="outline"
                 >
-                  <RotateCcw className="size-4" />
                   Reset
                 </Button>
                 <Button
@@ -206,11 +204,7 @@ export function RunnableProblemView({
                   type="button"
                   variant="secondary"
                 >
-                  {isLogging ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <Terminal className="size-4" />
-                  )}
+                  {isLogging ? <Loader2 className="size-4 animate-spin" /> : null}
                   Log result
                 </Button>
                 <Button
@@ -221,9 +215,7 @@ export function RunnableProblemView({
                 >
                   {isEvaluating ? (
                     <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <Play className="size-4" />
-                  )}
+                  ) : null}
                   Evaluate
                 </Button>
               </div>

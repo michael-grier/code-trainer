@@ -1,4 +1,3 @@
-import { TriangleAlert } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
@@ -22,7 +21,6 @@ export function PrerequisiteNotice({
     <Card className="border-primary/30 bg-accent/40">
       <CardContent className="flex flex-col gap-3 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
         <div className="flex gap-3">
-          <TriangleAlert className="mt-0.5 size-4 shrink-0 text-primary" />
           <p className="text-muted-foreground">
             This lesson is ahead of the guided recommendation. Current guided step:
             {' '}

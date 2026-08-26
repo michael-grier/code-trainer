@@ -1,90 +1,70 @@
-import { NavLink } from 'react-router-dom'
+import { Link, NavLink } from 'react-router-dom'
 
-import {
-  primaryNavItems,
-  trackPreviewItems,
-  workspaceSummaryItems,
-} from '@/components/app/navigation'
-import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Progress } from '@/components/ui/progress'
-import { Separator } from '@/components/ui/separator'
+import { primaryNavItems, trackPreviewItems } from '@/components/app/navigation'
 import { lessons, tracks } from '@/curriculum'
 import { cn } from '@/lib/cn'
 import { useProgress } from '@/state/progressContext'
 
 export function ProgressSidebar() {
+  return (
+    <aside className="hidden border-r px-3 py-5 md:block">
+      <div className="sticky top-[4.75rem]">
+        <PrimaryNavLinks />
+        <div className="mt-7 px-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          Tracks
+        </div>
+        <TrackNavList className="mt-2" />
+      </div>
+    </aside>
+  )
+}
+
+export function PrimaryNavLinks() {
+  return (
+    <nav aria-label="Primary navigation" className="grid gap-0.5 text-sm">
+      {primaryNavItems.map((item) => (
+        <NavLink
+          className={({ isActive }) =>
+            cn(
+              'rounded-md px-3 py-1.5 text-muted-foreground outline-none transition hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring',
+              isActive && 'bg-accent font-medium text-accent-foreground',
+            )
+          }
+          end={item.to === '/'}
+          key={item.to}
+          to={item.to}
+        >
+          {item.label}
+        </NavLink>
+      ))}
+    </nav>
+  )
+}
+
+export function TrackNavList({ className }: { className?: string }) {
   const progress = useProgress()
 
   return (
-    <aside className="hidden border-r bg-muted/20 p-3 md:block">
-      <div className="sticky top-[4.25rem] grid gap-3">
-        <Card className="shadow-none">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">Learning workspace</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-1">
-            {primaryNavItems.map((item) => (
-              <NavLink
-                className={({ isActive }) =>
-                  cn(
-                    'flex items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground outline-none transition hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring',
-                    isActive && 'bg-accent text-accent-foreground',
-                  )
-                }
-                end={item.to === '/'}
-                key={item.to}
-                to={item.to}
-              >
-                <item.icon className="size-4" />
-                {item.label}
-              </NavLink>
-            ))}
-          </CardContent>
-        </Card>
+    <nav aria-label="Tracks" className={cn('grid gap-0.5 text-sm', className)}>
+      {trackPreviewItems.map((item) => {
+        const track = tracks.find((candidate) => candidate.id === item.id)
+        const completion = track
+          ? progress.getTrackCompletion(track, lessons, progress.state)
+          : { completedLessons: 0, totalLessons: item.lessonCount }
 
-        <Card className="shadow-none">
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center justify-between text-sm">
-              Curriculum
-              <Badge variant="muted">Preview</Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-4">
-            {trackPreviewItems.map((track) => {
-              const registeredTrack = tracks.find((item) => item.id === track.id)
-              const completion = registeredTrack
-                ? progress.getTrackCompletion(registeredTrack, lessons, progress.state)
-                : { completedLessons: 0, totalLessons: track.lessonCount, percent: 0 }
-
-              return (
-                <div className="grid gap-1.5" key={track.id}>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="flex min-w-0 items-center gap-2 text-sm">
-                    <track.icon className="size-4 shrink-0 text-primary" />
-                    <span className="truncate">{track.shortTitle}</span>
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {completion.completedLessons}/{completion.totalLessons}
-                  </span>
-                </div>
-                <Progress value={completion.percent} />
-              </div>
-              )
-            })}
-            <Separator />
-            <div className="grid grid-cols-2 gap-2">
-              {workspaceSummaryItems.map((item) => (
-                <div className="rounded-md border bg-background p-2" key={item.label}>
-                  <item.icon className="mb-2 size-4 text-primary" />
-                  <div className="text-lg font-semibold">{item.value}</div>
-                  <div className="text-xs text-muted-foreground">{item.label}</div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    </aside>
+        return (
+          <Link
+            className="flex items-center justify-between gap-2 rounded-md px-3 py-1.5 text-muted-foreground outline-none transition hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+            key={item.id}
+            to="/progress"
+          >
+            <span className="truncate">{item.shortTitle}</span>
+            <span className="text-xs tabular-nums">
+              {completion.completedLessons}/{completion.totalLessons}
+            </span>
+          </Link>
+        )
+      })}
+    </nav>
   )
 }

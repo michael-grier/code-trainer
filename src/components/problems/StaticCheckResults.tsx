@@ -1,6 +1,5 @@
 import { CheckCircle2, CircleDashed, XCircle } from 'lucide-react'
 
-import { Badge } from '@/components/ui/badge'
 import {
   Card,
   CardContent,
@@ -25,12 +24,15 @@ export function StaticCheckResults({ results }: StaticCheckResultsProps) {
         <div className="flex items-center justify-between gap-3">
           <CardTitle>Static checks</CardTitle>
           {results.length ? (
-            <Badge variant={allPassed ? 'default' : 'outline'}>
+            <span
+              className={cn(
+                'text-xs font-medium tabular-nums',
+                allPassed ? 'text-primary' : 'text-muted-foreground',
+              )}
+            >
               {passedCount}/{results.length}
-            </Badge>
-          ) : (
-            <Badge variant="muted">None</Badge>
-          )}
+            </span>
+          ) : null}
         </div>
         <CardDescription>
           Refactor goals that can be checked without executing code.

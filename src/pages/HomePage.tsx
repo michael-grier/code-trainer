@@ -1,25 +1,8 @@
-import {
-  ArrowRight,
-  BookOpen,
-  CheckCircle2,
-  ListChecks,
-  Play,
-  Route,
-} from 'lucide-react'
 import { Link } from 'react-router-dom'
 
-import { trackPreviewItems } from '@/components/app/navigation'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
-import { Progress } from '@/components/ui/progress'
-import { getLessonsForTrack, lessons, tracks } from '@/curriculum'
+import { getLessonsForTrack, getTrack, lessons, tracks } from '@/curriculum'
+import type { Lesson } from '@/curriculum'
 import { getContinueTarget, learningTargetToPath } from '@/state/learningFlow'
 import { useProgress } from '@/state/progressContext'
 import { getProblemKey } from '@/state/progress'
@@ -27,10 +10,7 @@ import { getProblemKey } from '@/state/progress'
 export function HomePage() {
   const progress = useProgress()
   const recommendedLesson = progress.recommendedLesson ?? lessons[0]
-  const recommendedProblem = progress.getRecommendedProblem(
-    recommendedLesson,
-    progress.state,
-  )
+  const recommendedTrack = getTrack(recommendedLesson.track)
   const continueTarget = getContinueTarget(lessons, progress.state)
   const continuePath = learningTargetToPath(continueTarget)
   const totalCompletedLessons = tracks.reduce((total, track) => {
@@ -38,226 +18,101 @@ export function HomePage() {
 
     return total + completion.completedLessons
   }, 0)
-  const overallPercent =
-    lessons.length === 0 ? 0 : Math.round((totalCompletedLessons / lessons.length) * 100)
 
   return (
-    <div className="mx-auto grid max-w-6xl gap-6">
-      <section className="grid gap-4 rounded-lg border bg-card p-5 text-card-foreground shadow-sm">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div className="grid gap-2">
-            <Badge variant="outline">Dashboard</Badge>
-            <h1 className="max-w-3xl text-3xl font-semibold tracking-normal md:text-4xl">
-              Interview practice for full-stack TypeScript engineers.
-            </h1>
-            <p className="max-w-2xl text-muted-foreground">
-              Start with the guided path, inspect your curriculum map, and sync
-              signed-in progress across devices without blocking guest learning.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button asChild>
-              <Link to={continuePath}>
-                <Play className="size-4" />
-                Continue
-              </Link>
-            </Button>
-            <Button asChild variant="outline">
-              <Link to="/progress">
-                View map
-                <ArrowRight className="size-4" />
-              </Link>
-            </Button>
-          </div>
-        </div>
-      </section>
-
-      <section className="grid gap-4 md:grid-cols-[1.25fr_0.75fr]">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Route className="size-5 text-primary" />
-              Guided recommendation
-            </CardTitle>
-            <CardDescription>
-              Defaults to the first incomplete lesson in curriculum order.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-4">
-            <div className="rounded-lg border bg-muted/30 p-4">
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <h2 className="font-semibold">{recommendedLesson.title}</h2>
-                <Badge variant="outline">Next</Badge>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                {recommendedLesson.summary}
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button asChild>
-                <Link to={`/lesson/${recommendedLesson.slug}`}>
-                  Open lesson
-                  <ArrowRight className="size-4" />
-                </Link>
-              </Button>
-              <Button asChild variant="outline">
-                <Link
-                  to={`/lesson/${recommendedLesson.slug}/problem/${recommendedProblem.id}`}
-                >
-                  Open workspace
-                </Link>
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CheckCircle2 className="size-5 text-primary" />
-              Overall progress
-            </CardTitle>
-            <CardDescription>Local-first progress with account sync.</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-4">
-            <div className="flex items-end justify-between">
-              <span className="text-4xl font-semibold">{overallPercent}%</span>
-              <span className="text-sm text-muted-foreground">
-                {totalCompletedLessons} / {lessons.length} lessons
-              </span>
-            </div>
-            <Progress value={overallPercent} />
-            <p className="text-sm text-muted-foreground">
-              {progress.syncStatus === 'guest'
-                ? 'Guest progress is saved locally in this browser.'
-                : 'Signed-in progress uses a local cache and syncs through Convex.'}
-            </p>
-          </CardContent>
-        </Card>
-      </section>
-
-      <section className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Play className="size-4 text-primary" />
-              Continue
-            </CardTitle>
-            <CardDescription>Last workspace or guided lesson</CardDescription>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-            The primary action resumes your last workspace when it is still in
-            the curriculum, otherwise it opens the guided recommendation.
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <BookOpen className="size-4 text-primary" />
-              Tracks
-            </CardTitle>
-            <CardDescription>Five structured learning areas</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-3">
-            {trackPreviewItems.map((track) => (
-              <TrackProgressPreview key={track.id} trackId={track.id} />
-            ))}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <ListChecks className="size-4 text-primary" />
-              Problem modes
-            </CardTitle>
-            <CardDescription>Interactive by kind</CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-wrap gap-2">
-            {['Code', 'Debug', 'Refactor', 'Trace', 'Written', 'Design'].map(
-              (kind) => (
-                <Badge key={kind} variant="muted">
-                  {kind}
-                </Badge>
-              ),
-            )}
-          </CardContent>
-        </Card>
-      </section>
-
-      <section className="grid gap-4">
+    <div className="mx-auto grid max-w-3xl gap-8">
+      <section className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h2 className="text-xl font-semibold tracking-normal">
-            Curriculum preview
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            All placeholder lessons are registered and ready for content.
+          <h1 className="text-2xl font-semibold tracking-tight">Welcome back</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {totalCompletedLessons} of {lessons.length} lessons complete
+            {progress.syncStatus === 'guest' ? ' · saved in this browser' : ''}
           </p>
         </div>
-        <div className="grid gap-4 lg:grid-cols-2">
-          {tracks.map((track) => (
-            <Card key={track.id}>
-              <CardHeader>
-                <CardTitle className="text-base">{track.title}</CardTitle>
-                <CardDescription>{track.summary}</CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-2">
-                {getLessonsForTrack(track.id).map((lesson) => (
-                  <Link
-                    className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm outline-none transition hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-                    key={lesson.slug}
-                    to={`/lesson/${lesson.slug}`}
-                  >
-                    <span className="min-w-0 truncate">
-                      {lesson.order}. {lesson.title}
-                    </span>
-                    <Badge
-                      variant={
-                        progress.getLessonCompletion(lesson, progress.state).isComplete
-                          ? 'default'
-                          : 'muted'
-                      }
-                    >
-                      {
-                        lesson.problems.filter(
-                          (problem) =>
-                            progress.state.completed[
-                              getProblemKey(lesson.slug, problem.id)
-                            ],
-                        ).length
-                      }
-                      /{lesson.problems.length}
-                    </Badge>
-                  </Link>
-                ))}
-              </CardContent>
-            </Card>
-          ))}
+        <Button asChild>
+          <Link to={continuePath}>Continue</Link>
+        </Button>
+      </section>
+
+      <section className="rounded-lg border bg-card/60 p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-xs text-muted-foreground">
+              Up next{recommendedTrack ? ` · ${recommendedTrack.title}` : ''}
+            </div>
+            <div className="mt-0.5 truncate font-medium">
+              {recommendedLesson.title}
+            </div>
+          </div>
+          <Button asChild className="shrink-0" size="sm" variant="outline">
+            <Link to={`/lesson/${recommendedLesson.slug}`}>Open lesson</Link>
+          </Button>
+        </div>
+      </section>
+
+      <section>
+        <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          Curriculum
+        </h2>
+        <div className="mt-4 grid gap-8">
+          {tracks.map((track) => {
+            const completion = progress.getTrackCompletion(
+              track,
+              lessons,
+              progress.state,
+            )
+
+            return (
+              <div key={track.id}>
+                <div className="flex items-baseline justify-between border-b pb-2">
+                  <h3 className="font-medium">{track.title}</h3>
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    {completion.completedLessons}/{completion.totalLessons}
+                  </span>
+                </div>
+                <ul className="mt-1 grid text-sm">
+                  {getLessonsForTrack(track.id).map((lesson) => (
+                    <LessonRow key={lesson.slug} lesson={lesson} />
+                  ))}
+                </ul>
+              </div>
+            )
+          })}
         </div>
       </section>
     </div>
   )
 }
 
-function TrackProgressPreview({ trackId }: { trackId: string }) {
+function LessonRow({ lesson }: { lesson: Lesson }) {
   const progress = useProgress()
-  const track = tracks.find((item) => item.id === trackId)
-  const preview = trackPreviewItems.find((item) => item.id === trackId)
-
-  if (!track || !preview) {
-    return null
-  }
-
-  const completion = progress.getTrackCompletion(track, lessons, progress.state)
+  const isComplete = progress.getLessonCompletion(lesson, progress.state).isComplete
+  const completedProblems = lesson.problems.filter(
+    (problem) => progress.state.completed[getProblemKey(lesson.slug, problem.id)],
+  ).length
 
   return (
-    <div className="grid gap-1.5">
-      <div className="flex items-center justify-between gap-2 text-sm">
-        <span>{preview.shortTitle}</span>
-        <span className="text-muted-foreground">
-          {completion.completedLessons}/{completion.totalLessons}
-        </span>
-      </div>
-      <Progress value={completion.percent} />
-    </div>
+    <li>
+      <Link
+        className="flex items-center justify-between gap-3 rounded-md px-2 py-2 outline-none transition hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+        to={`/lesson/${lesson.slug}`}
+      >
+        {isComplete ? (
+          <>
+            <span className="min-w-0 truncate text-muted-foreground line-through decoration-border">
+              {lesson.title}
+            </span>
+            <span className="text-xs text-primary">done</span>
+          </>
+        ) : (
+          <>
+            <span className="min-w-0 truncate">{lesson.title}</span>
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {completedProblems}/{lesson.problems.length}
+            </span>
+          </>
+        )}
+      </Link>
+    </li>
   )
 }

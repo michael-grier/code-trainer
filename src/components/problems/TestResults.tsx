@@ -12,14 +12,7 @@ import {
   type TerminalTranscriptLine,
   type TerminalTranscriptLineType,
 } from '@/components/terminal/TerminalTranscript'
-import { Badge } from '@/components/ui/badge'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Tabs,
   TabsContent,
@@ -73,13 +66,8 @@ export function ProblemResults({
         value={activeTab}
       >
         <CardHeader className="gap-3">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div className="grid gap-1">
-              <CardTitle>Results</CardTitle>
-              <CardDescription>
-                Inspect sample output or evaluate against the tests.
-              </CardDescription>
-            </div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <CardTitle>Results</CardTitle>
             <TabsList>
               <TabsTrigger value="console">Console</TabsTrigger>
               <TabsTrigger value="tests">Tests</TabsTrigger>
@@ -159,6 +147,27 @@ function ConsoleResults({ isRunning = false, result }: TestResultsProps) {
   )
 }
 
+function StatusText({
+  tone,
+  children,
+}: {
+  tone: 'positive' | 'negative' | 'neutral'
+  children: string
+}) {
+  return (
+    <span
+      className={cn(
+        'shrink-0 text-xs font-medium',
+        tone === 'positive' && 'text-primary',
+        tone === 'negative' && 'text-destructive',
+        tone === 'neutral' && 'text-muted-foreground',
+      )}
+    >
+      {children}
+    </span>
+  )
+}
+
 function ResultBadge({
   isRunning,
   result,
@@ -167,25 +176,25 @@ function ResultBadge({
   result?: CodeRunResult
 }) {
   if (isRunning) {
-    return <Badge variant="muted">Running</Badge>
+    return <StatusText tone="neutral">Running</StatusText>
   }
 
   if (!result) {
-    return <Badge variant="outline">Not run</Badge>
+    return <StatusText tone="neutral">Not run</StatusText>
   }
 
   if (result.status === 'passed') {
-    return <Badge>Passed</Badge>
+    return <StatusText tone="positive">Passed</StatusText>
   }
 
   if (result.status === 'timeout') {
-    return <Badge variant="muted">Timeout</Badge>
+    return <StatusText tone="neutral">Timeout</StatusText>
   }
 
   return (
-    <Badge className="bg-destructive text-destructive-foreground">
+    <StatusText tone="negative">
       {result.status === 'failed' ? 'Failed' : 'Error'}
-    </Badge>
+    </StatusText>
   )
 }
 
@@ -197,22 +206,18 @@ function ConsoleBadge({
   result?: CodeRunResult
 }) {
   if (isRunning) {
-    return <Badge variant="muted">Running</Badge>
+    return <StatusText tone="neutral">Running</StatusText>
   }
 
   if (!result) {
-    return <Badge variant="outline">Not logged</Badge>
+    return <StatusText tone="neutral">Not logged</StatusText>
   }
 
   if (result.error || result.status === 'error' || result.status === 'timeout') {
-    return (
-      <Badge className="bg-destructive text-destructive-foreground">
-        Error
-      </Badge>
-    )
+    return <StatusText tone="negative">Error</StatusText>
   }
 
-  return <Badge>Logged</Badge>
+  return <StatusText tone="positive">Logged</StatusText>
 }
 
 function TestResultRow({ test }: { test: TestRunResult }) {

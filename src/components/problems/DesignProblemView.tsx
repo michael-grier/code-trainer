@@ -1,4 +1,3 @@
-import { CheckCircle2, Layers3 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { ReferenceAnswer } from '@/components/problems/ReferenceAnswer'
@@ -95,10 +94,9 @@ export function DesignProblemView({ lessonSlug, problem }: DesignProblemViewProp
 
       <Card className="min-w-0">
         <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Layers3 className="size-4" />
+          <span className="text-sm text-muted-foreground tabular-nums">
             {completedRubricItems}/{problem.rubric.length} rubric checks complete
-          </div>
+          </span>
           <Button
             disabled={
               !allSectionsAnswered ||
@@ -109,7 +107,6 @@ export function DesignProblemView({ lessonSlug, problem }: DesignProblemViewProp
             onClick={handleComplete}
             type="button"
           >
-            <CheckCircle2 className="size-4" />
             {isCompleted ? 'Completed' : 'Complete review'}
           </Button>
         </CardContent>

@@ -7,9 +7,9 @@ export function AppShell() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <Header />
-      <div className="grid min-h-[calc(100vh-3.5rem)] md:grid-cols-[17rem_1fr]">
+      <div className="grid min-h-[calc(100vh-3.5rem)] md:grid-cols-[15rem_1fr]">
         <ProgressSidebar />
-        <main className="min-w-0 p-4 md:p-6">
+        <main className="min-w-0 px-5 py-8 md:px-10">
           <Outlet />
         </main>
       </div>
