@@ -1,5 +1,6 @@
 import { CodeProblemView } from '@/components/problems/CodeProblemView'
 import { DebugProblemView } from '@/components/problems/DebugProblemView'
+import { ReactProblemView } from '@/components/problems/ReactProblemView'
 import { DesignProblemView } from '@/components/problems/DesignProblemView'
 import { RefactorProblemView } from '@/components/problems/RefactorProblemView'
 import { TraceProblemView } from '@/components/problems/TraceProblemView'
@@ -37,6 +38,16 @@ export function ProblemRenderer({ lesson, problem }: ProblemRendererProps) {
   if (problem.kind === 'refactor') {
     return (
       <RefactorProblemView
+        approaches={approaches}
+        lessonSlug={lesson.slug}
+        problem={problem}
+      />
+    )
+  }
+
+  if (problem.kind === 'react-code') {
+    return (
+      <ReactProblemView
         approaches={approaches}
         lessonSlug={lesson.slug}
         problem={problem}

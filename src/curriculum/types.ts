@@ -4,6 +4,7 @@ export type ProblemKind =
   | 'code'
   | 'debug'
   | 'refactor'
+  | 'react-code'
   | 'trace'
   | 'written'
   | 'design'
@@ -53,6 +54,32 @@ export type DebugProblem = BaseProblem & {
   tests: TestCase[]
   bugHints?: string[]
   typeFixture?: string
+}
+
+// One interaction applied to the rendered component. Steps are declarative
+// and JSON-serializable so problems can be authored as data.
+export type ReactTestStep =
+  | { action: 'click'; text: string }
+  | { action: 'type'; into: string; value: string }
+
+export type ReactExpectation =
+  | { type: 'text-present'; text: string }
+  | { type: 'text-absent'; text: string }
+
+export type ReactTestCase = {
+  name: string
+  props?: Record<string, unknown>
+  steps?: ReactTestStep[]
+  expect: ReactExpectation[]
+}
+
+export type ReactCodeProblem = BaseProblem & {
+  kind: 'react-code'
+  completionMode: 'all-tests-pass'
+  componentName: string
+  starter: string
+  tests: ReactTestCase[]
+  bugHints?: string[]
 }
 
 export type StaticCheck =
@@ -144,6 +171,7 @@ export type Problem =
   | CodeProblem
   | DebugProblem
   | RefactorProblem
+  | ReactCodeProblem
   | TraceProblem
   | WrittenProblem
   | DesignProblem
