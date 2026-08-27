@@ -1,8 +1,12 @@
 # Trees and Recursion
 
-A binary-tree node stores a value and references to at most two child nodes. Each child is the root of another tree, so a recursive function can use the same logic for the left and right subtrees.
+A binary tree is a structure where each node stores a value and points to at most two child nodes, usually called left and right. Picture a family tree drawn upside down: one node on top, branches spreading downward. The detail that makes trees special is that each child is itself the top of a smaller tree. Cut off any branch and what you are holding is a complete, smaller binary tree with exactly the same shape of parts.
 
 <BinaryTreeDiagram />
+
+That self-similarity is why recursion and trees fit together so well, but it only helps if you know what recursion actually is. Recursion is a function that calls itself. That sounds circular, and unmanaged it would be: a function that always calls itself never finishes, the same way a set of instructions that begins "first, follow these instructions" never gets anything done. Two ingredients make it work. First, each call must hand itself a smaller piece of the problem, so the pieces shrink toward nothing. Second, there must be an input so small that the function can answer immediately, without calling itself at all. That immediate-answer input is called the **base case**, and it is what stops the chain.
+
+Here is what happens mechanically. When a function calls itself, JavaScript pauses the current call, remembers exactly where it was, and starts a fresh call with the new, smaller input. That fresh call may pause itself and start another, and so on down. Eventually some call receives the base case, answers without recursing, and returns. Its answer flows back to the paused call that asked for it, which uses that answer to finish its own work and return, and so on back up. Each call's answer feeds its parent's. Ask a tree node for the size of its subtree and the logic is one sentence: my size is my left child's size, plus my right child's size, plus one for me. The children compute their sizes the same way, and the empty spot below a leaf is the base case, size zero.
 
 This lesson uses nodes with this shape:
 
@@ -14,17 +18,13 @@ type TreeNode = {
 }
 ```
 
-Before writing a recursive function, define the result for a null node and state exactly what one call returns for a non-null subtree.
+Notice that `left` and `right` can be `null`. Every downward path through a tree ends at one of those nulls, so the null node is the natural base case for tree recursion, the guaranteed smallest input every chain of calls eventually reaches. That is why the habit worth building is this: before writing a recursive tree function, decide what the answer is for a null node, and state in one sentence what a single call returns for a non-null subtree. Get those two sentences right and the recursion largely writes itself. Skip them and you are guessing.
 
 ## Choose when to process the node
 
-Example prompt: Return binary-tree values in root-left-right preorder.
+Suppose you are asked to return a binary tree's values in root-left-right preorder. A recursive visit of one node has exactly three things to do: handle the node's own value, visit the left child, and visit the right child. Preorder means the node's own value comes first, before either child.
 
-Preorder processes the current node before its children. The invariant for the result array is:
-
-> After `visit(node)` returns, the preorder values for that node's complete subtree have been appended.
-
-Example input: a tree with root `1`, children `2` and `3`, and children `4` and `5` under node `2`.
+We will walk the same small tree throughout this section: root `1`, children `2` and `3`, and children `4` and `5` under node `2`. The contract for the helper is that after `visit(node)` returns, the preorder values for that node's complete subtree have been appended to the result array. The base case honors that contract trivially, because a null node's subtree has no values to append.
 
 ```ts
 export function preorderTreeValues(root: TreeNode | null): number[] {
@@ -46,17 +46,17 @@ export function preorderTreeValues(root: TreeNode | null): number[] {
 }
 ```
 
-Example output: `[1, 2, 4, 5, 3]`.
+On the sample tree this returns `[1, 2, 4, 5, 3]`: root first, then the entire left branch, then the right.
 
-Changing the order of the three operations produces other traversals. Root-left-right is preorder. Left-root-right is inorder. Left-right-root is postorder.
+Here is the interesting part. Those three operations, record the value, visit left, visit right, can be arranged in different orders, and each arrangement produces a genuinely different output from the same tree. Move the recording between the two child visits, left-root-right, and the sample tree yields `[4, 2, 5, 1, 3]`. This is called inorder. Move the recording last, left-right-root, and the same tree yields `[4, 5, 2, 3, 1]`, which is postorder. Same tree, same three lines of work, three different sequences, all from shuffling one `push`. Preorder reaches each node on the way down; postorder reaches it on the way back up, after both children are finished. That difference matters in the next problem.
 
 ## Return information from each subtree
 
-Example prompt: Return whether every node in a binary tree has left and right subtree heights that differ by at most one.
+The preorder function pushed values into a shared array and returned nothing. Recursive calls become more powerful when each call returns an answer its parent can use, so try that on a harder prompt: return whether every node in a binary tree has left and right subtree heights that differ by at most one.
 
-The parent cannot calculate its result until both child heights are known, so use postorder. Let each call return the subtree height, or `-1` when that subtree is already unbalanced.
+A parent cannot judge its own balance until it knows the heights of both children, so the node's own work must happen after both child visits. That is exactly postorder, the last of the three orders above. Let each call return the height of its subtree, or `-1` when that subtree is already unbalanced.
 
-Example input: a root with leaf nodes on both the left and right.
+Take the smallest interesting input, a root whose left and right children are both leaves. Each leaf reports height 1, the difference is 0, and the function returns `true`.
 
 ```ts
 export function isHeightBalanced(root: TreeNode | null): boolean {
@@ -69,12 +69,14 @@ export function isHeightBalanced(root: TreeNode | null): boolean {
     const leftHeight = height(node.left)
 
     if (leftHeight === -1) {
+      // The left subtree is already unbalanced, so stop climbing.
       return -1
     }
 
     const rightHeight = height(node.right)
 
     if (rightHeight === -1) {
+      // The right subtree is already unbalanced, so stop climbing.
       return -1
     }
 
@@ -89,21 +91,21 @@ export function isHeightBalanced(root: TreeNode | null): boolean {
 }
 ```
 
-Example output: `true`.
+The `-1` is doing double duty, packing the height result and the balance result into one number. It is safe because a real subtree height is never negative: an empty subtree has height 0 and everything else is taller, so `-1` can never be confused with an honest height. Any parent that sees `-1` from a child knows a failure happened somewhere below and passes it straight up without further measuring.
 
-Returning `-1` combines the height result and the balance result in one number. Each node is processed once. Calculating height again at every node would repeat subtree work and can require O(n²) time for a highly unbalanced tree.
+That single-pass design is also what keeps the function fast. Each node is processed once. The tempting alternative, a standalone `getHeight` called fresh at every node to check balance, remeasures the same subtrees over and over and can take O(n²) time on a highly unbalanced tree. Returning the height from the same traversal that checks balance avoids all of that repeated work.
 
 ## Return a matching subtree result
 
-Example prompt: Values are unique and both targets exist. Return the deepest node whose subtree contains both target values. The tree is not necessarily a binary search tree.
+Height was a single number flowing upward. A return value can carry richer answers too. Consider this prompt: given a tree with unique values and two target values that both exist in it, return the value of the deepest node whose subtree contains both targets. This node is called the lowest common ancestor. The tree is not necessarily a binary search tree, so there is no ordering to exploit; the answer has to come from searching both sides.
 
-Each recursive call returns one of three results:
+The key is to give every recursive call a precise three-way contract, so a parent always knows how to read what its children send up:
 
 - `null` when neither target was found in the subtree.
-- A target node when the current node matches.
+- A target node when the subtree contains exactly one of the targets, whether that target sits at the current node or somewhere below it.
 - The lowest common ancestor when the subtree contains both targets.
 
-Example input: root `3` with target nodes `5` in its left subtree and `1` in its right subtree.
+Concretely, take a root `3` with target value `5` somewhere in its left subtree and target value `1` somewhere in its right subtree.
 
 ```ts
 export function lowestCommonAncestorValue(
@@ -136,30 +138,30 @@ export function lowestCommonAncestorValue(
 }
 ```
 
-Example output: `3`.
-
-If both child calls return a node, the current node is the first node reached from below that contains both targets. If only one child returns a node, pass that result to the parent.
+On that input the function returns `3`. The left call comes back holding node `5`, the right call comes back holding node `1`, and since both children reported a find, root `3` is the first node reached from below whose subtree contains both targets. When only one child returns a node, the current node simply passes that result up unchanged, letting the find travel toward whichever ancestor eventually hears from both sides.
 
 ## Recursion depth
 
-Recursive traversal uses O(h) call-stack space for tree height `h`. A balanced tree has O(log n) height. A tree with only one child at each node has O(n) height and may exceed the JavaScript call-stack limit when it is very deep. Use an explicit stack or queue when the input depth may be large or unknown.
+One cost of recursion hides in plain sight. Every paused call waiting for its children takes up memory in the call stack, the runtime's record of who called whom, so a recursive traversal uses O(h) space for a tree of height `h`. On a balanced tree that height is O(log n), which is nothing. But a tree where every node has only one child is really a linked list standing on end, with O(n) height, and a deep enough one will exceed the JavaScript call-stack limit and crash with a stack overflow. When the input depth may be large or unknown, switch to an explicit stack or queue that you manage yourself, which does the same traversal from ordinary heap memory.
 
 ## Common mistakes
 
-- Omitting the null-node base case.
-- Calling the recursive function without returning or using its result.
-- Processing the parent before its children when the parent depends on child results.
-- Recalculating subtree heights at every node.
-- Treating a general binary tree as if it had binary-search-tree ordering.
-- Comparing target values without stating whether tree values are unique.
-- Ignoring call-stack space in the complexity analysis.
-- Using shared mutable state without resetting it for a new function call.
+These are the errors that show up most often when people write recursive tree code:
+
+- Omitting the null-node base case, so the function dereferences `null` or recurses forever.
+- Calling the recursive function but never returning or using its result, which throws away the child's answer.
+- Processing the parent before its children when the parent's answer depends on child results, the mistake postorder exists to prevent.
+- Recalculating subtree heights fresh at every node instead of returning them from one traversal.
+- Treating a general binary tree as if it had binary-search-tree ordering and pruning branches that may hold the answer.
+- Comparing target values without checking whether the prompt guarantees unique values, since duplicates change what a match means.
+- Ignoring the O(h) call stack when analyzing space complexity, as if recursion were free.
+- Using shared mutable state, like a module-level results array, without resetting it, so a second call starts with the first call's leftovers.
 
 ## Practice path
 
-You will practice the concepts in this order:
+The exercises build the lesson's ideas in the order you met them:
 
-1. Produce deterministic preorder traversal output.
-2. Return subtree heights and report imbalance in one postorder traversal.
-3. Return target matches upward to identify a lowest common ancestor.
-4. Explain recursive contracts, traversal order, and depth limits.
+1. Produce deterministic preorder traversal output by choosing where the node's own work goes.
+2. Return subtree heights and report imbalance in one postorder traversal, using the `-1` sentinel.
+3. Return target matches upward through a three-way contract to identify a lowest common ancestor.
+4. Explain recursive contracts, traversal order, and depth limits in your own words.

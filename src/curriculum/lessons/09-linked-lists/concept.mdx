@@ -1,6 +1,10 @@
 # Linked Lists
 
-A linked list stores each value in a node with a reference to the next node. The list does not provide direct access by numeric index. Traversal follows `next` references from the head until `null`.
+Suppose you have the array `[1, 2, 3, 4, 5]` and need to remove the 2. An array stores its values side by side in one block of memory, so removing the 2 means sliding the 3, the 4, and the 5 each one position left to close the gap. For five values that is nothing. For a million values with frequent removals near the front, all that sliding becomes the whole cost of the program.
+
+A linked list is the data structure built to avoid that sliding. Instead of one block, it stores each value in its own small object called a **node**, and each node holds a reference to the node that comes after it. The first node is called the **head**, and the last node's reference is `null`, meaning "nothing comes after me." To remove the 2, you do not move anything. You find the node holding the 1 and repoint its reference past the 2, straight at the 3. One assignment, and the list is shorter.
+
+The price for cheap splicing is that a linked list gives up direct access by numeric index. There is no `list[3]`; nothing tells you where the fourth node lives except the third node. To reach any position, you start at the head and follow `next` references until you arrive, or until you hit `null`.
 
 <LinkedListDiagram />
 
@@ -15,15 +19,15 @@ type ListNode = {
 
 The notation `1 -> 2 -> 3 -> null` means that the node containing `1` points to the node containing `2`, the node containing `2` points to the node containing `3`, and the final node points to `null`.
 
+Every problem in this lesson comes down to redirecting those arrows without losing hold of any nodes. That danger is real: the only way to reach a node is through the references pointing at it, so an arrow overwritten too early can strand the rest of the list forever.
+
 ## Reverse links without losing nodes
 
-Example prompt: Reverse a singly linked list and return its new head. Input nodes may be modified.
+Here is the classic warm-up prompt. Given a singly linked list, reverse it and return its new head. You may modify the input nodes. So `1 -> 2 -> 3 -> null` should become `3 -> 2 -> 1 -> null`.
 
-Before changing `current.next`, store its original value. The invariant is:
+Reversing means every node's `next` arrow must flip to point at the node before it. But watch what happens if you flip the head's arrow first. The node holding `1` now points backward at `null`, and nothing anywhere points at the `2`. The rest of the list is gone. Changing `current.next` before saving it would destroy the only reference to the remaining nodes, so the loop below copies that reference into a local variable named `next` before touching anything.
 
-> `previous` is the head of the reversed part, and `current` is the head of the unprocessed part.
-
-Example input: `1 -> 2 -> 3 -> null`.
+With that guarded, the algorithm walks the list once, carrying two references: `previous` is the head of the part already reversed, and `current` is the head of the part still untouched. Each pass flips one arrow and shifts both references forward one node.
 
 ```ts
 export function reverseLinkedList(head: ListNode | null): ListNode | null {
@@ -44,17 +48,21 @@ export function reverseLinkedList(head: ListNode | null): ListNode | null {
 }
 ```
 
-Example output: `3 -> 2 -> 1 -> null`.
+Trace it on `1 -> 2 -> 3 -> null`. On the first pass, `next` saves the `2`, the `1` flips to point at `null`, and the two references advance: the reversed part is `1 -> null` and the untouched part is `2 -> 3 -> null`. The next pass flips the `2` to point at the `1`; the pass after that flips the `3` to point at the `2`. When `current` reaches `null` there is nothing left to flip, and `previous` sits on the `3`, the head of the fully reversed list `3 -> 2 -> 1 -> null`.
 
-Changing `current.next` before saving it would remove the only reference to the remaining nodes. The local `next` variable preserves that reference.
+One last trap: the function returns `previous`, not `head`. The variable `head` still points at the `1`, which is now the tail. Returning it hands back a one-node list.
 
 ## Use a dummy node for head changes
 
-Example prompt: Remove the node that is `n` positions from the end of a linked list in one scan.
+The next prompt sounds like a small twist and hides a design lesson. Remove the node that is `n` positions from the end of a linked list, in a single scan. Given `1 -> 2 -> 3 -> 4 -> 5 -> null` and `n = 2`, the second node from the end is the `4`, so the result is `1 -> 2 -> 3 -> 5 -> null`.
 
-A dummy node points to the real head. It provides a predecessor even when the real head must be removed. Move `fast` forward `n` nodes, then move `fast` and `slow` together until `fast` reaches the final node. At that point, `slow.next` is the node to remove.
+Removing a node from a linked list always works the same way: you stand on the node just before it, its **predecessor**, and repoint the predecessor's `next` arrow past the doomed node. To delete the `4`, you set the `3`'s `next` to the `5`.
 
-Example input: `head = 1 -> 2 -> 3 -> 4 -> 5 -> null`, `n = 2`.
+Now try that recipe with `n = 5`, which asks for the head itself. The `1` has no predecessor. There is no node whose arrow you can repoint, and the honest fix is an ugly one, a separate branch that checks for this case and returns `head.next` directly, doubling the paths you have to get right.
+
+The cleaner fix is to make sure a predecessor always exists. Before scanning, create one extra throwaway node, called a **dummy node**, and point it at the real head. Now the head is no longer special; it has a predecessor like every other node, and one code path handles every value of `n`. At the end, `dummy.next` is the head of the result, whether or not the original head survived.
+
+The single-scan requirement is met with two pointers moving in step. Move `fast` forward `n` nodes first, opening a fixed gap of `n` between `fast` and `slow`. Then advance both together until `fast` stands on the final node. The gap has not changed, so `slow` now stands exactly `n + 1` nodes from the end, which is the predecessor of the node to remove.
 
 ```ts
 export function removeNthFromEnd(
@@ -81,21 +89,21 @@ export function removeNthFromEnd(
 }
 ```
 
-Example output: `1 -> 2 -> 3 -> 5 -> null`.
+On the example, `fast` first advances two nodes to the `2`. Then both pointers walk together until `fast` reaches the `5`, which leaves `slow` on the `3`. The line `slow.next = slow.next!.next` repoints the `3` past the `4` to the `5`, producing `1 -> 2 -> 3 -> 5 -> null`.
 
-The prompt guarantees that `n` is valid. The `!` tells TypeScript that a node exists because that guarantee and the loop conditions have already proved it.
+About those `!` marks: the prompt guarantees that `n` is valid, so the nodes these lines step onto must exist. The `!` tells TypeScript that a node exists because that guarantee and the loop conditions have already proved it.
 
 ## Compose several pointer operations
 
-Example prompt: Reorder `first -> second -> ... -> last` into `first -> last -> second -> second-last -> ...` by changing links in place.
+Interview problems rarely stop at one pointer trick. The harder prompts chain several, and this one chains three. Reorder `first -> second -> ... -> last` into `first -> last -> second -> second-last -> ...` by changing links in place, so `1 -> 2 -> 3 -> 4 -> 5 -> null` becomes `1 -> 5 -> 2 -> 4 -> 3 -> null`.
 
-Use three explicit steps:
+Read the target order again and a shape appears. It alternates between nodes from the front of the list, in order, and nodes from the back, in reverse order. That observation dictates a plan with three phases, each one a technique this lesson has already built.
 
-1. Find the end of the first half with slow and fast pointers.
-2. Disconnect and reverse the second half.
-3. Alternate nodes from the first half and reversed second half.
+First, find the middle, because the front half and the back half need to be handled separately. A `slow` pointer moving one node per step and a `fast` pointer moving two will do it: when `fast` runs out of list, `slow` has covered half the distance and stands on the last node of the first half.
 
-Example input: `1 -> 2 -> 3 -> 4 -> 5 -> null`.
+Second, reverse the second half, using exactly the loop from the first section. The back-of-the-list nodes are needed in reverse order, and reversing that half puts its last node first, ready to be dealt out.
+
+Third, merge the two halves by alternating, one node from the first half, one from the reversed second half, repeated until the reversed half runs out.
 
 ```ts
 export function reorderLinkedList(head: ListNode | null): ListNode | null {
@@ -103,7 +111,7 @@ export function reorderLinkedList(head: ListNode | null): ListNode | null {
     return head
   }
 
-  // Find the end of the first half.
+  // Phase 1: find the end of the first half.
   let slow = head
   let fast = head
 
@@ -112,7 +120,7 @@ export function reorderLinkedList(head: ListNode | null): ListNode | null {
     fast = fast.next.next
   }
 
-  // Separate and reverse the second half.
+  // Phase 2: separate and reverse the second half.
   let second = slow.next
   slow.next = null
   let previous: ListNode | null = null
@@ -124,15 +132,18 @@ export function reorderLinkedList(head: ListNode | null): ListNode | null {
     second = next
   }
 
-  // Insert one reversed node after each first-half node.
+  // Phase 3: insert one reversed node after each first-half node.
   let first: ListNode | null = head
   second = previous
 
   while (second) {
+    // Save where each half continues before rewiring either arrow.
     const firstNext = first!.next
     const secondNext = second.next
+    // Splice the reversed node in between first and its old successor.
     first!.next = second
     second.next = firstNext
+    // Step both halves forward to the saved continuation points.
     first = firstNext
     second = secondNext
   }
@@ -141,24 +152,30 @@ export function reorderLinkedList(head: ListNode | null): ListNode | null {
 }
 ```
 
-Example output: `1 -> 5 -> 2 -> 4 -> 3 -> null`.
+Walk the phases on `1 -> 2 -> 3 -> 4 -> 5 -> null`. Phase 1 marches `slow` to the `2` while `fast` reaches the `3`, then `slow` to the `3` while `fast` reaches the `5`. With `fast` on the last node, the loop stops and `slow` sits on the `3`, the end of the first half.
 
-Disconnecting the halves with `slow.next = null` prevents the old link from creating a cycle. During the merge, save both next references before changing links.
+Phase 2 starts by cutting the list in two. `second` grabs the `4`, and `slow.next = null` snips the arrow from the `3` to the `4`. That snip matters: skip it and the `3` keeps its old forward arrow while the merge later gives the `4` an arrow pointing back into the first half, and the two stale links close into a cycle that traps any later traversal in an endless loop. After the cut, the reversal loop turns `4 -> 5 -> null` into `5 -> 4 -> null`, and `previous` holds the `5`. The two halves are now `1 -> 2 -> 3 -> null` and `5 -> 4 -> null`.
+
+Phase 3 is the part that loses readers, so slow down and watch one iteration closely. `first` stands on the `1` and `second` on the `5`. The plan is to splice the `5` in between the `1` and the `2`, but both of the arrows about to be overwritten are the only way to reach the rest of their halves. So the first two lines save both continuation points, `firstNext` remembers the `2` and `secondNext` remembers the `4`, before anything changes. Then the splice: the `1` points at the `5`, and the `5` points at the saved `2`. Finally both walkers jump to their saved nodes, `first` to the `2` and `second` to the `4`. The list so far reads `1 -> 5 -> 2 -> 3 -> null`, with `4 -> null` still waiting.
+
+The second iteration repeats the dance one position along: save the `3` and `null`, splice the `4` between the `2` and the `3`, and advance. Now `second` is `null`, the loop ends, and the list reads `1 -> 5 -> 2 -> 4 -> 3 -> null`, exactly the target. Notice that the whole phase never created a node and never touched a value; it only redirected arrows, always saving before overwriting. That is the discipline the entire lesson has been practicing.
 
 ## Common mistakes
 
-- Changing `current.next` before saving the original next node.
-- Returning the old head after reversing a list.
-- Writing a separate head-removal branch instead of using a dummy node.
-- Moving a fast pointer without checking the references required by the loop.
-- Forgetting to disconnect two list sections before reconnecting them.
-- Advancing a pointer after its link has already been replaced.
-- Modifying input nodes when the prompt requires a new list.
-- Comparing node objects when the problem asks to compare their values.
+These are the errors that surface most often when pointer code goes wrong:
+
+- Changing `current.next` before saving the original next node, which strands every node after it with no reference left to reach them.
+- Returning the old `head` after reversing a list, which hands back the tail as a one-node list instead of the new head.
+- Writing a separate head-removal branch instead of using a dummy node, doubling the code paths that have to be correct.
+- Moving a fast pointer without first checking the references the step needs, so `fast.next.next` reads `next` off `null` and throws.
+- Forgetting to disconnect two list sections before reconnecting them, leaving a stale arrow that closes into a cycle.
+- Advancing a pointer after its link has already been replaced, which follows the new arrow instead of the saved original.
+- Modifying input nodes when the prompt requires a new list, mutating data the caller still holds.
+- Comparing node objects with `===` when the problem asks to compare their values, so two nodes holding the same number never match.
 
 ## Practice path
 
-You will practice the concepts in this order:
+The exercises build the lesson's techniques in the order you met them:
 
 1. Reverse every link while preserving the unprocessed list.
 2. Remove a node from the end with a dummy node and a fixed pointer gap.

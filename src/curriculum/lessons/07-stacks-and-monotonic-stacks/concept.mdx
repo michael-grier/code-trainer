@@ -1,20 +1,20 @@
 # Stacks and Monotonic Stacks
 
-A stack stores items in last-in, first-out order. In TypeScript, an array usually provides the required operations: `push` adds an item to the end, and `pop` removes the most recently added item.
+Picture a stack of plates. You can put a new plate on top, and you can take the top plate off, but you cannot pull a plate out of the middle without toppling the rest. That is the whole idea of a stack as a data structure: the last item you put in is the first item you get back out. People shorten this to "last in, first out."
 
-Use a stack when the current item must be compared with the most recent unresolved item. Use a monotonic stack when unresolved numeric values must remain in increasing or decreasing order.
+In TypeScript you rarely need a special class for this, because a plain array already behaves like one. `push` adds an item to the end of the array, `pop` removes the item that was added most recently, and both take constant time. The end of the array plays the role of the top of the plate stack.
+
+Why would you ever want a container that only lets you touch the newest item? Because some problems have exactly that shape. When you read `"{[()]}"` character by character and hit a `]`, the only opening bracket it could possibly close is the most recent one still waiting for a partner. Older brackets do not matter yet. A stack hands you precisely the item you need and hides the rest. Later in this lesson we will meet a refinement called a monotonic stack, where the stack additionally keeps its values in sorted order, but plain stacks come first.
 
 <StackDiagram />
 
 ## Match nested structures
 
-Example prompt: Given a string containing only bracket characters, return whether every opening bracket is closed by the correct bracket in the correct nested order.
+Here is a prompt that calls for a plain stack. Given a string containing only bracket characters, return whether every opening bracket is closed by the correct bracket in the correct nested order. For `input = "{[()]}"` the answer is `true`.
 
-Each stack entry is an opening bracket that has not been matched. The invariant is:
+Walk the string in your head. Each opening bracket is a promise that the matching closer will arrive later, and the promises resolve in reverse order: the bracket opened last must close first. So push every opening bracket, and when a closing bracket arrives, pop and check that the two form a pair. The invariant, the plain-English fact that stays true after every step, is this:
 
 > The stack contains exactly the unmatched opening brackets, in their original order.
-
-Example input: `input = "{[()]}"`.
 
 ```ts
 export function hasValidBrackets(input: string): boolean {
@@ -44,17 +44,19 @@ export function hasValidBrackets(input: string): boolean {
 }
 ```
 
-Example output: `true`.
+`hasValidBrackets("{[()]}")` returns `true`: each closer meets its own opener at the top of the stack, and the stack is empty at the end.
 
-Checking only the bracket counts is insufficient. `"([)]"` has equal counts, but the closing order is invalid. A stack checks the required order as well as the counts.
+You might wonder whether counting brackets would be enough, one counter per bracket type. It is not, and one input disproves it: `"([)]"` has one of each opener and one of each closer, so every count balances, yet the string is invalid because the `)` arrives while `[` is still the most recent unmatched opener. The stack catches this immediately, since the pop returns `[` and the map says `)` needs `(`. Order matters, and the stack is what remembers it.
 
 ## Resolve next-greater questions
 
-Example prompt: For each daily temperature, return the number of days until a strictly warmer temperature occurs. Return zero if no later day is warmer.
+The bracket stack held items until an exact partner arrived. The next problem holds items until something bigger arrives, and that small change is where monotonic stacks come from.
 
-Store indexes rather than temperatures because the result needs a distance between days. The temperatures at the stored indexes remain non-increasing from the beginning to the end of the stack. Each stored index represents a day whose first warmer day is still unknown.
+The prompt: for each daily temperature, return the number of days until a strictly warmer temperature occurs, or zero if no later day is warmer. For `temperatures = [73, 74, 75, 71, 69, 72, 76, 73]`, the expected answer is `[1, 1, 4, 2, 1, 1, 0, 0]`.
 
-Example input: `temperatures = [73, 74, 75, 71, 69, 72, 76, 73]`.
+Before writing code, let the problem dictate the design. First, what goes on the stack? The answer for each day is a distance in days, and you cannot compute a distance from two temperatures alone, so store each day's index rather than its temperature. The temperature is always one lookup away. Second, what does a stored index mean? It is a day still waiting for its answer, a day whose first warmer day has not appeared yet. Third, when does a day come off the stack? The moment a warmer temperature shows up, because that new day is the answer for every waiting day it beats. Pop each beaten day, record the distance, and only then push the new day.
+
+Now notice something that falls out of that popping rule for free. Before a new day is pushed, every stored day warmer than it has already been popped, so each day on the stack is at least as warm as the day above it. Read from the bottom of the stack to the top and the temperatures never increase. A stack with that property, where the values stay in sorted order because you pop anything that would break the order, is called a monotonic stack. Nobody sorts anything; the order is a side effect of resolving items as soon as something bigger arrives.
 
 ```ts
 export function daysUntilWarmer(temperatures: number[]): number[] {
@@ -79,21 +81,25 @@ export function daysUntilWarmer(temperatures: number[]): number[] {
 }
 ```
 
-Example output: `[1, 1, 4, 2, 1, 1, 0, 0]`.
+Trace the first interesting step. Days 0, 1, and 2 each pop their predecessor immediately, since 74 beats 73 and 75 beats 74, giving the first two answers of 1. Then 71 and 69 pile up under 75, cooler than everything above them. When 72 arrives on day 5, it pops day 4 (distance 1) and day 3 (distance 2), but not day 2, because 72 does not beat 75. Day 6's temperature of 76 finally clears the whole stack. Days 6 and 7 never get popped, so they keep the 0 that `result` was filled with, and the function returns `[1, 1, 4, 2, 1, 1, 0, 0]`.
 
 The comparison uses `<`, not `<=`, because an equal temperature is not warmer. Equal temperatures remain unresolved until a strictly greater value appears.
 
-Each index is added once and removed at most once. The total time is O(n), even though the code contains a `while` loop inside a `for` loop.
+A `while` loop inside a `for` loop looks like O(n²), but count the work differently. Each index is pushed exactly once, and each pop removes an index permanently, so each index is popped at most once. Across the entire run there can be at most n pushes and n pops, no matter how they cluster. A single day might trigger many pops, but only by spending pops that other days did not, so the total time is O(n).
 
-TypeScript gives `pop()` the return type `T | undefined`. In these examples, the length check proves that an item exists before `pop()` runs. The `!` after `pop()` tells TypeScript about that proof.
+One TypeScript detail: `pop()` has the return type `T | undefined`, because popping an empty array yields `undefined`. Here the `unresolved.length > 0` check guarantees an item exists, but TypeScript does not follow that reasoning across the two lines, so the `!` after `pop()` tells the compiler what we already know.
 
 ## Store the earliest valid start
 
-Example prompt: Given histogram bar heights, return the largest rectangle formed by consecutive bars.
+This is the hardest problem in the lesson, so it gets the slowest walkthrough. The prompt: given histogram bar heights, return the area of the largest rectangle formed by consecutive bars. For `heights = [2, 1, 5, 6, 2, 3]`, the answer is `10`, a rectangle of height 5 spanning the two bars of heights 5 and 6.
 
-For each height, store the earliest index where a rectangle of that height may begin. When a smaller height appears, it ends every taller rectangle stored at the end of the stack. Calculate each ended rectangle before removing it.
+A rectangle in a histogram is limited by its shortest bar. The height-5 rectangle above works because both bars under it are at least 5 tall; it cannot extend left, where a bar of height 1 would cut it down, or right, where a bar of height 2 would. So every candidate rectangle is really a story about one height and how far that height can stretch before a shorter bar stops it.
 
-Example input: `heights = [2, 1, 5, 6, 2, 3]`.
+The stack tracks rectangles that are still growing. Each entry is a pair, `[start, height]`, meaning "a rectangle of this height could begin at this start index and is still extending rightward." As long as the bars keep getting taller, every open rectangle stays alive, so we just push new entries and the heights on the stack stay in increasing order, another monotonic stack. The moment a shorter bar appears, it ends every open rectangle taller than itself. Those can never grow past this point, so we pop each one and compute its final area: its height times the distance from its start index to the current index, which is the first index the rectangle cannot include.
+
+There is one subtlety, and it is the reason the entry stores a start index instead of just a height. When the shorter bar pops taller rectangles, the shorter bar's own rectangle does not begin at the shorter bar. It begins wherever the popped rectangles began, because a short bar fits under every taller bar it just removed. So as we pop, we keep the oldest start index we saw, and push the new height with that inherited start.
+
+One loose end remains: rectangles still open when the input runs out. The code handles this by running the loop one extra step with an imaginary bar of height 0. Zero is shorter than every real bar, so this final step pops and measures everything left on the stack. The zero bar is not part of the input; it exists only to force the leftover rectangles closed.
 
 ```ts
 export function largestHistogramRectangle(heights: number[]): number {
@@ -102,7 +108,9 @@ export function largestHistogramRectangle(heights: number[]): number {
   let best = 0
 
   for (let index = 0; index <= heights.length; index += 1) {
-    // A final zero causes every remaining height to be calculated.
+    // One step past the last bar, pretend a bar of height zero exists.
+    // Zero is shorter than every real bar, so this final step pops and
+    // measures every rectangle still open on the stack.
     const height = index === heights.length ? 0 : heights[index]
     let start = index
 
@@ -124,19 +132,21 @@ export function largestHistogramRectangle(heights: number[]): number {
 }
 ```
 
-Example output: `10`.
+Now trace `[2, 1, 5, 6, 2, 3]` in full. Index 0 pushes `[0, 2]`. Index 1 brings height 1, shorter than 2, so `[0, 2]` pops with area 2 times (1 minus 0), which is 2, and the popped start of 0 is inherited: we push `[0, 1]`, recording that a height-1 rectangle could stretch all the way back to index 0. Indexes 2 and 3 are taller than everything below them, so `[2, 5]` and `[3, 6]` push cleanly. Then index 4 brings height 2 and the popping starts. `[3, 6]` pops with area 6 times (4 minus 3), which is 6. `[2, 5]` pops with area 5 times (4 minus 2), which is 10, our eventual winner. The new entry pushes as `[2, 2]`, starting at index 2 where the popped rectangles began. Index 5 pushes `[5, 3]`. Finally the imaginary zero bar at index 6 clears the stack: `[5, 3]` gives area 3, `[2, 2]` gives 2 times (6 minus 2), which is 8, and `[0, 1]` gives 1 times 6, which is 6. Nothing beat 10, so the function returns `10`.
 
-When a taller entry is removed, its start index is assigned to `start`. The current shorter height can include every index that the taller height included, so the stored start must be preserved. The final zero is not an input bar; it only causes every remaining positive height to be calculated.
+The same counting argument as before applies. Each index is pushed at most once and popped at most once, so the whole thing runs in O(n) despite the nested loops.
 
 ## Common mistakes
 
-- Removing from the beginning of an array instead of the end and changing stack operations from O(1) to O(n).
-- Comparing a closing bracket with any earlier opening bracket instead of the most recent unmatched one.
-- Storing only values when the answer requires an index or distance.
-- Removing equal values when the prompt asks for a strictly greater value.
-- Forgetting that unresolved indexes keep the default result of zero.
-- Failing to calculate monotonic-stack entries that remain after the input ends.
-- Discarding the earliest start index when a shorter histogram bar replaces taller bars.
+These are the errors that show up most often when people first write stack solutions:
+
+- Removing items from the beginning of an array with `shift` instead of the end with `pop`, which turns each constant-time stack operation into an O(n) array shuffle.
+- Comparing a closing bracket against any earlier opening bracket instead of only the most recent unmatched one, which accepts invalid strings like `"([)]"`.
+- Storing raw values on the stack when the answer needs an index or a distance, leaving no way to compute how far apart two items are.
+- Popping equal values when the prompt asks for a strictly greater one, such as treating an equally warm day as warmer.
+- Forgetting that indexes never popped keep the default result of zero, and adding unnecessary cleanup code for them.
+- Ending the loop with entries still on the stack and never measuring them, which the histogram solution avoids with its final zero-height step.
+- Discarding the earliest start index when a shorter histogram bar replaces taller bars, shrinking rectangles that should have stretched further left.
 
 ## Practice path
 

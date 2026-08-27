@@ -1,8 +1,12 @@
 # Binary Search Trees
 
-A binary search tree (BST) adds an ordering rule to a binary tree: every value in a node's left subtree is smaller, and every value in its right subtree is larger. This lesson assumes values are unique.
+Back in the binary search lesson, a sorted array let you find a value in O(log n) time. Every comparison told you which half of the array to throw away, so 1,000,000 elements took about 20 looks instead of a million. That speed came entirely from the ordering. An unsorted array gives a comparison no information, and you are back to checking everything.
 
-This ordering rule is the **BST invariant**.
+A plain binary tree has the same problem. If the values could be anywhere, finding one means visiting every node. So here is the question this lesson answers: can a tree be ordered the way a sorted array is, so that one comparison at a node tells you which whole subtree to skip?
+
+It can. A binary search tree, or BST, is a binary tree with one rule added: at every node, every value in the left subtree is smaller than the node's value, and every value in the right subtree is larger. Notice the word "every." The rule reaches all the way down: each descendant on the left is smaller, not merely the left child. This lesson assumes values are unique, so "smaller" and "larger" are the only cases.
+
+That rule is called the **BST invariant**. An invariant is a promise about a structure that every operation keeps true. Insert a value, delete a value, rebalance the tree, and the ordering promise must still hold afterward. Because the promise always holds, every algorithm in this lesson gets to rely on it without checking it.
 
 <BinarySearchTreeDiagram />
 
@@ -16,11 +20,11 @@ type TreeNode = {
 }
 ```
 
-## Use ordering during lookup
+## Searching by skipping half the tree
 
-Example prompt: Return whether a target exists in a valid BST.
+Start with the payoff itself. You are given a valid BST and a target, and you must return whether the target exists in the tree.
 
-Example input: root `8`, left subtree values `3, 1, 6`, right subtree values `10, 14`, and target `6`.
+Take a concrete tree: the root is `8`, its left subtree holds `3, 1, 6`, its right subtree holds `10, 14`, and the target is `6`. Standing at the root, compare: 6 is less than 8. The invariant promises that everything larger than 8 lives in the right subtree, so the right subtree, all of it, cannot contain 6. Step left to `3`. Now 6 is greater than 3, so step right, and there it is. Three comparisons, and the nodes `10` and `14` were never touched. This is binary search again, just walking pointers instead of index arithmetic.
 
 ```ts
 export function containsBstValue(root: TreeNode | null, target: number): boolean {
@@ -29,7 +33,10 @@ export function containsBstValue(root: TreeNode | null, target: number): boolean
   while (current) {
     if (current.value === target) return true
 
-    // Ordering proves which one child can still contain target.
+    // The invariant makes one subtree impossible. If the target is smaller
+    // than this node's value, it can only live down the left side, because
+    // everything on the right is larger. So step toward the only subtree
+    // that could still hold it and never look at the other one again.
     current = target < current.value ? current.left : current.right
   }
 
@@ -37,17 +44,19 @@ export function containsBstValue(root: TreeNode | null, target: number): boolean
 }
 ```
 
-Example output: `true`.
+On the tree above with target `6`, this returns `true`.
 
-Unlike a general-tree search, this function visits only one child at each node. Runtime is O(h) for tree height `h`.
+A search in a general binary tree may have to explore both children of every node. This one follows a single path from the root downward, so the runtime is O(h), where `h` is the height of the tree. Whether that height is actually small is a question we will come back to.
 
-## Validate ranges from every ancestor
+## Checking whether a tree really is a BST
 
-Example prompt: Return whether a binary tree follows the strict BST ordering rule, also called the BST invariant.
+Everything above leaned on the tree being a valid BST. That raises the reverse problem: given some binary tree, return whether it follows the strict ordering rule.
 
-A parent-only comparison is insufficient. A value in the right subtree of `10` must remain greater than `10`, even when its direct parent is `15`.
+The natural first attempt is to check each node against its own children. Walk the tree, and at every node confirm that the left child is smaller and the right child is larger. It feels complete, since every parent-child pair gets inspected.
 
-Example input: root `10` has left child `5` and right child `15`; node `15` has left child `6`.
+Here is a tree that fools it. The root is `10`, with left child `5` and right child `15`, and node `15` has a left child of `6`. Run the parent-only check: at the root, 5 is less than 10 and 15 is greater than 10, fine. At node `15`, its left child 6 is less than 15, also fine. Every pair passes. But now search this tree for 6 the way the previous section did. At the root, 6 is less than 10, so the search steps left and never enters the right subtree. The 6 sitting under `15` is unreachable by search, which means the ordering promise is broken. The node `6` lives in the right subtree of `10`, and the invariant says everything there must be greater than 10.
+
+That is the lesson of the counterexample. A node must satisfy every ancestor, not just its parent. Stepping right past `10` promises "greater than 10" to the entire subtree below, and stepping left past `15` adds "less than 15" on top of it. So each node carries an allowed range built from all the turns taken to reach it, and the fix is to pass that range down explicitly.
 
 ```ts
 export function isValidBinarySearchTree(root: TreeNode | null): boolean {
@@ -59,7 +68,10 @@ export function isValidBinarySearchTree(root: TreeNode | null): boolean {
     if (!node) return true
     if (node.value <= lower || node.value >= upper) return false
 
-    // Each child receives the new bound created by this node.
+    // This node tightens the range for its children. Going left promises
+    // "smaller than me", so the left child's upper bound becomes this value.
+    // Going right promises "larger than me", so the right child's lower
+    // bound becomes this value. The other bound passes through unchanged.
     return validate(node.left, lower, node.value) &&
       validate(node.right, node.value, upper)
   }
@@ -68,15 +80,15 @@ export function isValidBinarySearchTree(root: TreeNode | null): boolean {
 }
 ```
 
-Example output: `false`, because `6` is below the required lower bound `10`.
+On the counterexample tree, this returns `false`. When the recursion reaches node `6`, its range is (10, 15), inherited from the right turn at `10` and the left turn at `15`, and 6 falls below the lower bound of 10.
 
-## Read values in sorted order
+## Reading the values in sorted order
 
-Example prompt: Return the value at one-based sorted position `k` in a BST.
+The invariant hides a second gift. An inorder traversal visits a node's left subtree, then the node itself, then its right subtree. In a BST, everything in the left subtree is smaller and everything in the right subtree is larger, so inorder visits the values in ascending order. A BST is a sorted list in disguise, and inorder is how you read it out.
 
-Inorder traversal visits left subtree, node, then right subtree. Under the BST invariant, that order is ascending.
+That makes a whole family of problems easy, such as this one: return the value at one-based sorted position `k`. For a BST holding the values `[1, 3, 6, 8, 10, 14]` with `k = 4`, the answer is the fourth smallest value, `8`. Run an inorder traversal, count the visits, and stop at the kth one, with no need to walk the rest of the tree.
 
-Example input: BST values `[1, 3, 6, 8, 10, 14]`, `k = 4`.
+The code below does the traversal iteratively with an explicit stack, and it is the trickiest code in this lesson, so read the comments slowly. The stack holds nodes whose left side has been entered but whose own value has not been visited yet.
 
 ```ts
 export function kthSmallestBstValue(
@@ -89,15 +101,25 @@ export function kthSmallestBstValue(
   let current = root
   let visited = 0
 
+  // The loop keeps going while there is a node to descend into (current)
+  // or a node waiting on the stack to be visited.
   while (current || stack.length > 0) {
+    // Slide down the chain of left children, pushing each node passed.
+    // The smallest unvisited value is at the bottom of this chain, and
+    // the stack remembers the path so we can climb back up.
     while (current) {
       stack.push(current)
       current = current.left
     }
 
+    // The stack top is the next value in ascending order: its left side
+    // is fully done, so its own value comes next. Pop and count it.
     current = stack.pop()!
     visited += 1
     if (visited === k) return current.value
+
+    // Its left side and its own value are done, so the next values in
+    // order live in its right subtree. Restart the descent from there.
     current = current.right
   }
 
@@ -105,24 +127,30 @@ export function kthSmallestBstValue(
 }
 ```
 
-Example output: `8`.
+On the tree holding `[1, 3, 6, 8, 10, 14]` with `k = 4`, this returns `8`. If `k` is larger than the number of nodes, the loop runs out of tree and returns `null`.
 
-## Tree height controls runtime
+## Height decides whether any of this is fast
 
-A balanced BST has O(log n) height. Inserting already sorted values without balancing can produce a chain with O(n) height. Search and insertion then take O(n) time. State whether the tree is balanced before claiming logarithmic runtime.
+The lookup at the start of this lesson ran in O(h) for tree height `h`, and kth-smallest costs O(h + k), since after descending it visits one node per value counted. (Validation is the exception: it must visit every node, so it is O(n) no matter the shape.) Height is the number that decides whether the O(h) parts are fast, so it is worth asking how big `h` can get. When the tree is balanced, meaning its left and right sides stay roughly the same size all the way down, the height is O(log n), and search really does match binary search on an array.
+
+But nothing in the invariant forces balance. Insert the values 1, 2, 3, 4, 5 into an empty BST in that order and watch what happens: each new value is larger than everything present, so each one becomes the right child of the previous node. The result is a chain, technically a valid BST, with height n. Search and insertion in that chain walk the whole thing, taking O(n) time, no better than a list. So O(h) is only O(log n) when the tree is balanced, and that is a fact about how the tree was built, not something the invariant gives you for free. Self-balancing trees exist to keep the height logarithmic, but a plain BST makes no such promise.
 
 ## Common mistakes
 
-- Comparing a node only with its parent during validation.
-- Allowing equality without a stated duplicate-value rule.
-- Searching both children even though ordering excludes one child.
-- Using preorder instead of inorder for sorted output.
-- Assuming every BST is balanced.
-- Forgetting that recursive and iterative traversal use O(h) auxiliary space.
+These are the errors that show up most often when people first work with BSTs:
+
+- Validating each node against only its parent. As the `10, 5, 15, 6` counterexample showed, a node can satisfy its parent while violating an ancestor further up.
+- Letting equal values pass a validation check without first stating a rule for duplicates. This lesson assumes unique values, so equality with a bound is a violation.
+- Searching both children of a node, even though the invariant guarantees the target can only be down one side. That throws away the entire speed advantage.
+- Using preorder traversal when sorted output is needed. Only inorder visits BST values in ascending order.
+- Assuming every BST is balanced and claiming O(log n) runtime. A chain-shaped BST makes every O(h) operation O(n).
+- Calling a traversal O(1) space. Both the recursion in validation and the explicit stack in the inorder traversal hold one node per level, which is O(h) auxiliary space.
 
 ## Practice path
 
-1. Use ordering to search one path.
-2. Validate complete ancestor bounds.
-3. Stop an inorder traversal at a requested sorted position.
-4. Explain ordering, duplicates, traversal order, and height-dependent runtime.
+The exercises walk the same road the lesson did:
+
+1. Search a valid BST by comparing at each node and following the one subtree that can still hold the target.
+2. Validate a tree by passing an allowed range down to every node, so each value answers to all its ancestors.
+3. Run an inorder traversal that counts visits and stops at a requested sorted position.
+4. Explain, in your own words, the ordering invariant, how duplicates should be handled, why inorder yields sorted output, and why runtime depends on height rather than node count.

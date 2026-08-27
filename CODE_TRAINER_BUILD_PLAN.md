@@ -1141,19 +1141,36 @@ This is preferable to three fixed-window variants that only change the wording, 
 
 ### 15.2 Lesson Authoring Principles
 
+Write for a learner meeting the concept for the first time, who is comfortable with basic
+TypeScript and nothing else. The lesson voice is a teacher walking a student through a new
+idea, not one engineer talking to another. Three hallmarks govern every lesson, and they
+override any principle below that conflicts with them:
+
+- **Clear, non-technical language wherever possible.** Define every term of art in plain
+  words the first time it appears. If the curriculum has not taught a term yet, teach it in
+  place or avoid it.
+- **Logically scaffolded explanations.** Open with a concrete problem before naming the
+  technique that solves it. Connect each section to the one before it with a sentence. Give
+  the hardest idea in the lesson the most words, walked through on a concrete input; one
+  asserted sentence is never enough for the lesson's subtlest step.
+- **Natural, human-sounding prose.** Before writing, read
+  `src/curriculum/lessons/16-dynamic-programming-fundamentals/concept.mdx` and match its
+  voice. Write connected paragraphs with varied sentence rhythm, so the lesson reads as
+  teaching rather than as a reference card of labeled fragments.
+
 Use these principles when replacing placeholder lessons with final curriculum content:
 
 - Prefer concrete, runnable TypeScript examples over pseudo-code. Avoid placeholder bodies, ellipses, `TODO` comments, and comments that stand in for behavior.
 - Prefer interview-realistic problems based on commonly reported public patterns and practical engineering scenarios. Learner fit, scaffolding, and progressive difficulty are more important than exact company provenance.
 - Do not claim a problem was asked by a specific company unless the lesson records a reliable public source. Avoid copying proprietary, confidential, or paywalled prompts; adapt wording, constraints, examples, and tests to the lesson goal.
 - Before explaining when to choose a pattern, give a realistic prompt that would call for that pattern. The following code example should solve that prompt or a directly related version of it.
-- For prompt-rooted concept examples, state concrete example inputs before the function and the expected output after the function.
+- Ground every concept example in concrete input values and the exact expected output. Weave them into the surrounding explanation in whatever order teaches best; a fixed "Example input / Example output" label format is not required and tends to flatten the prose.
 - When introducing a representation, key, invariant, or data structure, show both how it is created and how it is used. For example, a hash key section should show the key construction and the `Map` or `Set` lookup that uses it.
 - Explain compact encodings before relying on them. If a string, tuple, bit mask, count array, or serialized key represents something meaningful, spell out how to read it.
 - State assumptions before they matter, especially input shape, casing, ordering guarantees, mutation expectations, and runtime complexity targets.
 - Keep examples small, complete, and self-contained. Define setup values before using them, and prefer a short named function over a detached snippet when the reader needs inputs, output, control flow, and return behavior.
 - Add a simple diagram after the initial explanation when a visual representation would make the concept easier to understand. Diagrams are especially useful for spatial relationships, data-structure shape, pointer or boundary movement, and branching control flow. Include them only when they clarify the lesson; do not add decorative or repetitive visuals.
-- Use whiteboard-style comments in teaching examples and reference approaches. Comments should outline the reasoning steps an engineer would say aloud, then the code below each comment should perform that step.
+- Use narrated comments in teaching examples and reference approaches. Each comment states the reasoning step a teacher would say aloud to someone new to the idea, and the code below it performs that step.
 - Use plain, literal language in comments and explanations. Prefer direct phrases such as "decrease the required count" over metaphorical wording.
 - Pair abstract language with an immediate example. If the lesson says "preserve an invariant", name the invariant in plain English and show the update that maintains it.
 - For JavaScript runtime topics, begin with a small behavior question or failure,
@@ -1186,6 +1203,9 @@ Use these principles when replacing placeholder lessons with final curriculum co
 Before treating a lesson as authored, check the following:
 
 - The concept page names the core pattern, shows self-contained examples, and does not reference undefined variables or prior context.
+- Every term of art is defined in plain words before its first use, or replaced with plain language.
+- Every code block is preceded by prose explaining the problem it solves, and no section opens cold on an example label.
+- The lesson's hardest idea is walked through on a concrete input, not asserted in a sentence or two.
 - When a visual representation would aid understanding, the concept page includes a simple diagram immediately after the initial explanation. The diagram has a plain-language caption, works in light and dark themes, remains contained on mobile, and does not rely on visual details alone to convey required information.
 - Practice problems map to recognizable interview patterns or practical engineering scenarios without making unsupported company-specific claims.
 - Pattern-selection sections include a concrete prompt example before the related code.

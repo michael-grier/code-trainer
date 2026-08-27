@@ -1,31 +1,51 @@
 # Dynamic Programming Fundamentals
 
-Dynamic programming stores answers to smaller subproblems so repeated work can reuse them. It applies when a problem can be described using smaller versions of the same problem and many possible routes ask for the same smaller result.
+Here is a small puzzle. You are standing at the bottom of a staircase with five steps, and every move you make climbs either one step or two. How many different move sequences can carry you to the top?
+
+You could try listing them by hand: 1-1-1-1-1, then 1-1-1-2, then 1-1-2-1, and so on. That works for five steps. It falls apart quickly after that, because a 30-step staircase has over a million distinct sequences, and no one is writing those out.
+
+The way forward is to notice that the puzzle contains smaller copies of itself. Think about the very last move of any sequence that reaches step 5. That move started from step 4 or from step 3. There is no third possibility, because every move covers one or two steps. So every route to step 5 is either a route to step 4 plus one final single step, or a route to step 3 plus one final double step. If you knew how many routes reach step 4, and how many reach step 3, you could add those two numbers and be done. No listing required.
+
+That idea, solving a problem by combining the answers to smaller versions of the same problem, is called dynamic programming. The name is historical and not very descriptive, so hold on to the idea instead: break the problem into smaller copies of itself, solve each copy once, and save every answer so later steps can reuse it instead of recomputing it.
 
 <DynamicProgrammingDiagram />
 
-Before writing code, define what one stored state means. Then identify its base case, how earlier states produce the current state, and the order that makes those earlier states available.
+A little vocabulary makes the rest of this lesson easier to talk about. Each smaller version of the problem, together with its saved answer, is called a **state**. In the staircase puzzle, "the number of routes to step 3" is one state. The smallest states, the ones you can answer without any help, are the **base cases**. The rule that combines smaller states into a bigger one, like "routes to step 5 equals routes to step 4 plus routes to step 3," is the **transition**. Every dynamic programming solution in this lesson is built from those three parts, and the most common mistake is skipping straight to code before saying, in one plain sentence, what one state means.
 
-## Combine a fixed number of earlier states
+## Counting the staircase routes
 
-Example prompt: Count the move sequences that climb a staircase when every move is one or two steps.
+Let's finish the staircase. Write `ways[i]` for the number of move sequences that reach step `i`. The transition we found above says `ways[i] = ways[i - 1] + ways[i - 2]`.
 
-Let `ways[i]` mean the number of sequences that reach step `i`. Every final move comes from step `i - 1` or `i - 2`, so `ways[i] = ways[i - 1] + ways[i - 2]`.
+Now the base cases. A staircase with one step has exactly one route: a single one-step move, so `ways[1] = 1`. What about a staircase with zero steps? It helps to count one route there too, the route where you do nothing at all. That may feel like a technicality, but it makes the transition work at step 2: the two routes to step 2 (1-1 and 2) come from one route starting at step 1 plus one route starting at step 0.
 
-Example input: `stepCount = 5`.
+With `stepCount = 5`, filling in the answers from the bottom up gives:
+
+```
+step:  0  1  2  3  4  5
+ways:  1  1  2  3  5  8
+```
+
+Each entry is the sum of the two entries before it, and the final answer is `8`.
+
+Notice something about that table: to compute any entry, you only ever look at the previous two. Everything older is never touched again. So instead of storing the whole table, the code below keeps just two variables and slides them forward.
 
 ```ts
 export function countClimbingWays(stepCount: number): number {
+  // A staircase with zero or one step has exactly one route.
   if (stepCount <= 1) {
     return 1
   }
 
+  // These two variables stand in for ways[step - 2] and ways[step - 1].
   let twoStepsBack = 1
   let oneStepBack = 1
 
   for (let step = 2; step <= stepCount; step += 1) {
-    // Every route here arrives from one or two steps below.
+    // Every route to this step arrives from one or two steps below,
+    // so add the route counts of those two smaller staircases.
     const currentWays = oneStepBack + twoStepsBack
+
+    // Slide the remembered pair forward one step.
     twoStepsBack = oneStepBack
     oneStepBack = currentWays
   }
@@ -34,29 +54,34 @@ export function countClimbingWays(stepCount: number): number {
 }
 ```
 
-Example output: `8`.
+`countClimbingWays(5)` returns `8`, matching the table.
 
-Only the previous two counts are needed, so the complete `ways` array can be replaced by two variables.
+Replacing the table with two variables is a common finishing move called space compression. Do it last, after the full-table version is correct in your head, because the compressed code hides the table it came from.
 
-## Represent a choice with take and skip results
+## Choosing with take and skip
 
-Example prompt: Return the largest sum made from values that are not next to each other.
+The staircase transition always combined the same two earlier states. The next kind of transition makes a choice between them instead.
 
-At each index, compare two complete possibilities:
+Suppose you are given a list of values and asked for the largest sum you can build, with one restriction: you may not use two values that sit next to each other. For `values = [2, 7, 9, 3, 1]`, the best answer is `12`, from picking 2, 9, and 1.
 
-- Skip the current value and keep the best result through the previous index.
-- Take the current value and add it to the best result through two indexes earlier.
+Stand at one value and ask what your options are. You can **take** it, which forbids the value directly before it, so the rest of your sum must come from everything up to two positions back. Or you can **skip** it, keeping whatever the best sum was through the previous position. Those two options cover every possibility, so the best sum through the current position is simply the larger of the two.
 
-Example input: `values = [2, 7, 9, 3, 1]`.
+That sentence is the whole algorithm. The state is "the best valid sum using values up to this position," and just like the staircase, each state only needs the two states before it:
 
 ```ts
 export function maximumNonAdjacentSum(values: number[]): number {
+  // Best sums for the empty lists ending two and one positions back.
   let bestTwoIndexesBack = 0
   let bestOneIndexBack = 0
 
   for (const value of values) {
+    // Take this value: it adds to the best sum from two positions back,
+    // because the neighbor directly before it is now off limits.
     const takeCurrent = bestTwoIndexesBack + value
+
+    // Skip this value: the best sum so far simply carries forward.
     const skipCurrent = bestOneIndexBack
+
     const currentBest = Math.max(takeCurrent, skipCurrent)
 
     bestTwoIndexesBack = bestOneIndexBack
@@ -67,29 +92,36 @@ export function maximumNonAdjacentSum(values: number[]): number {
 }
 ```
 
-Example output: `12`.
+`maximumNonAdjacentSum([2, 7, 9, 3, 1])` returns `12`.
 
-The state stores the best valid sum, not the values selected to create it. If the selected indexes were also required, retain enough information to reconstruct those choices.
+One detail worth pausing on: the state stores only the best sum, not which values produced it. That is enough here because the prompt asks for the sum alone. If a problem asks you to report the choices themselves, you must keep extra information, such as a record of which option won at each position, so the choices can be rebuilt afterward.
 
-## Build results for every smaller amount
+## Building up to a target amount
 
-Example prompt: Return the fewest reusable coins needed to form an amount, or `-1` when it cannot be formed.
+So far each state depended on exactly two earlier ones. Often a state depends on several, and you find out which by trying each allowed move.
 
-Let `minimumCoins[a]` be the fewest coins needed for amount `a`. Start with `minimumCoins[0] = 0`. For each later amount, try adding one coin to a smaller amount that has already been calculated.
+Here is the classic version. You have coin values you may reuse as often as you like, and a target amount. Return the fewest coins that form the amount exactly, or `-1` if it cannot be formed. With `coins = [1, 3, 4]` and `amount = 6`, the answer is `2`, from two 3-coins.
 
-Example input: `coins = [1, 3, 4]`, `amount = 6`.
+Let the state `minimumCoins[a]` be the fewest coins that form amount `a`. The base case is friendly: forming amount 0 takes zero coins. For any larger amount, the last coin you added was worth 1, 3, or 4, so the amount just before that final coin was `a - 1`, `a - 3`, or `a - 4`. Try each option, look up the already-computed answer for that smaller amount, add one for the coin you just placed, and keep the smallest result.
+
+There is one wrinkle: some amounts cannot be formed at all, and the code needs a way to say so. The trick is to start every entry at `Infinity`, meaning "no way to form this amount has been found." This works out neatly, because `Infinity + 1` is still `Infinity`. An unreachable smaller amount can never masquerade as a real answer; it stays infinite no matter how many coins the code tries to stack on top of it.
 
 ```ts
 export function minimumCoinsForAmount(
   coins: number[],
   amount: number,
 ): number {
+  // Infinity marks amounts that no coin combination has reached yet.
   const minimumCoins = Array<number>(amount + 1).fill(Infinity)
+
+  // Forming amount zero takes zero coins.
   minimumCoins[0] = 0
 
   for (let currentAmount = 1; currentAmount <= amount; currentAmount += 1) {
     for (const coin of coins) {
       if (coin <= currentAmount) {
+        // If the last coin placed was this one, the rest of the amount
+        // was already formed as cheaply as possible by an earlier state.
         minimumCoins[currentAmount] = Math.min(
           minimumCoins[currentAmount],
           minimumCoins[currentAmount - coin] + 1,
@@ -98,34 +130,43 @@ export function minimumCoinsForAmount(
     }
   }
 
+  // Translate "never reached" into the -1 the prompt asks for.
   return minimumCoins[amount] === Infinity ? -1 : minimumCoins[amount]
 }
 ```
 
-Example output: `2`.
+`minimumCoinsForAmount([1, 3, 4], 6)` returns `2`.
 
-`Infinity` means an amount has not been reached. Adding one to `Infinity` remains `Infinity`, so unreachable smaller amounts cannot create a false finite result.
+Trace a little of it by hand to feel the build-up: amount 1 takes one coin, amount 2 takes two 1-coins, amount 3 takes one 3-coin, and amount 6 finds its answer by adding one 3-coin to the already-solved amount 3.
+
+A tempting shortcut here is to grab the biggest coin that fits, over and over. That greedy strategy fails on this very input: for amount 6 it grabs a 4-coin, then must form 2 from 1-coins, spending three coins where the true answer is two. The best-looking first move can lock you out of the best combination, and dynamic programming exists precisely to avoid that trap by comparing every allowed move.
 
 ## Memoization and tabulation
 
-Memoization starts with a recursive definition and stores each result the first time it is requested. Tabulation starts with base cases and fills states in an explicit order. Both are dynamic programming when they calculate each required state once and reuse it.
+Everything above filled answers in from the smallest state upward, using loops. That style is called **tabulation**: start at the base cases and fill the table in an order that guarantees every answer you look up already exists.
 
-Choose the form that makes the state and dependency order easiest to verify. Iterative tabulation also avoids JavaScript call-stack limits.
+There is a mirror-image style called **memoization**. You write the solution as a recursive function that calls itself on smaller states, and the first time each state is computed, you store its answer in a cache. Any later request for the same state returns the stored answer instead of recursing again. Same states, same transitions, same base cases; the difference is only in who decides the order. Tabulation makes the order explicit in a loop, while memoization lets the recursion discover it.
+
+Both count as dynamic programming, because both compute each state once and reuse it. Choose whichever makes the states and their order easiest for you to verify. In JavaScript there is one practical thumb on the scale: deep recursion can overflow the call stack, so for large inputs the loop-based tabulation form is safer.
 
 ## Common mistakes
 
-- Writing code before defining what one state means.
-- Omitting a base case for zero or an empty input.
-- Reading a state before it has been calculated.
-- Using a greedy choice when the best current option can block a better combination.
-- Recalculating the same recursive state without memoization.
-- Compressing storage before the dependency relationship is correct.
-- Returning `Infinity` instead of the prompt's required missing-result value.
-- Claiming O(1) space while retaining a table proportional to the input.
+These are the errors that show up most often in practice and in interviews:
+
+- Writing code before stating, in one sentence, what a single state means.
+- Forgetting the base case for zero or for an empty input, which poisons every state built on top of it.
+- Reading a state before it has been computed, usually from filling the table in the wrong order.
+- Reaching for a greedy choice when the best current option can block a better overall combination, as the coin example showed.
+- Recomputing the same recursive state many times because no cache stores it.
+- Compressing the table into a few variables before the full-table version is correct.
+- Returning the internal `Infinity` marker instead of the missing-result value the prompt asks for, such as `-1`.
+- Claiming O(1) space while still holding a table proportional to the input.
 
 ## Practice path
 
+The exercises build the lesson's ideas in the same order you met them:
+
 1. Combine the previous two state values.
 2. Compare taking and skipping each input value.
-3. Build minimum results for every amount through a target.
-4. Explain state meaning, base cases, transitions, order, and space reduction.
+3. Build minimum results for every amount up to a target.
+4. Explain state meaning, base cases, transitions, fill order, and space compression in your own words.

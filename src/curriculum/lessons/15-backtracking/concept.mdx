@@ -1,24 +1,20 @@
 # Backtracking
 
-Backtracking explores possible results one choice at a time. One recursive call represents a partial result. It adds an allowed choice, explores everything that begins with that choice, then removes the choice before trying another.
+Picture yourself exploring a maze. At each junction you pick a corridor and walk down it. If it dead-ends, you do not restart from the entrance. You walk back to the last junction, and this time you take a different corridor. You keep doing that, always trying the next untried corridor from the deepest junction you can, until every path has been walked.
+
+Backtracking is that strategy applied to building results in code. Instead of corridors, the choices are things like "put 3 in the combination next" or "place a queen in column 2." A partial result is how far into the maze you have walked so far. Whenever a partial result cannot possibly grow into a complete one, you undo the most recent choice and try a different one. The undo step is where the name comes from: you back up, then track forward down a new path.
 
 <BacktrackingDiagram />
 
-The repeated pattern is:
-
-1. Record a complete result or stop an impossible branch.
-2. Loop through allowed next choices.
-3. Add one choice to the current state.
-4. Search from the new state.
-5. Remove the choice and restore related state.
+That is the whole idea. The rest of this lesson is three problems that each add one skill: recording results, cutting off hopeless branches early, and keeping constraint bookkeeping cheap.
 
 ## Record every partial selection
 
-Example prompt: Return every subset of distinct input values. Preserve input order within each subset.
+The first problem asks for every subset of a list of distinct values, keeping the input's order inside each subset.
 
-Every partial selection is already a valid subset, including the empty selection. Record a copy at the start of each call. Then add each value at or after the start position.
+This problem has a friendly property: every partial selection is already a valid subset, including the empty selection. So there is no "complete result" to wait for. Record a copy at the start of each call, then extend the selection with each value at or after the start position. Passing `index + 1` into the recursive call means each value appears at most once per subset.
 
-Example input: `values = [1, 2]`.
+Here is the search. Even two values, `[1, 2]`, are enough to watch it work:
 
 ```ts
 export function generateAllSubsets(values: number[]): number[][] {
@@ -26,11 +22,15 @@ export function generateAllSubsets(values: number[]): number[][] {
   const current: number[] = []
 
   const search = (startIndex: number): void => {
+    // Every partial selection is a valid subset, so record it now.
     subsets.push([...current])
 
     for (let index = startIndex; index < values.length; index += 1) {
+      // Add: extend the selection with this value.
       current.push(values[index])
+      // Explore: find every subset that begins with the current selection.
       search(index + 1)
+      // Undo: remove the value so the next loop iteration starts clean.
       current.pop()
     }
   }
@@ -40,17 +40,31 @@ export function generateAllSubsets(values: number[]): number[][] {
 }
 ```
 
-Example output: `[[], [1], [1, 2], [2]]`.
+`generateAllSubsets([1, 2])` returns `[[], [1], [1, 2], [2]]`.
 
 Store `[...current]`, not `current`. The search changes the same `current` array many times. Storing the array itself would make all recorded results refer to one changing value.
 
+Look back at what the function just did, because every backtracking solution repeats the same five moves:
+
+1. Record a complete result or stop an impossible branch. Here, record the current subset.
+2. Loop through allowed next choices. Here, the values at or after `startIndex`.
+3. Add one choice to the current state. The `push`.
+4. Search from the new state. The recursive call.
+5. Remove the choice and restore related state. The `pop`.
+
+Steps 3 and 5 must mirror each other exactly. Whatever a call adds before recursing, it removes afterward, so the caller's state is untouched. The two harder problems below follow the same five steps; only the details inside each step change.
+
+One more thing this small example teaches: the cost of backtracking is driven by branching, not depth. The recursion here is only ever `values.length` calls deep, but each call loops over several choices, and each choice spawns its own subtree. Two values produce 4 subsets; 20 values produce over a million, even though the recursion is never more than 20 calls deep. When you estimate the running time, count how many branches the tree can grow, not how tall it stands.
+
 ## Stop a branch that cannot reach the target
 
-Example prompt: Return combinations of ascending positive candidates that add to a target. Each candidate may be used several times.
+The second problem asks for every combination of candidates that adds up to a target, given ascending, distinct, positive candidates that may each be used several times. (Distinct matters: a repeated candidate value would produce the same combination twice.)
 
-The remaining sum describes how much the partial combination still needs. A remaining sum of zero completes one result. Passing the current index into the next call allows that candidate to be chosen again.
+Unlike subsets, most partial combinations here are not results. The remaining sum describes how much the partial combination still needs, and only a remaining sum of exactly zero completes one result.
 
-Example input: `candidates = [2, 3, 6, 7]`, `target = 7`.
+This prompt also flips one detail from the subsets problem. There, each value could appear at most once, so the recursive call moved on with `index + 1`. Here a candidate may be used several times, so the call passes the current `index` instead. Passing the current index into the next call allows that candidate to be chosen again, which is how `[2, 2, 3]` gets built from a single 2 in the input. Which of the two you pass is not a stylistic choice; it encodes whether reuse is allowed, and mixing them up either drops valid results or invents duplicates.
+
+Here is the search, on `candidates = [2, 3, 6, 7]` with `target = 7`:
 
 ```ts
 export function reusableCombinationSums(
@@ -61,6 +75,7 @@ export function reusableCombinationSums(
   const current: number[] = []
 
   const search = (startIndex: number, remaining: number): void => {
+    // A remaining sum of zero means the current combination is complete.
     if (remaining === 0) {
       combinations.push([...current])
       return
@@ -73,8 +88,11 @@ export function reusableCombinationSums(
         break
       }
 
+      // Add: spend this candidate against the remaining sum.
       current.push(candidate)
+      // Explore: pass the same index so this candidate may be reused.
       search(index, remaining - candidate)
+      // Undo: take the candidate back before trying the next one.
       current.pop()
     }
   }
@@ -84,17 +102,29 @@ export function reusableCombinationSums(
 }
 ```
 
-Example output: `[[2, 2, 3], [7]]`.
+`reusableCombinationSums([2, 3, 6, 7], 7)` returns `[[2, 2, 3], [7]]`.
 
-Because candidates are positive and ascending, no later candidate can fit after one candidate exceeds the remaining sum. The loop can stop at that point.
+Because candidates are positive and ascending, no later candidate can fit after one candidate exceeds the remaining sum. The loop can stop at that point. That single `break` is the "stop an impossible branch" half of step 1, and it is what keeps this function from wandering through combinations that were doomed from the first over-budget candidate.
 
 ## Track constraints without scanning old choices
 
-Example prompt: Place one queen in each row of an `n × n` board. Return how many arrangements contain no shared column or diagonal.
+The classic constraint problem is n-queens: place one queen in each row of an `n × n` chessboard, and count the arrangements in which no two queens share a column or a diagonal.
 
-Place rows from top to bottom. Sets record which columns and diagonals are already attacked. For a cell at `(row, column)`, `row - column` identifies its downward diagonal and `row + column` identifies its upward diagonal.
+Place rows from top to bottom. Before placing a queen, you must know whether any earlier queen attacks the proposed cell. You could loop over every earlier queen and compare positions, but that rescans old choices on every attempt. The faster plan is to keep sets that record which columns and diagonals are already attacked, so each proposed cell is three lookups.
 
-Example input: `n = 4`.
+Columns are easy: a queen in column 2 attacks column 2 forever. Diagonals need a label that stays the same along the whole diagonal, and here is where a small grid helps. Each cell below is labeled with its `row - column` value on a 4 by 4 board:
+
+```
+row\col   0   1   2   3
+   0      0  -1  -2  -3
+   1      1   0  -1  -2
+   2      2   1   0  -1
+   3      3   2   1   0
+```
+
+Follow any downward diagonal, the ones running from top-left toward bottom-right, and the label never changes. The reason is mechanical: one step along that diagonal adds 1 to the row and 1 to the column, so the difference `row - column` gains 1 and loses 1 and stays put. From `(1, 2)` to `(2, 3)`, the value is `-1` both times. The other diagonal direction is the mirror image. A step from top-right toward bottom-left adds 1 to the row and subtracts 1 from the column, so it is the sum `row + column` that holds still: `(1, 2)` and `(2, 1)` both sum to 3. So `row - column` identifies a cell's downward diagonal, `row + column` identifies its upward diagonal, and one set for each is enough to know instantly whether a diagonal is taken.
+
+With the three sets doing the bookkeeping, the whole solution is short:
 
 ```ts
 export function countNQueensArrangements(n: number): number {
@@ -121,12 +151,15 @@ export function countNQueensArrangements(n: number): number {
         continue
       }
 
+      // Add: mark every line this queen attacks.
       usedColumns.add(column)
       usedDownDiagonals.add(downDiagonal)
       usedUpDiagonals.add(upDiagonal)
 
+      // Explore: count arrangements that keep this queen where it is.
       count += search(row + 1)
 
+      // Undo: lift the queen by clearing all three marks.
       usedColumns.delete(column)
       usedDownDiagonals.delete(downDiagonal)
       usedUpDiagonals.delete(upDiagonal)
@@ -139,25 +172,27 @@ export function countNQueensArrangements(n: number): number {
 }
 ```
 
-Example output: `2`.
+`countNQueensArrangements(4)` returns `2`.
 
-Each set addition belongs to one proposed queen. Delete all three values after the recursive call so the next column is tested against only the queens that are still on the board.
+Each set addition belongs to one proposed queen. Delete all three values after the recursive call so the next column is tested against only the queens that are still on the board. Notice that the choice here is spread across three sets rather than one array, and the undo step must restore every piece. A half-undone choice is the hardest backtracking bug to spot, because the code looks symmetric at a glance.
 
 ## Common mistakes
 
-- Recording a mutable result array without copying it.
-- Adding a choice without removing it after the recursive call.
-- Removing the array choice but forgetting to restore a related set or counter.
-- Generating the same combination in different orders.
-- Passing `index + 1` when a value may be reused.
-- Passing `index` when a value may be used only once.
-- Continuing a branch after positive ascending values have exceeded the target.
-- Checking every old queen instead of storing occupied columns and diagonals.
-- Reporting only the recursion depth and ignoring the number of possible branches.
+Most backtracking bugs come from breaking the add-explore-undo symmetry or from getting the reuse rule wrong. Watch for these:
+
+- Recording a mutable result array without copying it, so every stored result points at the same array the search keeps changing.
+- Adding a choice without removing it after the recursive call, which leaks the choice into every sibling branch.
+- Removing the array choice but forgetting to restore a related set or counter, like deleting a queen from `current` while leaving her column marked.
+- Generating the same combination in different orders, usually from letting the loop restart at index 0 instead of at the start position.
+- Passing `index + 1` when a value may be reused, which silently drops results like `[2, 2, 3]`.
+- Passing `index` when a value may be used only once, which invents duplicates.
+- Continuing a branch after positive ascending values have exceeded the target, instead of breaking out of the loop.
+- Checking every old queen on each placement instead of storing occupied columns and diagonals in sets.
+- Reporting only the recursion depth when estimating cost and ignoring the number of possible branches, which is what actually grows the tree.
 
 ## Practice path
 
-You will practice the concepts in this order:
+The exercises build the lesson's skills in the same order you met them:
 
 1. Record every partial selection as a subset.
 2. Reuse choices while stopping branches that cannot reach a target sum.

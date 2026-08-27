@@ -1,20 +1,22 @@
 # Queues and Deques
 
-A queue processes items in first-in, first-out order. Add items at the back and remove items from the front. A deque supports adding and removing at both the front and the back.
+Picture a shared printer in an office. Print jobs arrive one after another, and the fair thing to do is obvious: whoever submitted first prints first. New jobs join the back of the line, and the printer always takes the job at the front. A structure that works this way, add at the back and remove from the front, is called a queue, and the ordering rule has a name too: first-in, first-out, or FIFO.
 
-In TypeScript, an array plus numeric indexes can represent these structures without the repeated reindexing cost of `Array.shift()`.
+Sometimes one end is not enough. A few problems in this lesson need to add and remove at the front *and* the back of the line. That two-ended variant is called a deque, short for double-ended queue and pronounced "deck". A queue is really just a deque where you have promised to use only one end for adding and the other for removing.
 
 <QueueDequeDiagram />
 
+JavaScript has no built-in queue or deque class, so in this lesson we build both out of a plain array and one or two plain numbers that mark where the line currently starts and ends. That sounds like a workaround, but it turns out to be both simple and fast, and you will see why in a moment.
+
 ## Process work in arrival order
 
-Example prompt: Jobs receive a fixed amount of processing time. Process the first queued job, then add it to the back if work remains. Return the processing order.
+Here is a queue problem shaped like a real scheduler. Each job needs some amount of processing time, but the processor only ever gives a job a fixed slice of time, called a quantum, before moving on. The quantum is a positive number; a zero or negative slice would mean a job could take a turn and make no progress, circling the line forever. Process the front job for one quantum; if it still has time remaining, send it to the back of the line to wait for another turn. Return the order in which jobs received processing.
 
-The queue invariant is:
+Take `jobs = [{ id: "a", duration: 5 }, { id: "b", duration: 2 }, { id: "c", duration: 3 }]` with `quantum = 2`. Job `a` runs first and still needs 3 more units, so it rejoins the back. Then `b` runs and finishes exactly. Then `c` runs, needs 1 more, and rejoins. Now the line holds `a` then `c`, and the rounds continue until everyone finishes.
 
-> Every entry from `head` through the end of `queue` is pending work in the order it must next be processed.
+The tempting way to remove the front of an array is `Array.shift()`. It works, but every call to `shift()` moves every remaining element one slot to the left so the array stays packed against index 0. Every processing turn starts with one of those calls, and jobs that rejoin the line create many turns, so with a long queue the simulation pays O(n) reindexing work per turn, and the total grows with turns times queue length. The fix is to stop moving elements at all. Keep a number, here called `head`, that records where the front of the line currently is. Removing the front item is then just `head += 1`, a single step, and the "removed" entries simply get left behind.
 
-Example input: `jobs = [{ id: "a", duration: 5 }, { id: "b", duration: 2 }, { id: "c", duration: 3 }]`, `quantum = 2`.
+The one rule the code must never break is this: every entry from `head` through the end of `queue` is pending work, in exactly the order it should next run. As long as that stays true, reading `queue[head]` always gives the right next job.
 
 ```ts
 type Job = {
@@ -23,13 +25,15 @@ type Job = {
 }
 
 export function roundRobinOrder(jobs: Job[], quantum: number): string[] {
-  // Copy each job because remaining duration changes during the simulation.
+  // Copy each job, because we are about to change remaining durations
+  // and should not mutate the caller's objects.
   const queue = jobs.map((job) => ({ ...job }))
   const order: string[] = []
   let head = 0
 
   while (head < queue.length) {
-    // Read the oldest queued job, then advance the queue front.
+    // Take the job at the front of the line, then move the front
+    // marker forward. This is the O(1) replacement for shift().
     const job = queue[head]
     head += 1
     order.push(job.id)
@@ -37,7 +41,8 @@ export function roundRobinOrder(jobs: Job[], quantum: number): string[] {
     const remaining = job.duration - quantum
 
     if (remaining > 0) {
-      // Add unfinished work to the back as a new queue entry.
+      // The job is not finished, so it goes to the back of the line
+      // as a fresh entry with only its remaining time.
       queue.push({ id: job.id, duration: remaining })
     }
   }
@@ -46,23 +51,23 @@ export function roundRobinOrder(jobs: Job[], quantum: number): string[] {
 }
 ```
 
-Example output: `["a", "b", "c", "a", "c", "a"]`.
+Run it on the example and `roundRobinOrder(jobs, 2)` returns `["a", "b", "c", "a", "c", "a"]`. You can read the whole story in that output: everyone gets a first turn in arrival order, then the unfinished jobs `a` and `c` cycle through again, and `a`, the longest job, takes the final slot.
 
-Advancing `head` is O(1). Calling `shift()` would move every remaining array entry one index to the left and can cost O(n) per removal.
+Notice the trade the `head` index makes. Finished entries stay in the array, so memory is not reclaimed until the function returns. For a simulation like this that is a fine price for turning every removal into a single increment.
 
 ## Keep only possible window maxima
 
-Example prompt: Given an array and a window size `k`, return the maximum value in every contiguous window of exactly `k` values.
+The next problem needs the second end of the deque. Given an array and a window size `k`, report the maximum value inside every contiguous window of exactly `k` values. With `nums = [1, 3, -1, -3, 5, 3, 6, 7]` and `k = 3`, the first window is `[1, 3, -1]` with maximum 3, the next is `[3, -1, -3]` with maximum 3 again, and so on until the last window `[3, 6, 7]` with maximum 7. The full answer is `[3, 3, 5, 5, 6, 7]`.
 
-Store indexes in a deque. Their values decrease from front to back. Before adding a new index:
+The slow way rescans all `k` values for every window. The fast way keeps a short list of candidates, values that could still become the maximum of some window, and the whole trick is deciding what belongs on that list. Let's derive it rather than memorize it.
 
-1. Remove the front index if it is no longer inside the window.
-2. Remove indexes from the back while their values are less than or equal to the new value.
-3. Add the new index at the back.
+First: should the list hold values or their indexes? It has to hold indexes. A window is defined by positions, and a candidate stops mattering the moment its position slides out of the window. If you stored only the value 3, you could not tell whether it came from a position that is still inside the window or one that expired two steps ago. Store the index and you can check expiry with one comparison, while the value is always one lookup away in `nums`.
 
-A removed smaller value cannot be a future maximum because the new value is at least as large and remains in every future window for longer.
+Second: when the window advances, the index at the front of the list may now sit outside the window, so the front is where candidates expire. That is one reason we need a deque and not a queue.
 
-Example input: `nums = [1, 3, -1, -3, 5, 3, 6, 7]`, `k = 3`.
+Third, and this is the heart of it: suppose the value at the back of the list is 1, and the new value arriving is 3, as happens immediately in our example. Could that 1 ever again be the answer for any window? No. Every future window that still contains the 1 also contains the 3, because the 3 arrived later and therefore expires later. The 3 is bigger and lives longer, so the 1 is dominated on both counts. It can be thrown away, from the back, before the new index is added. Applying that rule every time means the values behind the stored indexes always decrease from front to back, which is why this structure is called a monotonic deque, "monotonic" just meaning the values run in one consistent direction. A pleasant side effect: the front of the deque is always the current window's maximum, for free.
+
+One more piece before the code. Rather than a deque class, the implementation uses the array-plus-markers technique from the first section, extended to both ends: a plain array `deque` and two numbers, `front` and `back`. The live entries are the ones at indexes from `front` up to but not including `back`. Writing that range as `[front, back)`, a square bracket for "included" and a round one for "excluded", is standard notation you will meet often. Removing from the front is `front += 1`, removing from the back is `back -= 1`, and the deque is empty exactly when `front` equals `back`.
 
 ```ts
 export function slidingWindowMaximum(
@@ -73,7 +78,9 @@ export function slidingWindowMaximum(
     return []
   }
 
-  // Active deque entries are stored in indexes [front, back).
+  // The deque is a plain array plus two markers. Live entries sit at
+  // indexes from front up to, but not including, back. The entries are
+  // indexes into nums, and their values decrease from front to back.
   const deque = new Array<number>(nums.length)
   const result: number[] = []
   let front = 0
@@ -81,12 +88,14 @@ export function slidingWindowMaximum(
 
   for (let right = 0; right < nums.length; right += 1) {
     if (front < back && deque[front] <= right - k) {
-      // This index is no longer inside the current window.
+      // The front candidate's position has slid out of the window,
+      // so it expires. Advancing front removes it in one step.
       front += 1
     }
 
     while (front < back && nums[deque[back - 1]] <= nums[right]) {
-      // The new value is no smaller and remains available longer.
+      // The back candidate is no bigger than the new value and expires
+      // sooner, so no future window can ever prefer it. Drop it.
       back -= 1
     }
 
@@ -94,6 +103,8 @@ export function slidingWindowMaximum(
     back += 1
 
     if (right >= k - 1) {
+      // The first full window ends at index k - 1. From then on, the
+      // front of the deque is always the current window's maximum.
       result.push(nums[deque[front]])
     }
   }
@@ -102,31 +113,35 @@ export function slidingWindowMaximum(
 }
 ```
 
-Example output: `[3, 3, 5, 5, 6, 7]`.
+`slidingWindowMaximum([1, 3, -1, -3, 5, 3, 6, 7], 3)` returns `[3, 3, 5, 5, 6, 7]`, matching the windows we listed by hand.
 
-Each index is added once and removed at most once, so all deque operations take O(n) time.
+Now the runtime, because there is a trap here worth disarming. The code has a `while` loop nested inside a `for` loop, and the reflex is to call that O(n squared). Look at what the inner loop actually does, though: every pass through it removes one index from the deque. An index can only be removed if it was added earlier, each index is added exactly once, and a removed index never comes back. So across the *entire run* of the function, the inner loop's total number of passes cannot exceed n, no matter how those passes are distributed among the outer iterations. Adding that to the n outer iterations gives O(n) overall. This style of argument, bounding total work across all iterations instead of worst-case work per iteration, is called amortized analysis, and it is the standard way to reason about monotonic deques and stacks.
 
 ## Use prefix sums with a monotonic deque
 
-Example prompt: Values may be negative. Return the shortest non-empty contiguous subarray whose sum is at least a positive target.
+The final problem looks like a routine sliding-window exercise until you read one word in the prompt: the values may be negative. Return the length of the shortest non-empty contiguous run of values whose sum is at least a positive target.
 
-A standard sliding window cannot decide which pointer to move when negative values are present. Instead, calculate prefix sums. A subarray from prefix index `left` to prefix index `right` has sum `prefix[right] - prefix[left]`.
+Why does negativity matter? The usual sliding window grows the right edge until the sum reaches the target, then shrinks from the left while the sum stays at or above it. That logic silently assumes that growing the window can only raise the sum and shrinking can only lower it, which is true when every value is positive. A negative value breaks both assumptions. Watch it happen on `nums = [3, -2, 5]` with `target = 4`. The window grows to cover all three values, sum 6, so the shrink step fires: dropping the 3 leaves `[-2, 5]` with sum 3, below the target, so shrinking stops and the window records length 3 as its best. But the true answer is 1, because `[5]` alone reaches 5. The window walked past that answer and had no reason to come back, since its rules say a shorter window inside a failing one must also fail. With negatives on board, that rule is simply false.
 
-Keep possible left indexes in increasing prefix-sum order. Remove from the front when a valid subarray is found. Remove from the back when the current prefix is less than or equal to an earlier prefix, because the current prefix gives a future subarray at least as large and no longer.
+So we need a tool that does not lean on that assumption. The first ingredient is a prefix sum array: `prefix[i]` holds the sum of the first `i` values, with `prefix[0] = 0` for the empty start. For `[3, -2, 5]`, that gives `prefix = [0, 3, 1, 6]`. Its payoff is that any subarray sum becomes a subtraction: the values between prefix positions `left` and `right` sum to `prefix[right] - prefix[left]`. The question "is there a short subarray with sum at least 4" becomes "are there two prefix positions, close together, whose difference is at least 4". The answer of length 1 we found by eye is sitting right there: `prefix[3] - prefix[2] = 6 - 1 = 5`.
 
-Example input: `nums = [2, -1, 2]`, `target = 3`.
+The second ingredient is the monotonic deque again, this time holding candidate `left` positions and this time keeping their prefix values *increasing* from front to back. Both ends earn their removal rule from the problem itself. The front rule: while the current prefix minus the front candidate's prefix reaches the target, we have found a valid subarray, so record its length. And here is the part that deserves a beat of thought: that front candidate can then be discarded for good. Any later `right` would pair with it to form a strictly longer subarray, and we already recorded the shortest one it can produce. The back rule mirrors the maximum problem's logic: if the current prefix is less than or equal to some earlier prefix waiting at the back, the earlier one is dominated. A smaller-or-equal prefix that is also more recent gives every future `right` a sum at least as large over a shorter distance, so the older candidate can never win and comes off the back.
 
 ```ts
 export function shortestSubarrayAtLeastTarget(
   nums: number[],
   target: number,
 ): number {
+  // prefix[i] is the sum of the first i values, so any subarray sum
+  // becomes one subtraction: prefix[right] - prefix[left].
   const prefix = new Array<number>(nums.length + 1).fill(0)
 
   for (let index = 0; index < nums.length; index += 1) {
     prefix[index + 1] = prefix[index] + nums[index]
   }
 
+  // Same array-plus-markers deque as before. It holds candidate left
+  // positions, and their prefix values increase from front to back.
   const deque = new Array<number>(prefix.length)
   let front = 0
   let back = 0
@@ -137,13 +152,16 @@ export function shortestSubarrayAtLeastTarget(
       front < back &&
       prefix[right] - prefix[deque[front]] >= target
     ) {
-      // This front index creates a valid subarray ending at right.
+      // The front candidate completes a valid subarray ending here.
+      // Record its length, then retire the candidate: any later right
+      // would only pair with it to form a longer subarray.
       best = Math.min(best, right - deque[front])
       front += 1
     }
 
     while (front < back && prefix[deque[back - 1]] >= prefix[right]) {
-      // The current prefix is smaller and later, so the back cannot be better.
+      // The current prefix is smaller or equal and more recent, so it
+      // beats the back candidate for every future right. Drop the back.
       back -= 1
     }
 
@@ -155,23 +173,25 @@ export function shortestSubarrayAtLeastTarget(
 }
 ```
 
-Example output: `3`.
+Trace it on `nums = [2, -1, 2]` with `target = 3`, where `prefix = [0, 2, 1, 3]`. Position 0 joins an empty deque. Position 1, prefix 2: the difference 2 - 0 misses the target, and 2 is larger than the prefix 0 already at the back, so position 1 simply joins behind it. Position 2 is where the back rule earns its keep: its prefix 1 is less than or equal to position 1's prefix 2, so position 1 is dominated and comes off the back, leaving positions 0 and 2. Position 3, prefix 3: now 3 - 0 = 3 meets the target, so we record length 3 - 0 = 3 and retire position 0. The next front candidate, position 2, gives 3 - 1 = 2, short of the target, so the loop ends and the function returns 3. The whole array `[2, -1, 2]` is the shortest qualifying subarray. And the runtime argument is the same amortized one as before: each position enters the deque once and leaves at most once, from one end or the other, so everything runs in O(n).
 
 ## Common mistakes
 
-- Calling `shift()` for every queue removal and changing an O(n) traversal into O(n²) work.
-- Storing values when the result needs indexes, distances, or expiration checks.
-- Reading the front of a deque before removing an expired index.
-- Removing smaller values from the front instead of the back.
-- Keeping an earlier prefix that is greater than or equal to a later prefix.
-- Applying a positive-only sliding-window rule when negative values are allowed.
-- Assuming the nested `while` loops make the algorithm O(n²); each index is removed at most once.
+These are the errors that show up most often when people first use queues and deques:
+
+- Calling `shift()` for every queue removal, which reindexes the whole array each time and turns an O(n) traversal into O(n squared) work.
+- Storing values in the deque when the algorithm needs indexes, so there is no way to tell when a candidate has expired out of the window.
+- Reading the answer at the front of the deque before removing an expired index, which reports a maximum from a position no longer in the window.
+- Removing dominated smaller values from the front instead of the back, which breaks the decreasing order the whole structure depends on.
+- Keeping an earlier prefix that is greater than or equal to a later one; the later, smaller prefix wins for every future right end, so the older candidate is dead weight.
+- Applying the grow-and-shrink sliding-window rule to input that allows negatives, where a shorter window inside a failing one can still succeed.
+- Assuming the nested `while` loops make the algorithm O(n squared); the amortized argument above shows each index is removed at most once.
 
 ## Practice path
 
-You will practice the concepts in this order:
+You will practice the concepts in the order the lesson built them:
 
-1. Simulate FIFO processing with a queue and head index.
-2. Maintain decreasing candidates for sliding-window maximums.
-3. Combine prefix sums with an increasing deque for negative-value inputs.
-4. Explain queue operations, deque removal rules, and total runtime.
+1. Simulate first-in, first-out processing with an array and an advancing head index.
+2. Maintain a decreasing deque of candidate indexes to answer sliding-window maximum queries.
+3. Combine prefix sums with an increasing deque to handle subarray sums when values may be negative.
+4. Explain queue operations, the two deque removal rules, and the amortized total runtime in your own words.
