@@ -1,14 +1,195 @@
 # API Design and Resource Modeling
 
-This placeholder concept page reserves the lesson slot for **API Design and Resource Modeling**. The content pass will replace it with the final interview-focused MDX lesson.
+Picture a small invoicing tool for freelancers. It started with one screen and one endpoint, and every new feature added another endpoint next to it. Eighteen months later, the routing table looks like this.
 
-## What this lesson will cover
+```
+POST /getUserInvoices
+POST /getUserInvoices2
+POST /createInvoice
+POST /markInvoicePaid
+POST /markInvoicePaidNew
+POST /deleteInvoiceById
+```
 
-- Core interview signals for api design and resource modeling.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+Each endpoint made sense on the day it was written. `/getUserInvoices2` exists because the mobile app needed two extra fields and nobody wanted to risk breaking the web app. `/markInvoicePaidNew` exists for the same reason. Every route works, every route shipped on time, and if you squint, the whole thing looks fine.
+
+Then three things break in the same month.
+
+First, the invoice list feels slow, and nothing can be done about it with caching. Browsers and content delivery networks will happily cache the response to a read request, but only when it is a `GET`. Every read here travels as a `POST`, which the whole caching machinery treats as "this changes something, never cache it." The API accidentally opted out of a free performance layer.
+
+Second, a security review finds that `/getUserInvoices2` returns any user's invoices to any logged-in caller. The ownership check, "does this invoice belong to the person asking," was pasted by hand into each handler, and the copy in the newest route was forgotten. Nothing in the design made the check automatic, so one missed paste became a data leak.
+
+Third, the mobile team is blocked for a week. `/getUserInvoices` returns a bare array, `/getUserInvoices2` returns `{ data: [...] }`, and `/markInvoicePaidNew` returns `{ ok: true, invoice: {...} }`. Three response shapes means three parsers, and the mobile team has to reverse-engineer each one by calling it and looking.
+
+None of these are exotic failures. They are what happens when an API has no rules, only precedents. The fix is a discipline called resource modeling, and the rest of this lesson rebuilds this API with it.
+
+## Resources are the nouns
+
+A **resource** is a thing your API lets clients read or change, named as a noun: an invoice, a user, a payment. An **endpoint** is one method-plus-path pair the server responds to, like `GET /invoices`. The core move of resource modeling is to stop inventing a new verb-shaped endpoint for every feature and instead ask: what thing is this feature about, and what is the caller doing to it?
+
+For the invoicing tool, the answer is short. The API is about invoices. So the URL space is built from that one noun:
+
+```
+/invoices          the whole collection
+/invoices/42       one specific invoice
+```
+
+That is the entire naming scheme. A new teammate who has seen `/invoices/42` can guess how to fetch invoice 43 without opening any docs, and that guessability is the point. URLs name things; they never name actions. `deleteInvoiceById` cannot exist in this scheme, because "delete" is not a thing.
+
+## Methods are the verb vocabulary
+
+If URLs only name things, where did the verbs go? HTTP already ships with a small, fixed verb vocabulary, and resource modeling uses it instead of inventing new ones:
+
+```
+GET    /invoices        read the collection
+POST   /invoices        create a new invoice in it
+GET    /invoices/42     read one invoice
+PATCH  /invoices/42     change some of its fields
+PUT    /invoices/42     replace it entirely
+DELETE /invoices/42     remove it
+```
+
+Six routes replace the whole ad-hoc list, and each one's meaning is determined by parts the infrastructure can see. That is what makes caching work again: a cache does not understand your application, but it does understand that `GET` means "read, safe to cache." It also gives permissions a single place to live. Every path under `/invoices/42` is about invoice 42, so one shared check, "may this caller touch invoice 42," can run before any handler does. The leak in the old API happened precisely because the URL `/getUserInvoices2` told the infrastructure nothing.
+
+One property of these verbs deserves its own word. A request is **idempotent** when sending it twice leaves the server in the same state as sending it once. `GET` is idempotent because reading changes nothing. `PUT` and `DELETE` are idempotent too: replacing an invoice with the same data twice, or deleting an already-deleted invoice, ends in the same place. `POST` is the odd one out. Two `POST /invoices` requests create two invoices. This matters the moment a network is involved, because clients retry requests that time out. A client can safely retry an idempotent request; retrying a `POST` risks a duplicate, which is why creation endpoints need more care around retries than anything else.
+
+## Status codes that mean what they say
+
+Every HTTP response starts with a three-digit status code, and the first digit sorts it into a **family**. Three families do almost all the work: **2xx** means the request succeeded, **4xx** means the caller did something wrong and retrying the same request will fail the same way, and **5xx** means the server itself failed and the caller did nothing wrong.
+
+The family is not decoration. Clients, retry logic, and monitoring all branch on it. A client that sees 4xx knows to fix its request; one that sees 5xx knows it may retry later; a dashboard alarms on a spike in 5xx but not 4xx. Within the families, a handful of specific codes cover this lesson:
+
+```
+200 OK           the request worked, here is the result
+201 Created      a new resource now exists
+400 Bad Request  the request itself is malformed
+403 Forbidden    the caller is known, but not allowed to do this
+404 Not Found    the resource does not exist
+500 Server Error something failed on the server side
+```
+
+Here is what honest status codes look like from the client's side. A fetch of a real invoice:
+
+<TerminalTranscript
+  label="http"
+  lines={[
+    { type: 'command', text: 'GET /invoices/42' },
+    { type: 'output', text: '200 OK' },
+    { type: 'output', text: '{ "invoice": { "id": 42, "total": 1800, "status": "sent" } }' },
+  ]}
+/>
+
+And a fetch of one that does not exist:
+
+<TerminalTranscript
+  label="http"
+  lines={[
+    { type: 'command', text: 'GET /invoices/999' },
+    { type: 'error', text: '404 Not Found' },
+    { type: 'output', text: '{ "error": { "code": "not_found", "message": "invoice 999 not found" } }' },
+  ]}
+/>
+
+The tempting shortcut is to return `200` with `{ invoice: null }` for the missing invoice, because it saves the client a status check. It also poisons everything downstream: caches store the empty answer as a success, monitoring counts the failure as a win, and every client must now know your private convention that some 200s are actually failures. The status code is the one field every piece of HTTP infrastructure reads, so it has to tell the truth.
+
+In code, a handler that follows these rules can be a plain pure function. It takes data in and returns a `{ status, body }` value, which makes it easy to test without any server running:
+
+```ts
+type Invoice = { id: number; total: number; status: string }
+
+export function getInvoice(
+  invoices: Invoice[],
+  id: number,
+): { status: number; body: unknown } {
+  const invoice = invoices.find((candidate) => candidate.id === id)
+
+  // Missing resource: the caller asked a well-formed question
+  // whose answer is "no such thing," and 404 says exactly that.
+  if (!invoice) {
+    return {
+      status: 404,
+      body: { error: { code: 'not_found', message: `invoice ${id} not found` } },
+    }
+  }
+
+  return { status: 200, body: { invoice } }
+}
+```
+
+## Errors are structured bodies
+
+The 404 example above already shows the second half of honest errors: the body. A bare string like `"not found"` forces clients to parse prose, and prose changes. The fix is one error shape used by every endpoint:
+
+```ts
+type ApiError = {
+  error: {
+    code: string // stable, machine-readable: 'not_found', 'invalid_id'
+    message: string // human-readable, free to change wording
+  }
+}
+```
+
+The `code` is a contract: clients branch on it, and it never changes once shipped. The `message` is for humans reading logs and can be reworded freely. When validation finds several problems at once, report all of them in one response rather than one per round trip, so a client fixing a bad form learns every mistake on the first submit.
+
+Which family does a validation failure belong to? The caller sent something malformed, so it is a 400, caller's mistake. Wiring it to 500 is a common bug with real consequences: the client's "fix your input" path never runs, and the on-call engineer gets paged for a typo in someone's form.
+
+## Lists need pagination
+
+`GET /invoices` as written returns every invoice the caller owns. At 20 invoices that is fine. At 20,000 it is a response too large to build, send, or render, and it grows without bound. Every list endpoint needs a way to return one page at a time, which takes two parameters: a limit, how many items to return, and a **pagination cursor**, an opaque marker the server hands back that means "the last page ended here." Opaque means the client must not read or construct it, only echo it back to get the next page.
+
+<TerminalTranscript
+  label="http"
+  lines={[
+    { type: 'command', text: 'GET /invoices?limit=2' },
+    { type: 'output', text: '200 OK' },
+    { type: 'output', text: '{ "items": [{ "id": 41 }, { "id": 42 }], "nextCursor": "aW52XzQy" }' },
+    { type: 'command', text: 'GET /invoices?limit=2&cursor=aW52XzQy' },
+    { type: 'output', text: '200 OK' },
+    { type: 'output', text: '{ "items": [{ "id": 43 }], "nextCursor": null }' },
+  ]}
+/>
+
+The client walks the list by echoing each `nextCursor` until it comes back `null`. Notice what the client never does: compute page numbers, guess offsets, or inspect the cursor's contents.
+
+Those query parameters arrive as strings from an untrusted caller, so the boundary of a list endpoint is a validation job. `limit=abc` is not a number, `limit=5000` would let one caller ask for everything, and `sort=passwordHash` would sort by a field you never meant to expose. The disciplined move is one pure function at the boundary that either normalizes the parameters, filling in defaults like `limit=20`, or rejects them with a 400 listing every problem. You will build exactly that function in the first practice problem.
+
+## What the discipline costs
+
+Resource modeling is not free, and pretending otherwise makes the pitch dishonest.
+
+The first cost is route count. One `/doEverything` endpoint taking a JSON blob with an `action` field is genuinely fewer routes than six method-plus-path pairs, and for two services owned by one team talking privately, that style can be fine. You pay the resource-modeling cost to buy predictability for clients who did not write the server, plus everything the infrastructure gives you only when it can see what requests mean.
+
+The second cost is that some operations really are verbs, and forcing them into nouns takes a decision. "Send a reminder email for invoice 42" is an action. There is no field on the invoice to `PATCH`, and `POST /invoices/42/sendReminder` puts a verb back into the URL, exactly what we swore off. The standard resolution is to find the noun hiding inside the verb: sending a reminder creates a record of a reminder, so model it as a sub-resource.
+
+<TerminalTranscript
+  label="http"
+  lines={[
+    { type: 'command', text: 'POST /invoices/42/reminders' },
+    { type: 'output', text: '201 Created' },
+    { type: 'output', text: '{ "reminder": { "id": 7, "invoiceId": 42, "sentAt": "2026-03-04T10:15:00Z" } }' },
+  ]}
+/>
+
+The action becomes "create a reminder," `201` reports that a new thing exists, and `GET /invoices/42/reminders` falls out for free as an audit trail of every reminder ever sent. This trick covers most true actions, but not all of them, and when a verb genuinely will not yield a noun, a clearly named action endpoint is better than a contorted resource. The discipline is a strong default, not a law of nature.
+
+## Common mistakes
+
+These are the errors that show up most often in real APIs and in design interviews:
+
+- Putting verbs in URLs, like `/getInvoices` or `/invoices/42/delete`, instead of letting the HTTP method carry the verb.
+- Sending every request as `POST`, which discards caching and hides the meaning of each request from every layer of infrastructure.
+- Returning `200` with a null or empty body for a missing resource, so caches and monitoring record the failure as a success.
+- Returning `500` for validation failures, which pages the on-call engineer for the caller's typo and hides real server failures in the noise.
+- Using a different error shape on each endpoint, forcing clients to write one parser per route.
+- Shipping a list endpoint with no limit, which works in the demo and falls over at the first customer with real data.
+- Trusting query parameters without validation, so `limit=5000` or an unexpected sort field reaches the database.
+- Retrying a `POST` on timeout as casually as a `GET`, and creating a duplicate resource, because creation is not idempotent.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+The exercises build the lesson's ideas in the order you met them:
+
+1. Implement the validation function at a list endpoint's boundary, normalizing pagination and sort parameters or rejecting them with exact errors.
+2. Debug a handler whose status codes and error shapes lie, and pin down honest ones.
+3. Design the resources and endpoints for a book club app, including the flat-versus-nested route decision for memberships.
+4. Explain in your own words when an action deserves its own resource and when it should stay a field update.

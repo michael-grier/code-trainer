@@ -752,3 +752,35 @@ export function ComplexityGrowthDiagram() {
     </DiagramFrame>
   )
 }
+
+export function ScopeChainDiagram() {
+  const arrowId = useDiagramArrowId('scope-chain-arrow')
+
+  return (
+    <DiagramFrame
+      caption="Each function call creates a new scope box inside the box where the function was written. A variable lookup starts in the innermost box and walks outward until some box supplies the name."
+      viewBox="0 0 620 300"
+    >
+      <ArrowMarker id={arrowId} />
+      <rect className="fill-none stroke-border" height={250} rx={10} strokeWidth={2} width={560} x={30} y={25} />
+      <text className="fill-muted-foreground text-sm font-medium" x={48} y={52}>
+        module scope: makeCounter
+      </text>
+      <rect className="fill-none stroke-border" height={165} rx={10} strokeWidth={2} width={470} x={75} y={80} />
+      <text className="fill-primary text-sm font-semibold" x={93} y={107}>
+        makeCounter() call scope: count
+      </text>
+      <rect className="fill-none stroke-border" height={80} rx={10} strokeWidth={2} width={380} x={120} y={135} />
+      <text className="fill-muted-foreground text-sm font-medium" x={138} y={162}>
+        increment() call scope: no own variables
+      </text>
+      <text className="fill-foreground text-sm font-medium" x={138} y={196}>
+        count += 1
+      </text>
+      <Edge arrowId={arrowId} x1={210} x2={210} y1={205} y2={228} />
+      <text className="fill-muted-foreground text-xs font-medium" x={224} y={225}>
+        lookup for count walks outward and stops one box up
+      </text>
+    </DiagramFrame>
+  )
+}

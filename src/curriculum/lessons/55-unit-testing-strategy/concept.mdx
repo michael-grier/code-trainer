@@ -1,14 +1,246 @@
 # Unit Testing Strategy
 
-This placeholder concept page reserves the lesson slot for **Unit Testing Strategy**. The content pass will replace it with the final interview-focused MDX lesson.
+Here is a test that passed on every commit for six months. It guards a small module that remembers a user's recent search terms, newest first, no duplicates, at most five.
 
-## What this lesson will cover
+```ts
+export class RecentSearches {
+  private items: string[] = []
 
-- Core interview signals for unit testing strategy.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+  add(term: string) {
+    this.items = [term, ...this.items.filter((t) => t !== term)].slice(0, 5)
+  }
+
+  list(): string[] {
+    return [...this.items]
+  }
+}
+```
+
+```ts
+it('stores the newest term first', () => {
+  const searches = new RecentSearches()
+  searches.add('shoes')
+  searches.add('socks')
+
+  expect((searches as any).items).toEqual(['socks', 'shoes'])
+})
+```
+
+One day a teammate notices that `add` rebuilds the whole array on every call and swaps in a `Set`, which remembers insertion order and deletes in one step:
+
+```diff
+ export class RecentSearches {
+-  private items: string[] = []
++  private recent = new Set<string>()
+
+   add(term: string) {
+-    this.items = [term, ...this.items.filter((t) => t !== term)].slice(0, 5)
++    this.recent.delete(term)
++    this.recent.add(term)
++    if (this.recent.size > 5) {
++      const [oldest] = this.recent
++      this.recent.delete(oldest)
++    }
+   }
+
+   list(): string[] {
+-    return [...this.items]
++    return [...this.recent].reverse()
+   }
+ }
+```
+
+Call `add` and `list` by hand in both versions and every answer comes back identical. The refactor changed nothing a caller could ever notice. The test fails anyway.
+
+<TerminalTranscript
+  label="test runner"
+  lines={[
+    { type: 'command', text: 'bun test recentSearches.test.ts' },
+    { type: 'error', text: 'FAIL  stores the newest term first' },
+    { type: 'error', text: "AssertionError: expected undefined to deeply equal [ 'socks', 'shoes' ]" },
+    { type: 'output', text: ' 0 pass, 1 fail' },
+  ]}
+/>
+
+The alarm rang, and nothing was on fire. That is the failure this whole lesson grows out of.
+
+## Test the contract, not the wiring
+
+Some vocabulary first, because the diagnosis needs it. A **unit** is a small piece of code you can exercise on its own through its public entry points, here the class with its `add` and `list` methods. A unit test calls those entry points and checks what comes back. The **behavior** of a unit is everything a caller can observe through those entry points: return values, thrown errors, visible changes of state. Everything else, the field names, the choice of array versus `Set`, the order helpers run in, is **implementation**, and the whole point of implementation is that it can change.
+
+Now reread the failing test. It never checked behavior at all. `(searches as any).items` reaches past the public methods into a private field, so the test was really asserting "this class stores its data in an array called `items`." That sentence was true for six months and stopped being true during a refactor that broke no promise to anyone. The test punished an engineer for improving the code.
+
+So the first rule of unit testing strategy: a test should fail only when a user-visible contract breaks. Here is the same intent, written against the contract:
+
+```ts
+it('returns the newest term first', () => {
+  const searches = new RecentSearches()
+  searches.add('shoes')
+  searches.add('socks')
+
+  expect(searches.list()).toEqual(['socks', 'shoes'])
+})
+```
+
+This version passes before the refactor and after it, and it fails the moment `list` actually returns the wrong order. Both versions took the same effort to write. Only one of them measures something real.
+
+The rule has a boundary, and it is worth knowing where it sits. Sometimes a property that looks internal has been promised to callers. A performance-critical cache might document that it evicts the least recently used entry first, because a downstream system sizes itself around that. Then eviction order is part of the contract, and a test that pins it is legitimate even though it feels like peeking inside. The question is never "is this detail internal-looking?" but "did we promise it?" If nobody promised it, do not test it.
+
+## The test that only fails at midnight
+
+The opening test rang without a fire. The opposite failure is a test that is wired to a fire alarm it cannot control. Watch this one, from a notifications feed that labels events by calendar day. To keep the example small it compares dates in UTC, using the first ten characters of an ISO timestamp:
+
+```ts
+function isoDate(ms: number): string {
+  // The first ten characters of an ISO timestamp are the UTC calendar date.
+  return new Date(ms).toISOString().slice(0, 10)
+}
+
+export function dayLabel(thenMs: number): string {
+  const nowMs = Date.now()
+
+  if (isoDate(thenMs) === isoDate(nowMs)) {
+    return 'today'
+  }
+
+  if (isoDate(thenMs) === isoDate(nowMs - 86_400_000)) {
+    return 'yesterday'
+  }
+
+  return isoDate(thenMs)
+}
+```
+
+```ts
+it('labels an event from a minute ago as today', () => {
+  const aMinuteAgo = Date.now() - 60_000
+  expect(dayLabel(aMinuteAgo)).toBe('today')
+})
+```
+
+This test passes all day, every day, on every machine. Then the nightly pipeline happens to start a few seconds after midnight UTC:
+
+<TerminalTranscript
+  label="test runner"
+  lines={[
+    { type: 'command', text: 'bun test dayLabel.test.ts  # nightly run, 00:00:41 UTC' },
+    { type: 'error', text: 'FAIL  labels an event from a minute ago as today' },
+    { type: 'error', text: "AssertionError: expected 'yesterday' to be 'today'" },
+  ]}
+/>
+
+At 00:00:41, a minute ago really was yesterday. The function answered correctly and the test's expectation was wrong, but blaming the expectation misses the deeper problem. Neither the test nor its author ever had control over the clock, because `dayLabel` reads `Date.now()` on its own, in secret. Whatever expectation you write, its truth depends on what time it is. A test like this is not checking the code; it is checking the code and the wall clock together, and the wall clock does not review your pull requests.
+
+The property this test lost is called **determinism**: the same inputs producing the same result on every run, on any machine, at any time of day. A hidden read of the clock, of `Math.random()`, of an environment variable, of the network, breaks determinism, because the function has inputs that never appear in its parameter list.
+
+The fix is a **seam**: a place where a test can take control of a dependency the code would otherwise grab for itself. Time, randomness, network, and disk are the usual candidates. And the simplest seam in existence is a parameter. Instead of asking the clock, the function asks the caller:
+
+```ts
+export function dayLabel(nowMs: number, thenMs: number): string {
+  if (isoDate(thenMs) === isoDate(nowMs)) {
+    return 'today'
+  }
+
+  if (isoDate(thenMs) === isoDate(nowMs - 86_400_000)) {
+    return 'yesterday'
+  }
+
+  return isoDate(thenMs)
+}
+```
+
+Production code passes `Date.now()` at the call site, so nothing changes for users. Tests pass whatever timestamp they like. The fixed values a test starts from are called **fixtures**, and with a timestamp fixture the midnight scenario stops being a once-a-night gamble and becomes an ordinary test:
+
+```ts
+// Fixture: a moment 30 seconds after midnight UTC on 2023-11-14.
+const justAfterMidnight = 1_699_920_030_000
+
+it('labels a minute before midnight as yesterday', () => {
+  expect(dayLabel(justAfterMidnight, justAfterMidnight - 60_000)).toBe('yesterday')
+})
+```
+
+The failure that used to need a nightly pipeline and bad luck now reproduces at your desk, at lunchtime, every single run.
+
+This rule has a boundary too. A seam is for dependencies you cannot otherwise control. `Math.min`, `JSON.stringify`, and your own pure helpers are already deterministic, and injecting them buys no control you did not have. Teams that miss this end up with functions taking eight parameters, six of which are only ever one thing. Inject the clock, the randomness, the IO. Call everything else directly.
+
+## One reason to fail
+
+There is a third way to lose the value of a test without writing a single wrong assertion. Pile every behavior into one test:
+
+```ts
+it('works', () => {
+  const searches = new RecentSearches()
+  searches.add('shoes')
+  searches.add('socks')
+  searches.add('shoes')
+  expect(searches.list()).toEqual(['shoes', 'socks'])
+
+  for (const term of ['a', 'b', 'c', 'd', 'e', 'f']) {
+    searches.add(term)
+  }
+  expect(searches.list()).toHaveLength(5)
+  expect(searches.list()).not.toContain('shoes')
+})
+```
+
+Every assertion here is legitimate. Then someone breaks the duplicate handling, and this is the whole report:
+
+<TerminalTranscript
+  label="test runner"
+  lines={[
+    { type: 'command', text: 'bun test recentSearches.test.ts' },
+    { type: 'error', text: 'FAIL  works' },
+    { type: 'error', text: "AssertionError: expected [ 'shoes', 'shoes', 'socks' ] to deeply equal [ 'shoes', 'socks' ]" },
+  ]}
+/>
+
+"works" failed. Which of the three rules broke? You cannot tell without rereading the test body, and it gets worse: the run stopped at the first bad assertion, so you have no idea whether the size cap and the eviction still hold. One broken behavior has blinded the tests for two others.
+
+Split it so that each test can fail for exactly one reason, and give each test a name that states the behavior it pins:
+
+```ts
+it('moves a repeated term to the front instead of duplicating it', () => {
+  const searches = new RecentSearches()
+  searches.add('shoes')
+  searches.add('socks')
+  searches.add('shoes')
+
+  expect(searches.list()).toEqual(['shoes', 'socks'])
+})
+
+it('keeps at most five terms, dropping the oldest', () => {
+  const searches = new RecentSearches()
+  for (const term of ['a', 'b', 'c', 'd', 'e', 'f']) {
+    searches.add(term)
+  }
+
+  expect(searches.list()).toEqual(['f', 'e', 'd', 'c', 'b'])
+})
+```
+
+Now a red run reads as a sentence about what broke: "moves a repeated term to the front" failed, the cap test still passes, go look at the dedupe. Notice also that each test builds its own small fixture instead of sharing one store, so no test can contaminate another by mutating shared state.
+
+The boundary this time: one reason to fail does not mean one assertion, and it does not forbid a table. A loop over twenty input-and-expected pairs for `dayLabel` is still one reason to fail, stated twenty ways, because every row exercises the same behavior. What the rule forbids is one test spanning several distinct promises, so that the first broken promise hides the rest.
+
+## Common mistakes
+
+These are the ways unit test suites most often go wrong in practice:
+
+- Asserting on private fields, internal call order, or the choice of data structure. The test then breaks on harmless refactors and trains the team to ignore red, exactly like the opening example.
+- Computing the expected value with the same logic the code under test uses. If both sides share the bug, the test passes forever. Write expected values as literals you worked out by hand.
+- Letting code read `Date.now()`, `Math.random()`, or environment state on its own, then writing expectations that are only true at certain times. Route those dependencies through a seam, with a parameter as the first tool to reach for.
+- Injecting everything, including pure deterministic helpers, until every signature drags a wagon of parameters. Seams are for dependencies a test cannot otherwise control.
+- Writing one giant test named "works". Its failure message identifies nothing, and its first broken assertion hides every later one.
+- Testing wiring through mocks: handing a function a fake collaborator and asserting the fake was called. That restates the implementation in assertion form and breaks on any refactor of the call.
+- Sharing one mutable fixture across tests, so tests pass alone and fail together, or the reverse, depending on run order.
+- Treating a flaky test as something to rerun until green. Flakiness is the alarm for a hidden dependency; rerunning it is unplugging the alarm.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+The exercises walk the same road the lesson did:
+
+1. Fix a relative-time formatter whose hidden clock read makes its tests disagree with it.
+2. Refactor a retry-delay calculator so its randomness arrives through a seam the tests control.
+3. Decide what to unit test, what to skip, and what to refactor first in a small shipping module.
+4. Design the unit test plan for a discount pricing engine before the engine exists.
