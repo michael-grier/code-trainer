@@ -264,7 +264,7 @@ One more property falls out for free. Because each round only reads prices that 
 
 ## Choosing between the three
 
-With all three algorithms in hand, the choice comes down to the edges. When every edge costs the same, use breadth-first search, since fewest edges and cheapest route are the same thing. When edges have different costs that are all zero or more, use Dijkstra's algorithm with a min-heap. When the prompt limits how many edges a route may use, or when weights can be negative, run counted relaxation rounds against a copied price array, with the round count matched to the route length the problem allows.
+With all three algorithms in hand, the choice comes down to the edges. When every edge has the same nonnegative cost, use breadth-first search, since fewest edges and cheapest route are then the same thing. Differing costs that are all zero or more call for Dijkstra's algorithm with a min-heap. And when the prompt limits how many edges a route may use, or when weights can be negative, run counted relaxation rounds against a copied price array, with the round count matched to the route length the problem allows.
 
 ## Common mistakes
 
