@@ -2,7 +2,7 @@
 
 Suppose you have a pile of exam papers and you want to find every pair of students with the same score. Unsorted, you would compare every paper against every other one. Sorted by score, papers with equal scores sit next to each other, and one pass down the pile finds every pair. That is the real reason to sort: a known order puts related values side by side, so a decision that looked like "compare everything with everything" becomes "look at your neighbor."
 
-Getting that order right takes more care than just calling `sort`, though, and three questions decide whether the call does what you want. First, what is the exact order? JavaScript does not know that you mean "highest score first"; you tell it with a **comparator**, a small function that looks at two values and reports which one comes first. Second, what happens on ties? When two values are equal under the main rule, a **tie-breaker** is the backup rule that decides between them; without one, equal values land in whatever order the engine happens to produce, and your output changes from run to run. Third, are you allowed to modify the input? `Array.prototype.sort` rearranges the very array you hand it, so if the caller still needs the original order, you must sort a copy. Every problem in this lesson comes down to answering those three questions before writing the sort.
+Getting that order right takes more care than just calling `sort`, though, and three questions decide whether the call does what you want. First, what is the exact order? JavaScript does not know that you mean "highest score first"; you tell it with a **comparator**, a small function that looks at two values and reports which one comes first. Second, what happens on ties? When two values are equal under the main rule, JavaScript keeps them in the order they arrived (the language guarantees a stable sort), which may or may not be the order the problem asks for. A **tie-breaker** is the backup rule you add when it is not, like breaking equal scores alphabetically by name. Third, are you allowed to modify the input? `Array.prototype.sort` rearranges the very array you hand it, so if the caller still needs the original order, you must sort a copy. Every problem in this lesson comes down to answering those three questions before writing the sort.
 
 ## Write a complete comparator
 
@@ -147,7 +147,7 @@ A comparator this inventive comes with a duty. The sort engine trusts your answe
 These are the errors that show up most often in practice and in interviews:
 
 - Returning a boolean from a comparator, which collapses the required three outcomes into two and silently misorders values.
-- Defining the primary order but omitting a required tie-breaker, so equal values land in an unpredictable order.
+- Defining the primary order but omitting a required tie-breaker, so equal values fall back to their input order, which may not be the order the prompt requires.
 - Returning inconsistent results for the same pair of values, for example by comparing floating-point results that vary between calls.
 - Defining rules where `a` sorts before `b` and `b` sorts before `c`, but `a` does not sort before `c`, like the rock-paper-scissors card comparator; the sort then returns an arbitrary order.
 - Forgetting that `sort` modifies the array it is called on, surprising a caller that still needs the original order.

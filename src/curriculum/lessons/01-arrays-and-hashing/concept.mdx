@@ -78,7 +78,7 @@ export function countCharacters(word: string): Map<string, number> {
 
 `countCharacters("banana")` returns `Map { "b" => 1, "a" => 3, "n" => 2 }`.
 
-The default value is the detail that bites people. A missing key should mean a count of zero, and the `?? 0` supplies that. Forget it, and `undefined + 1` produces `NaN`, or a subtraction produces a bogus negative count, and the bug can hide until a test feeds in a character the map has never seen.
+The default value is the detail that bites people. A missing key should mean a count of zero, and the `?? 0` supplies that. Forget it, and `undefined + 1` or `undefined - 1` produces `NaN`, which then poisons every later comparison, and the bug can hide until a test feeds in a character the map has never seen.
 
 Frequency maps show up in a family of problems worth recognizing on sight:
 
@@ -121,14 +121,14 @@ In `areAnagrams` the key was a single character. In `hasDuplicate` it was the nu
 
 You want every anagram of a word to land in the same group, which means every anagram must produce the same key. The word itself will not do, since `"eat"` and `"tea"` are different strings. What you need is a canonical form, one agreed-upon representative that all anagrams of a word share. The simplest choice is the word with its letters sorted:
 
-```ts
+```
 "eat" -> "aet"
 "tea" -> "aet"
 ```
 
 Both words become `"aet"`, so both land under the same map key. A second choice avoids sorting: a 26-count signature. Build an array with one slot per letter of the alphabet, where index `0` counts the letter `a`, index `1` counts `b`, and index `25` counts `z`. For `"eat"`, the slots for `a`, `e`, and `t` each hold `1` and every other slot holds `0`. Joining the slots with `#` turns that array into a string the map can use as a key:
 
-```ts
+```
 "eat" -> "1#0#0#0#1#0#0#0#0#0#0#0#0#0#0#0#0#0#0#1#0#0#0#0#0#0"
 ```
 

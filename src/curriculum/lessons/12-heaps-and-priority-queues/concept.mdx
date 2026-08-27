@@ -98,7 +98,7 @@ function popHeap<T>(heap: T[], outranks: Outranks<T>): T {
 
 ## Keep a bounded top-k set
 
-Now for the first place heaps earn their keep in interviews. The prompt: given `nums = [3, 2, 1, 5, 6, 4]` and `k = 2`, return the kth-largest value, here `5`, without sorting the whole input.
+Now for the first place heaps earn their keep in interviews. The prompt: given `nums = [3, 2, 1, 5, 6, 4]` and `k = 2`, return the kth-largest value, here `5`, without sorting the whole input. Assume `k` is a whole number between 1 and the length of the input; the interesting work is in the data structure, not in guarding the rank.
 
 The instinct is to reach for a max-heap, since the problem says "largest." Resist it for a moment, because the standard solution uses a min-heap, and understanding why is the most important idea in this lesson.
 

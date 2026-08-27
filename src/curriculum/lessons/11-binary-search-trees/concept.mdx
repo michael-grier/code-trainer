@@ -131,7 +131,7 @@ On the tree holding `[1, 3, 6, 8, 10, 14]` with `k = 4`, this returns `8`. If `k
 
 ## Height decides whether any of this is fast
 
-Every runtime in this lesson has been O(h), the height of the tree, so it is worth asking how big `h` can get. When the tree is balanced, meaning its left and right sides stay roughly the same size all the way down, the height is O(log n), and search really does match binary search on an array.
+The lookup at the start of this lesson ran in O(h) for tree height `h`, and kth-smallest costs O(h + k), since after descending it visits one node per value counted. (Validation is the exception: it must visit every node, so it is O(n) no matter the shape.) Height is the number that decides whether the O(h) parts are fast, so it is worth asking how big `h` can get. When the tree is balanced, meaning its left and right sides stay roughly the same size all the way down, the height is O(log n), and search really does match binary search on an array.
 
 But nothing in the invariant forces balance. Insert the values 1, 2, 3, 4, 5 into an empty BST in that order and watch what happens: each new value is larger than everything present, so each one becomes the right child of the previous node. The result is a chain, technically a valid BST, with height n. Search and insertion in that chain walk the whole thing, taking O(n) time, no better than a list. So O(h) is only O(log n) when the tree is balanced, and that is a fact about how the tree was built, not something the invariant gives you for free. Self-balancing trees exist to keep the height logarithmic, but a plain BST makes no such promise.
 

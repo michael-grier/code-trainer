@@ -260,11 +260,11 @@ export function cheapestRouteWithStops(
 
 `cheapestRouteWithStops(3, [[0, 1, 100], [1, 2, 100], [0, 2, 500]], 0, 2, 1)` returns `200`. Round one records the direct flight to city 2 at 500 and the flight to city 1 at 100. Round two reads city 1's price of 100 from the previous round and improves city 2 to 200.
 
-One more property falls out for free. Because each round only reads prices that were already correct, a negative flight price cannot corrupt anything; it just makes some route cheaper. The round-counting method tolerates negative weights, which is exactly what Dijkstra's algorithm cannot do.
+One more property falls out for free. Because each round only reads prices that were already correct, a negative flight price cannot corrupt anything; it just makes some route cheaper. The round-counting method tolerates negative weights, which is exactly what Dijkstra's algorithm cannot do. One caution before leaning on that: the version here only answers prompts that bound the route length, because it stops after `maxStops + 1` rounds. For an unrestricted shortest path with negative weights, the same relaxation must run for `nodeCount - 1` rounds, enough to cover the longest possible simple route, and a prompt may additionally require detecting negative cycles, loops whose total cost is below zero, where no cheapest route exists at all. That unbounded form is the full Bellman-Ford algorithm.
 
 ## Choosing between the three
 
-With all three algorithms in hand, the choice comes down to the edges. When every edge costs the same, use breadth-first search, since fewest edges and cheapest route are the same thing. When edges have different costs that are all zero or more, use Dijkstra's algorithm with a min-heap. When the prompt limits how many edges a route may use, or when weights can be negative, run counted relaxation rounds against a copied price array.
+With all three algorithms in hand, the choice comes down to the edges. When every edge costs the same, use breadth-first search, since fewest edges and cheapest route are the same thing. When edges have different costs that are all zero or more, use Dijkstra's algorithm with a min-heap. When the prompt limits how many edges a route may use, or when weights can be negative, run counted relaxation rounds against a copied price array, with the round count matched to the route length the problem allows.
 
 ## Common mistakes
 

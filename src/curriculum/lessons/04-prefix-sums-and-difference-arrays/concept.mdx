@@ -48,7 +48,7 @@ export function rangeSum(
 
 The call returns `4`, because the range covers `-2 + 5 + 1`. Check it against the prefix array: `prefix[4] - prefix[1]` is `7 - 3`, which is also `4`.
 
-Building the prefix array costs O(n), and after that each query costs O(1). That trade is worth making when the program will answer many queries and the array will not be modified between them. If the values do change, the prefix array goes stale and must be rebuilt, which is one of the mistakes at the end of this lesson.
+Building the prefix array costs O(n), and after that each query costs O(1). The function above rebuilds the prefix on every call so the example stays self-contained; in a real many-query program you would build the prefix once, keep it, and answer each query with just the subtraction. That trade is worth making when the program will answer many queries and the array will not be modified between them. If the values do change, the prefix array goes stale and must be rebuilt, which is one of the mistakes at the end of this lesson.
 
 ## Counting subarrays by prefix value
 

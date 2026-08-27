@@ -102,7 +102,7 @@ Height was a single number flowing upward. A return value can carry richer answe
 The key is to give every recursive call a precise three-way contract, so a parent always knows how to read what its children send up:
 
 - `null` when neither target was found in the subtree.
-- A target node when the current node matches.
+- A target node when the subtree contains exactly one of the targets, whether that target sits at the current node or somewhere below it.
 - The lowest common ancestor when the subtree contains both targets.
 
 Concretely, take a root `3` with target value `5` somewhere in its left subtree and target value `1` somewhere in its right subtree.
