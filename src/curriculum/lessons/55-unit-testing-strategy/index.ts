@@ -17,7 +17,7 @@ export const lesson: Lesson = {
       completionMode: 'all-tests-pass',
       title: 'Fix the formatter that reads the clock in secret',
       prompt:
-        "formatRelativeTime labels how long ago an event happened. It takes nowMs, the current time as the caller sees it, and thenMs, the event time, both in epoch milliseconds. The contract: under a minute of elapsed time (including future timestamps) is 'just now'; under an hour is whole minutes, like '5m ago'; under a day is whole hours, like '2h ago'; anything older is whole days, like '3d ago'. The tests pass a fixed nowMs, yet the function keeps disagreeing with them, and the label it prints changes from one run to the next. Find the hidden dependency and fix it. Example: `formatRelativeTime(1_700_000_000_000, 1_700_000_000_000 - 300_000)` should return `'5m ago'`.",
+        "formatRelativeTime labels how long ago an event happened. It takes nowMs, the current time as the caller sees it, and thenMs, the event time, both in epoch milliseconds. The contract: under a minute of elapsed time (including future timestamps) is 'just now'; under an hour is whole minutes, like '5m ago'; under a day is whole hours, like '2h ago'; anything older is whole days, like '3d ago'. The tests pass a fixed nowMs, yet the function keeps disagreeing with them, and the label it prints depends on today's date rather than on the arguments. Find the hidden dependency and fix it. Example: `formatRelativeTime(1_700_000_000_000, 1_700_000_000_000 - 300_000)` should return `'5m ago'`.",
       estimatedMinutes: 15,
       functionName: 'formatRelativeTime',
       brokenCode: `export function formatRelativeTime(
@@ -45,7 +45,7 @@ console.log(formatRelativeTime(1_700_000_000_000, 1_700_000_000_000 - 300_000))
 `,
       bugHints: [
         'The tests hand the function a nowMs value. Does the function ever read it?',
-        'Run the sample console.log twice a minute apart. A deterministic function would print the same label both times.',
+        'The sample asks about a five-minute gap, yet it prints a label measured in days. Where could that huge elapsed time be coming from?',
         'Replace the hidden clock read with the parameter the caller controls.',
       ],
       tests: [
