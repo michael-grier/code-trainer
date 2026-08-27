@@ -1,22 +1,44 @@
 import { useAuth } from '@clerk/clerk-react'
-import { CheckCircle2, CloudOff, HardDrive, RefreshCw } from 'lucide-react'
 
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/cn'
 import { isClerkConfigured, isConvexConfigured } from '@/lib/env'
 import { useProgress } from '@/state/progressContext'
 
 export function SyncStatus() {
   if (!isClerkConfigured) {
-    return (
-      <Badge title="Guest progress will be stored locally." variant="muted">
-        <HardDrive className="mr-1 size-3" />
-        Local progress
-      </Badge>
-    )
+    return <StatusLabel title="Guest progress will be stored locally.">Local</StatusLabel>
   }
 
   return <ConfiguredSyncStatus />
+}
+
+function StatusLabel({
+  active,
+  children,
+  pulse,
+  title,
+}: {
+  active?: boolean
+  children: string
+  pulse?: boolean
+  title: string
+}) {
+  return (
+    <span
+      className="flex items-center gap-1.5 text-xs text-muted-foreground"
+      title={title}
+    >
+      <span
+        className={cn(
+          'size-1.5 rounded-full',
+          active ? 'bg-primary' : 'bg-muted-foreground/50',
+          pulse && 'animate-pulse',
+        )}
+      />
+      {children}
+    </span>
+  )
 }
 
 function ConfiguredSyncStatus() {
@@ -25,46 +47,31 @@ function ConfiguredSyncStatus() {
 
   if (!isLoaded) {
     return (
-      <Badge title="Checking authentication state." variant="muted">
-        <RefreshCw className="mr-1 size-3" />
-        Checking sync
-      </Badge>
+      <StatusLabel pulse title="Checking authentication state.">
+        Checking
+      </StatusLabel>
     )
   }
 
   if (!isSignedIn) {
     return (
-      <Badge title="Sign in to sync progress across devices." variant="muted">
-        <HardDrive className="mr-1 size-3" />
-        Local progress
-      </Badge>
+      <StatusLabel title="Sign in to sync progress across devices.">Local</StatusLabel>
     )
   }
 
   if (!isConvexConfigured) {
     return (
-      <Badge title="Set VITE_CONVEX_URL to enable cloud sync." variant="outline">
-        <CloudOff className="mr-1 size-3" />
-        Sync not configured
-      </Badge>
+      <StatusLabel title="Set VITE_CONVEX_URL to enable cloud sync.">
+        Sync off
+      </StatusLabel>
     )
   }
 
-  if (syncStatus === 'loading-cloud') {
+  if (syncStatus === 'loading-cloud' || syncStatus === 'syncing') {
     return (
-      <Badge title="Loading cloud progress before merging." variant="muted">
-        <RefreshCw className="mr-1 size-3 animate-spin" />
-        Loading cloud
-      </Badge>
-    )
-  }
-
-  if (syncStatus === 'syncing') {
-    return (
-      <Badge title="Saving local changes to cloud progress." variant="outline">
-        <RefreshCw className="mr-1 size-3 animate-spin" />
+      <StatusLabel pulse title="Saving local changes to cloud progress.">
         Syncing
-      </Badge>
+      </StatusLabel>
     )
   }
 
@@ -77,7 +84,6 @@ function ConfiguredSyncStatus() {
         type="button"
         variant="outline"
       >
-        <CloudOff className="size-3" />
         Retry sync
       </Button>
     )
@@ -85,17 +91,15 @@ function ConfiguredSyncStatus() {
 
   if (syncStatus === 'saved-locally') {
     return (
-      <Badge title="Progress is saved locally until cloud sync is available." variant="outline">
-        <HardDrive className="mr-1 size-3" />
+      <StatusLabel title="Progress is saved locally until cloud sync is available.">
         Saved locally
-      </Badge>
+      </StatusLabel>
     )
   }
 
   return (
-    <Badge title="Progress is synced to your account." variant="default">
-      <CheckCircle2 className="mr-1 size-3" />
+    <StatusLabel active title="Progress is synced to your account.">
       Synced
-    </Badge>
+    </StatusLabel>
   )
 }

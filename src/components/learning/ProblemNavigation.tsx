@@ -1,4 +1,3 @@
-import { ArrowLeft, ArrowRight, Map } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
@@ -16,10 +15,7 @@ export function ProblemNavigation({ next, previous }: ProblemNavigationProps) {
       <CardContent className="grid gap-3 p-4 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
         <NavItem direction="previous" item={previous} />
         <Button asChild className="justify-self-center" variant="outline">
-          <Link to="/progress">
-            <Map className="size-4" />
-            Map
-          </Link>
+          <Link to="/progress">Map</Link>
         </Button>
         <NavItem direction="next" item={next} />
       </CardContent>
@@ -55,14 +51,12 @@ function NavItem({
       variant="outline"
     >
       <Link to={`/lesson/${item.lessonSlug}/problem/${item.problemId}`}>
-        {isPrevious ? <ArrowLeft className="size-4" /> : null}
         <span className="grid min-w-0 text-left">
           <span className="text-xs text-muted-foreground">
             {isPrevious ? 'Previous' : 'Next'}
           </span>
           <span className="truncate">{item.problemTitle}</span>
         </span>
-        {!isPrevious ? <ArrowRight className="size-4" /> : null}
       </Link>
     </Button>
   )

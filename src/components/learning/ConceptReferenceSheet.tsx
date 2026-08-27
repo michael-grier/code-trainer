@@ -1,5 +1,3 @@
-import { BookOpen } from 'lucide-react'
-
 import { Mdx } from '@/components/mdx/Mdx'
 import { Button } from '@/components/ui/button'
 import {
@@ -21,7 +19,6 @@ export function ConceptReferenceSheet({ lesson }: ConceptReferenceSheetProps) {
     <Sheet>
       <SheetTrigger asChild>
         <Button type="button" variant="outline">
-          <BookOpen className="size-4" />
           Reference
         </Button>
       </SheetTrigger>

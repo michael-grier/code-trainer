@@ -1,5 +1,3 @@
-import { Eye, LockKeyhole } from 'lucide-react'
-
 import { ReadOnlyCode } from '@/components/editor/ReadOnlyCode'
 import { Button } from '@/components/ui/button'
 import {
@@ -40,11 +38,6 @@ export function ReferenceAnswer({
               type="button"
               variant="outline"
             >
-              {canReveal ? (
-                <Eye className="size-4" />
-              ) : (
-                <LockKeyhole className="size-4" />
-              )}
               Reveal
             </Button>
           ) : null}

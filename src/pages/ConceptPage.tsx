@@ -1,16 +1,8 @@
-import {
-  ArrowRight,
-  BookOpen,
-  CheckCircle2,
-  Circle,
-  Play,
-} from 'lucide-react'
 import { useEffect } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
 import { Mdx } from '@/components/mdx/Mdx'
 import { PrerequisiteNotice } from '@/components/learning/PrerequisiteNotice'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -19,7 +11,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { Separator } from '@/components/ui/separator'
 import { getLesson, getTrack, lessons } from '@/curriculum'
 import { formatSlug } from '@/lib/format'
 import { useProgress } from '@/state/progressContext'
@@ -62,30 +53,26 @@ export function ConceptPage() {
   const lessonCompletion = progress.getLessonCompletion(lesson, progress.state)
 
   return (
-    <div className="mx-auto grid w-full min-w-0 max-w-5xl gap-6">
-      <section className="grid gap-4 rounded-lg border bg-card p-5 shadow-sm">
-        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="grid min-w-0 gap-2">
-            <Badge variant="outline">Concept lesson</Badge>
-            <h1 className="text-3xl font-semibold tracking-normal">
-              {lesson.title}
-            </h1>
-            <p className="max-w-2xl text-muted-foreground">
-              {lesson.summary}
-            </p>
-            {track ? <Badge variant="muted">{track.title}</Badge> : null}
-            <Badge variant={lessonStatus === 'completed' ? 'default' : 'outline'}>
-              {lessonCompletion.completedProblems}/{lessonCompletion.totalProblems}{' '}
-              complete
-            </Badge>
-          </div>
-          <Button asChild className="shrink-0">
-            <Link to={`/lesson/${lesson.slug}/problem/${nextProblem.id}`}>
-              <Play className="size-4" />
-              Start practice
-            </Link>
-          </Button>
+    <div className="mx-auto grid w-full min-w-0 max-w-5xl gap-8">
+      <section className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          <p className="text-xs text-muted-foreground">
+            {track ? `${track.title} · ` : ''}
+            {lessonCompletion.completedProblems}/{lessonCompletion.totalProblems}{' '}
+            complete
+          </p>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight">
+            {lesson.title}
+          </h1>
+          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+            {lesson.summary}
+          </p>
         </div>
+        <Button asChild className="shrink-0">
+          <Link to={`/lesson/${lesson.slug}/problem/${nextProblem.id}`}>
+            Start practice
+          </Link>
+        </Button>
       </section>
 
       {lessonStatus === 'ahead-of-path' ? (
@@ -95,54 +82,52 @@ export function ConceptPage() {
         />
       ) : null}
 
-      <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
-        <Card className="min-w-0">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <BookOpen className="size-5 text-primary" />
-              Lesson content
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="min-w-0">
-            <Mdx component={lesson.concept} />
-          </CardContent>
-        </Card>
+      <div className="grid min-w-0 gap-8 lg:grid-cols-[minmax(0,1fr)_18rem]">
+        {/* Lesson MDX conventionally opens with an h1 repeating the lesson
+            title, which the page header already shows — hide that one. */}
+        <section className="min-w-0 [&_article>h1:first-child]:hidden">
+          <Mdx component={lesson.concept} />
+        </section>
 
-        <Card className="min-w-0">
-          <CardHeader>
-            <CardTitle>Practice</CardTitle>
-            <CardDescription>Sequential by default</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-3">
-            {lesson.problems.map((problem) => (
-              <Link
-                className="group min-w-0 rounded-md border p-3 outline-none transition hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-                key={problem.id}
-                to={`/lesson/${lesson.slug}/problem/${problem.id}`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="flex min-w-0 items-center gap-2 text-sm font-medium">
-                    {progress.isProblemCompleted(lesson.slug, problem.id) ? (
-                      <CheckCircle2 className="size-4 shrink-0 text-primary" />
-                    ) : (
-                      <Circle className="size-3 shrink-0 text-muted-foreground" />
-                    )}
-                    <span className="min-w-0">{problem.title}</span>
-                  </span>
-                  <ArrowRight className="size-4 shrink-0 text-muted-foreground transition group-hover:text-foreground" />
-                </div>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {problem.kind} · {problem.estimatedMinutes ?? 10} min
-                </p>
-              </Link>
-            ))}
-            <Separator />
-            <p className="text-sm text-muted-foreground">
-              Guest progress is saved locally. Signed-in progress syncs after
-              the cloud state is loaded.
-            </p>
-          </CardContent>
-        </Card>
+        <aside className="min-w-0">
+          <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            Practice
+          </h2>
+          <ul className="mt-2 grid text-sm">
+            {lesson.problems.map((problem) => {
+              const isComplete = progress.isProblemCompleted(
+                lesson.slug,
+                problem.id,
+              )
+
+              return (
+                <li key={problem.id}>
+                  <Link
+                    className="flex min-w-0 items-center justify-between gap-3 rounded-md px-2 py-2 outline-none transition hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+                    to={`/lesson/${lesson.slug}/problem/${problem.id}`}
+                  >
+                    <span
+                      className={
+                        isComplete
+                          ? 'min-w-0 truncate text-muted-foreground line-through decoration-border'
+                          : 'min-w-0 truncate'
+                      }
+                    >
+                      {problem.title}
+                    </span>
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      {isComplete ? (
+                        <span className="text-primary">done</span>
+                      ) : (
+                        `${problem.estimatedMinutes ?? 10} min`
+                      )}
+                    </span>
+                  </Link>
+                </li>
+              )
+            })}
+          </ul>
+        </aside>
       </div>
     </div>
   )

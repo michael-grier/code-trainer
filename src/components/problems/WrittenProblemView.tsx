@@ -1,4 +1,3 @@
-import { CheckCircle2, PencilLine } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { ReferenceAnswer } from '@/components/problems/ReferenceAnswer'
@@ -62,16 +61,14 @@ export function WrittenProblemView({
             value={answer}
           />
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <PencilLine className="size-4" />
+            <span className="text-sm text-muted-foreground tabular-nums">
               {answer.trim().length} characters
-            </div>
+            </span>
             <Button
               disabled={!isRevealed || isCompleted}
               onClick={handleComplete}
               type="button"
             >
-              <CheckCircle2 className="size-4" />
               {isCompleted ? 'Reviewed' : 'Mark reviewed'}
             </Button>
           </div>
