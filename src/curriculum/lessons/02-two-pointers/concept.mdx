@@ -1,26 +1,20 @@
 # Two Pointers
 
-Two pointers means using two indexes with specific roles. The technique is useful when a single scan can prove that parts of the input are no longer useful.
+You are given a sorted array, say `[1, 2, 4, 6, 10]`, and a target of `8`. Do any two different positions hold values that add up to the target?
 
-The most common versions are:
+The obvious approach checks every pair: 1 with 2, 1 with 4, 1 with 6, and so on through all ten combinations. That works, but it ignores the one thing you were told about this array: it is sorted. Sorted order lets you rule out many pairs at once instead of testing them one by one.
 
-- Opposing pointers: one pointer starts at the left edge and one starts at the right edge.
-- Same-direction pointers: one pointer reads each item while another records the next useful position.
-- Paired scans: two arrays or strings are scanned together.
+Try this instead. Add the smallest value to the largest: 1 + 10 = 11, which overshoots 8. Here is the useful part. If 10 is too big a partner for 1, the smallest value available, then 10 is too big a partner for everything, because every other value in the array is at least as large as 1. One comparison just eliminated 10 from the search entirely, along with every pair that contains it. So set 10 aside and repeat with what remains: 1 + 6 = 7, too small this time, and by the mirrored argument 1 can never reach 8 with any partner, since 6 was the largest one left. Set 1 aside. Then 2 + 6 = 8, and you are done, having tested three pairs instead of ten.
 
-This lesson focuses on the first two because they cover most interview-style two-pointer problems.
+Keeping track of "smallest remaining" and "largest remaining" only takes two indexes, one starting at each end and walking inward. Working with a small set of indexes that each have a specific job is called the two pointers technique. This lesson covers the two arrangements you will meet most often: pointers that start at opposite ends and move toward each other, as in the search above, and pointers that start together and move in the same direction at different speeds.
 
 <TwoPointersDiagram />
 
 ## Opposing pointers
 
-Opposing pointers are a good fit when the input is sorted or when the answer depends on both ends of a range.
+Here is the pair search from the introduction as a full prompt: given a sorted ascending array and a target, return whether two different indexes contain values that add up to the target. For `nums = [1, 2, 4, 6, 10]` and `target = 8`, the answer is `true`, from 2 + 6.
 
-Example prompt: Given a sorted ascending array and a target, return whether two different indexes contain values that add up to the target.
-
-For sorted pair search, the invariant is: any pair that can still reach the target must live inside the current `[left, right]` window.
-
-Example input: `nums = [1, 2, 4, 6, 10]`, `target = 8`.
+Before writing the loop, it is worth saying exactly what the two indexes promise. At every moment, any pair that could still reach the target lives between `left` and `right`. Everything below `left` and everything above `right` has been proven useless, the way 10 and then 1 were proven useless above. A promise like this, one that stays true through every step of a loop, is called an invariant, and it is what makes the code below trustworthy: as long as each move only discards values that cannot possibly be part of an answer, the loop can end without missing anything.
 
 ```ts
 export function hasPairWithSum(nums: number[], target: number): boolean {
@@ -51,24 +45,19 @@ export function hasPairWithSum(nums: number[], target: number): boolean {
 }
 ```
 
-Example output: `true`.
+On the example input the function returns `true`.
 
-The movement rule preserves the invariant:
+Look closely at the two branches, because they carry the whole argument. When the sum is too small, the problem is `nums[left]`: it just failed to reach the target with `nums[right]`, the largest value still in play, so it certainly fails with anything smaller. Moving `left` forward discards it with proof in hand. When the sum is too large, the problem is `nums[right]`: it overshot even with `nums[left]`, the smallest remaining partner, so it overshoots with everything. Moving `right` inward discards it just as safely.
 
-- If the sum is too small, `nums[left]` cannot pair with `nums[right]` or any smaller value to reach the target, so moving `left` is safe.
-- If the sum is too large, `nums[right]` cannot pair with `nums[left]` or any larger value to reach the target, so moving `right` is safe.
-
-The sorted input is what makes those claims true. Without sorted order, moving a pointer would skip values without proof.
+Both of those "certainly" claims lean on one precondition: the array is sorted. Sorted order is what lets a single comparison speak for a whole range of values. On an unsorted array the same pointer moves would skip values without any proof that they were useless, and the function would return wrong answers. When you reach for opposing pointers, check for sorted order first, or for some other rule that plays the same role.
 
 ## Same-direction pointers
 
-Same-direction pointers are useful when one pointer must inspect every item, but only some items should be written to the result.
+The second arrangement solves a different kind of problem, one where every item must be looked at but only some belong in the result.
 
-Example prompt: Given a sorted ascending array, return a new array containing each distinct value once, in order.
+Here is the prompt: given a sorted ascending array, return a new array containing each distinct value once, in order. For `nums = [1, 1, 2, 2, 3]`, the answer is `[1, 2, 3]`.
 
-For deduplicating a sorted array, the invariant is: `deduped.slice(0, write)` contains exactly the unique values found so far, in order.
-
-Example input: `nums = [1, 1, 2, 2, 3]`.
+One pointer, call it `read`, visits every position, because you cannot know whether a value is a duplicate without looking at it. A second pointer, `write`, marks where the next unique value should land, and it only moves when something worth keeping appears. The invariant this time is about the output rather than the search space: at every step, the first `write` positions of the result hold exactly the unique values seen so far, in order. Sorted input makes duplicates easy to spot, since equal values sit next to each other, so a value is new exactly when it differs from the one before it.
 
 ```ts
 export function dedupeSorted(nums: number[]): number[] {
@@ -97,34 +86,34 @@ export function dedupeSorted(nums: number[]): number[] {
 }
 ```
 
-Example output: `[1, 2, 3]`.
+On `[1, 1, 2, 2, 3]` the function returns `[1, 2, 3]`.
 
-Here `read` always advances because every value must be inspected. `write` only advances when a new unique value is found.
+Trace the pointers to feel the rhythm. `read` walks through positions 1 to 4 without exception. At position 1 it sees a second 1, equal to its neighbor, so `write` stays put. At position 2 it sees 2, a new value, so 2 lands at position 1 and `write` advances. The two pointers drift apart exactly as fast as duplicates pile up: each duplicate the scan passes widens the gap between them by one.
 
 ## Choosing the movement rule
 
-Before writing the loop, name the evidence that justifies each pointer move.
+Both solutions above came down to one decision, made fresh on every loop step: which pointer moves, and what evidence says the move is safe? That decision is called the movement rule, and finding it is the real work of any two-pointer problem. The loop structure is nearly identical every time; the rule is what changes.
 
-- Pair sum in a sorted array: the current sum is too small or too large.
-- Deduping sorted values: the current value is equal to or different from the previous value.
-- Container with most water: the shorter wall limits the current area, so moving the taller wall cannot improve the answer while the shorter wall remains.
+A good habit is to say the rule out loud before writing any code, in the form "when I see X, I move this pointer, and here is what that move throws away." For the pair search: when the sum is too small, move `left`, throwing away a value too small to pair with anything left. For deduping: when the current value equals the previous one, leave `write` alone, throwing away a duplicate. If the only sentence you can produce is "move a pointer and check the next candidate," with nothing about what got eliminated, that is a sign the pattern does not fit the problem, or that a precondition like sorted order is missing.
 
-The movement rule should be something you can defend without saying "try the next one." It should explain what candidates were eliminated and why.
+The third practice problem, container with most water, is a nice test of this habit because its movement rule takes a moment of thought. You are given wall heights, and any two walls form a container whose water area is the distance between them times the height of the shorter wall, since water spills over the shorter side. With `heights = [3, 9, 4, 8]`, the walls of height 9 and 8 sit two positions apart and hold 2 times 8, an area of 16, the best available. Opposing pointers start at the outermost walls, and the question is which one to move inward. Consider the shorter of the two current walls. Every container it could form with a wall further inside is narrower than the current one, and its water level is still capped by that same short wall, so all of those containers are strictly worse than what you already measured. The short wall is exhausted, and moving its pointer inward discards only containers that were never going to win. That is a movement rule in the same spirit as the pair search: an elimination backed by a reason.
 
 ## Common mistakes
 
-- Using opposing pointers when the input is not sorted and no other ordering rule exists.
-- Moving both pointers after a failed check and skipping possible candidates.
-- Using `left <= right` when the two pointers must refer to different items.
-- Forgetting to handle empty arrays before reading `nums[0]`.
-- Mutating an input array when the prompt asks for a returned copy.
-- Returning a non-deterministic answer when multiple pairs could be valid.
+These are the errors that show up most often when people first write two-pointer code:
+
+- Using opposing pointers on an unsorted input with no other ordering rule, so pointer moves discard values without proof and the answer becomes unreliable.
+- Moving both pointers after a single failed check, which skips pairs that were never tested and can walk right past the answer.
+- Writing the loop condition as `left <= right` when the two pointers must point at different items, letting a value pair with itself.
+- Reading `nums[0]` before checking for an empty array, which produces `undefined` instead of a clean early return.
+- Mutating the input array in place when the prompt asks for a new array to be returned.
+- Returning whichever valid pair the loop happens to find first when the prompt expects a specific one, making the output depend on luck rather than the stated rule.
 
 ## Practice path
 
-You will build this topic in layers:
+The exercises build the lesson's ideas in the order you met them:
 
-1. Search a sorted array for a pair that reaches a target.
-2. Dedupe a sorted array with read and write pointers.
-3. Solve container with most water by moving the pointer that can still improve the answer.
-4. Explain the invariant and movement rule for a two-pointer solution.
+1. Search a sorted array for a pair that reaches a target, using opposing pointers.
+2. Dedupe a sorted array with a read pointer that visits everything and a write pointer that keeps only new values.
+3. Solve container with most water by moving the pointer at the shorter wall, the only move that can still improve the answer.
+4. Explain, in your own words, the invariant and movement rule behind a two-pointer solution.

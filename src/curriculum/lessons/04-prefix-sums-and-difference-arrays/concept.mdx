@@ -1,16 +1,16 @@
 # Prefix Sums and Difference Arrays
 
-Prefix sums let you replace repeated range addition with subtraction. Difference arrays let you represent each range update with two boundary changes. The operations are related: a prefix sum accumulates values, while a difference array records the indexes where the accumulated value changes.
+Imagine a dashboard that shows daily sales numbers and lets a user highlight any stretch of days to see the total. Every time the user drags out a new range, your code loops over the selected days and adds them up. One query is cheap. A thousand queries over the same unchanged data means walking the same values again and again, and most of that walking repeats work the previous query already did.
 
-For both patterns, ask whether you can process the input once so that you do not scan every index for every range.
+This lesson is about noticing that repetition and paying for it once. A prefix sum is a running total you build a single time, after which any range total becomes one subtraction. Later in the lesson you will meet its mirror image, the difference array, which handles the opposite situation: many range updates instead of many range queries.
 
 <DifferenceArrayDiagram />
 
 ## Prefix sums for repeated range queries
 
-Example prompt: Given an array of numbers and many inclusive range queries `[left, right]`, return the sum inside each range.
+Start with the query side. You are given an array of numbers and many inclusive range queries `[left, right]`, and each query wants the sum of the values inside its range. The array never changes between queries.
 
-If the array does not change between queries, build one prefix array. Use an extra leading zero with this meaning:
+Since the values hold still, you can preprocess them. Build one extra array, one slot longer than the input, with a leading zero and this meaning:
 
 > `prefix[i]` is the sum of every value before index `i`.
 
@@ -21,11 +21,11 @@ const nums = [3, -2, 5, 1]
 const prefix = [0, 3, 1, 6, 7]
 ```
 
-The leading zero makes every inclusive range use the same formula:
+Read it left to right: nothing comes before index 0, so `prefix[0]` is `0`. Only the `3` comes before index 1, so `prefix[1]` is `3`. Then `3 + -2` gives `1`, and so on. The leading zero is not decoration. It is what lets every inclusive range use the same formula, with no special case for ranges that start at index 0:
 
 `rangeSum(left, right) = prefix[right + 1] - prefix[left]`
 
-Example input: `nums = [3, -2, 5, 1]`, `left = 1`, `right = 3`.
+The subtraction works because `prefix[right + 1]` is the total of everything up to and including index `right`, while `prefix[left]` is the total of everything before the range begins. Take the big total, remove the part before the range, and what remains is exactly the range. Here is the idea as code, answering the query `left = 1`, `right = 3` on the array above:
 
 ```ts
 export function rangeSum(
@@ -46,21 +46,21 @@ export function rangeSum(
 }
 ```
 
-Example output: `4`, because `-2 + 5 + 1 = 4`.
+The call returns `4`, because the range covers `-2 + 5 + 1`. Check it against the prefix array: `prefix[4] - prefix[1]` is `7 - 3`, which is also `4`.
 
-Building the prefix array costs O(n). Each query then costs O(1). This preprocessing is useful when the program will answer many queries and the input array will not be modified between them.
+Building the prefix array costs O(n), and after that each query costs O(1). That trade is worth making when the program will answer many queries and the array will not be modified between them. If the values do change, the prefix array goes stale and must be rebuilt, which is one of the mistakes at the end of this lesson.
 
 ## Counting subarrays by prefix value
 
-A prefix array answers a known range. A prefix-sum frequency map can count ranges whose starting index is unknown.
+The prefix array above answers a range you already know: the caller hands you `left` and `right`. The next problem is trickier because the range's starting point is unknown. You are given an array that may include negative values, and you must count the contiguous subarrays whose sum equals some `target`.
 
-Example prompt: Given an array that may include negative values, count the contiguous subarrays whose sum equals `target`.
-
-Suppose `currentPrefix` is the sum from index zero through the current index. If a previous prefix equals `currentPrefix - target`, the values after that previous prefix and through the current index sum to `target`:
+Prefix sums still apply, but now you use them backwards. Suppose you are standing at some index, and `currentPrefix` is the sum of everything from index zero through where you stand. Any subarray that ends where you stand starts just after some earlier position, and its sum is the current running total minus the running total at that earlier position:
 
 `currentPrefix - earlierPrefix = target`, so `earlierPrefix = currentPrefix - target`.
 
-Example input: `nums = [1, -1, 0]`, `target = 0`.
+Read that rearranged form slowly, because it is the heart of the algorithm. It says: for a target-sum subarray to end right here, some earlier running total must have been exactly `currentPrefix - target`. You do not need to know where. You only need to know how many times that value has appeared, because each appearance marks the start of one valid subarray ending at the current index. A `Map` from prefix value to how many times it has occurred answers that in one lookup.
+
+Here is the counting in code, on the input `nums = [1, -1, 0]` with `target = 0`:
 
 ```ts
 export function countTargetSumSubarrays(
@@ -91,32 +91,34 @@ export function countTargetSumSubarrays(
 }
 ```
 
-Example output: `3`, for `[1, -1]`, `[1, -1, 0]`, and `[0]`.
+The answer is `3`, for the subarrays `[1, -1]`, `[1, -1, 0]`, and `[0]`.
 
-The initial frequency `0 -> 1` represents the empty prefix. It allows a subarray starting at index zero to be counted. Frequencies, rather than a `Set`, are required because the same prefix value may occur several times and each occurrence creates a different subarray.
+Two details in that code deserve a closer look. First, the map starts with `0 -> 1` before any value is read. That entry stands for the empty prefix, the running total before the array begins, and without it no subarray starting at index zero could ever be counted. Second, the map stores counts rather than being a `Set` of seen values. Trace the example to see why. After reading `1` the running total is `1`; after reading `-1` it is back to `0`; after reading `0` it is `0` again. The value `0` has now appeared three times, once as the empty prefix and twice during the scan, and each appearance is a different starting point. When two different positions share the same prefix value, they mark two different subarrays, and a `Set` would collapse them into one.
 
-This technique works with negative values because it does not require the cumulative sum to only increase or only decrease. A sliding-window algorithm usually cannot decide which pointer to move from the current sum when the input may contain negative values.
+It is worth asking why this problem needs prefix sums at all when a sliding window also tracks a contiguous range. A sliding window grows one end when the sum is too small and shrinks the other when it is too big, and that logic depends on every value pushing the sum in a predictable direction. With negative values in the array, growing the window can make the sum shrink, so neither "too small" nor "too big" tells you which end to move, and the window gets stuck. The frequency map never makes that decision. It scans forward once and lets the arithmetic find the starting points.
 
 ## Difference arrays for batched range updates
 
-Example prompt: Start with an array of zeroes. Apply many updates that add `delta` to every index in an inclusive range `[start, end]`, then return the final array.
+Now flip the problem. Instead of many queries against fixed values, you have many updates and one final read. Start with an array of zeroes, apply many updates that each add some `delta` to every index in an inclusive range `[start, end]`, and return the final array.
 
-Updating every covered index can cost O(n) per update. A difference array records only the two boundaries where an update changes the running value:
+The direct approach writes to every covered index, which can cost O(n) per update. A difference array skips all that writing by recording only the two places where an update changes the running value:
 
 - Add `delta` at `start`.
 - Subtract `delta` at `end + 1`.
 - Take one prefix sum after all updates to reconstruct the result.
 
-For a length-5 array and the update `[1, 3, 2]`, the difference markers are:
+For a length-5 array and the single update `[1, 3, 2]`, meaning add 2 to indexes 1 through 3, the difference markers are:
 
 ```ts
 const difference = [0, 2, 0, 0, -2, 0]
 const result = [0, 2, 2, 2, 0]
 ```
 
-The `2` at index `1` begins the update. The `-2` at index `4`, which is `end + 1`, ends the update before the value for index `4` is calculated. The extra difference slot provides an index for the end marker when an update includes the final output index.
+The `2` at index `1` begins the update. The `-2` at index `4`, which is `end + 1`, ends the update before the value for index `4` is calculated. Notice that `difference` has six slots for a five-element result. The extra slot provides an index for the end marker when an update includes the final output index; without it, an update ending at index 4 would have nowhere to put its `-2`.
 
-Example input: `length = 5`, `updates = [[1, 3, 2], [2, 4, 3], [0, 2, -2]]`.
+To recover the result, walk the difference array left to right while keeping a running total. The running total starts at 0, picks up the `+2` when it reaches index 1, carries the value 2 across indexes 2 and 3, and drops back to 0 when it absorbs the `-2` at index 4. Every marker gets touched once no matter how many updates were recorded, so a thousand overlapping updates still cost one marker pair each plus a single final scan.
+
+Here is the full version, applying `updates = [[1, 3, 2], [2, 4, 3], [0, 2, -2]]` to a length-5 array:
 
 ```ts
 export function applyRangeUpdates(
@@ -147,32 +149,36 @@ export function applyRangeUpdates(
 }
 ```
 
-Example output: `[-2, 0, 3, 5, 3]`.
+The result is `[-2, 0, 3, 5, 3]`. Spot-check index 2: the first update adds 2, the second adds 3, and the third adds -2, and `2 + 3 - 2` is indeed `3`.
 
-Difference arrays are appropriate when all updates are known before the final array is calculated. If the program must answer queries between updates, use a data structure that supports both operations as they occur.
+One caution before you reach for this pattern. It assumes all updates arrive before anyone reads the final array. If the program must answer queries between updates, the markers alone cannot answer them, and you need a data structure that supports both operations as they occur.
 
 ## Choosing the pattern
 
+The three techniques in this lesson, plus the sliding window from earlier, split cleanly by what the problem asks for:
+
 - Many range queries over unchanged values: build a prefix array.
 - Count subarrays with a target sum, especially with negative values: store prefix frequencies.
-- Maintain one contiguous range when you can prove which pointer to move: use a sliding window.
+- Maintain one contiguous range whose sum moves predictably as it grows and shrinks, which requires values that cannot be negative: use a sliding window.
 - Apply many range updates, then read the final values: build a difference array and integrate once.
 
-State whether endpoints are inclusive or exclusive before writing the formula. This lesson uses inclusive `left`, `right`, `start`, and `end` indexes.
+Whichever pattern you choose, state whether endpoints are inclusive or exclusive before writing the formula. Most off-by-one bugs in this lesson trace back to skipping that sentence. This lesson uses inclusive `left`, `right`, `start`, and `end` indexes throughout.
 
 ## Common mistakes
 
-- Building a prefix array of length `n` and adding a special case for ranges that start at zero.
-- Using `prefix[right] - prefix[left]` for an inclusive query instead of `prefix[right + 1] - prefix[left]`.
-- Forgetting to initialize the prefix frequency map with `0 -> 1`.
-- Recording the current prefix before counting matches, which can count an empty subarray when `target` is zero.
-- Using a `Set` when repeated prefix values should create multiple valid subarrays.
-- Subtracting a difference update at `end` instead of after the inclusive end.
-- Using existing prefix sums after modifying values in the input array.
+These are the errors that show up most often when people first use these patterns:
+
+- Building a prefix array of length `n` instead of `n + 1`, then patching over the missing leading zero with a special case for ranges that start at index 0.
+- Writing `prefix[right] - prefix[left]` for an inclusive query, which drops the value at `right`; the correct form is `prefix[right + 1] - prefix[left]`.
+- Forgetting to initialize the prefix frequency map with `0 -> 1`, which silently misses every subarray that starts at index 0.
+- Recording the current prefix in the map before counting matches, which lets the current position match itself and count an empty subarray when `target` is 0.
+- Using a `Set` of seen prefix values instead of counts, which merges repeated prefix values that should each contribute a separate subarray.
+- Placing the subtraction marker at `end` instead of `end + 1`, which cuts the update one index short of its inclusive right boundary.
+- Reusing a prefix array after modifying the input values, which returns sums for an array that no longer exists.
 
 ## Practice path
 
-You will practice the concepts in this order:
+The exercises build the lesson's ideas in the order you met them:
 
 1. Answer repeated inclusive range-sum queries with one prefix array.
 2. Count target-sum subarrays with prefix frequencies, including negative values.

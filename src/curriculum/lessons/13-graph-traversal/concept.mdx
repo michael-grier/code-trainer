@@ -1,16 +1,20 @@
 # Graph Traversal
 
-A graph contains vertices connected by edges. An adjacency list stores the neighbors of each vertex. Unlike a tree, a graph can contain cycles and several routes to the same vertex, so traversal must record which vertices have already been scheduled.
+Picture a map of cities with roads between them. A graph is that picture with the geography stripped away: each city is a **vertex** (a point that can be connected to others), and each road is an **edge** (a connection between two vertices). To work with a graph in code, we store, for each vertex, a list of the vertices you can reach from it in one move. That list of direct neighbors, one per vertex, is called an **adjacency list**.
+
+Unlike a tree, a graph can contain cycles and several routes to the same vertex, so traversal must record which vertices have already been scheduled. Without that record, a traversal could circle a cycle forever, or visit the same vertex once for every route that leads to it.
 
 <GraphDiagram />
 
 ## Visit vertices by distance from the start
 
-Example prompt: Starting at one vertex, return reachable vertices in breadth-first order. Use each adjacency-list row's given neighbor order.
+Start with the most direct question a graph can ask: beginning at one vertex, which vertices can you reach, and in what order? The problems in this lesson expect breadth-first order, taking each row of neighbors in the order the adjacency list gives them.
 
-Breadth-first search uses a queue. Mark a vertex visited when it enters the queue. Waiting until removal can allow several neighbors to add the same vertex.
+Breadth-first search visits vertices in waves: first the start, then everything one edge away, then everything two edges away, and so on. A queue produces that order on its own. Each vertex you visit adds its unseen neighbors to the back of the line, and the front of the line is always the closest vertex not yet explored.
 
-Example input: `graph = [[1, 2], [3], [3], []]`, `start = 0`.
+The subtle decision is when to mark a vertex visited. Mark it the moment it enters the queue, not when it leaves. To see why the timing matters, take `graph = [[1, 2], [3], [3], []]` with `start = 0`. Vertex 0's neighbors are 1 and 2, and both of them list 3 as a neighbor. Suppose we mark vertices only as they leave the queue. We remove 0 and enqueue 1 and 2. We remove 1 and enqueue 3. Then we remove 2 and look at its neighbor 3, which is sitting in the queue but has not left it yet, so it is unmarked, and we enqueue it a second time. The traversal now reports 3 twice, and in a denser graph the duplicates multiply. Marking at enqueue time closes the gap: once a vertex is in line, nothing can put it in line again.
+
+Here is the traversal, with the visited set doing that gap-closing work:
 
 ```ts
 export function breadthFirstTraversal(
@@ -24,6 +28,7 @@ export function breadthFirstTraversal(
   const visited = new Set<number>([start])
   const queue = [start]
   const order: number[] = []
+  // The front of the queue. Advancing this index stands in for shift().
   let readIndex = 0
 
   while (readIndex < queue.length) {
@@ -33,6 +38,8 @@ export function breadthFirstTraversal(
 
     for (const neighbor of graph[vertex]) {
       if (!visited.has(neighbor)) {
+        // Mark now, at enqueue time, so no later neighbor can add this
+        // vertex to the queue a second time.
         visited.add(neighbor)
         queue.push(neighbor)
       }
@@ -43,17 +50,17 @@ export function breadthFirstTraversal(
 }
 ```
 
-Example output: `[0, 1, 2, 3]`.
+`breadthFirstTraversal([[1, 2], [3], [3], []], 0)` returns `[0, 1, 2, 3]`: the start, then its two direct neighbors, then the vertex two edges away.
 
-The read position moves forward through the array. This preserves queue order without repeatedly calling `shift()`, which would move every remaining element.
+One implementation detail deserves a note now that the traversal itself makes sense. The obvious way to take the front element off an array is `shift()`, but each call to `shift()` moves every remaining element one slot left, which turns a large traversal slow. The code instead leaves the array alone and walks a read position forward through it. Same first-in, first-out order, no shuffling.
 
 ## Treat a grid as a graph
 
-Example prompt: Count groups of land cells connected through shared top, bottom, left, or right edges. Diagonal contact does not connect land.
+Graphs do not always arrive as adjacency lists. Sometimes the graph is hiding inside another shape, and a grid is the most common disguise.
 
-Each grid cell is a vertex. The four allowed moves define its possible edges. Start a search at each unvisited land cell and mark the complete connected region.
+Suppose a grid of characters marks land with `'1'` and water with `'0'`, and you are asked how many islands it contains. Cells belong to the same island when they share a top, bottom, left, or right edge; diagonal contact does not count. Read as a graph, each cell is a vertex and the four allowed moves define its edges. Start a search at each unvisited land cell and mark its whole connected region, and every search that has to start fresh has found one more island.
 
-Example input: `grid = ["110", "010", "101"]`.
+Take `grid = ["110", "010", "101"]`. The two land cells across the top and the one hanging below them form one island, and the two isolated cells on the bottom row are islands of their own.
 
 ```ts
 export function countGridIslands(grid: string[]): number {
@@ -113,17 +120,17 @@ export function countGridIslands(grid: string[]): number {
 }
 ```
 
-Example output: `3`.
+`countGridIslands(["110", "010", "101"])` returns `3`.
 
 The separate `visited` grid leaves the input unchanged. If changing the input were allowed, replacing visited land with water could serve the same purpose.
 
 ## Find whether a directed order exists
 
-Example prompt: Each pair `[course, prerequisite]` requires one course before another. Return whether every course can be completed.
+The last problem gives the edges a direction. Each pair `[course, prerequisite]` says one course must be finished before another, and the question is whether every course can be completed at all.
 
-Direct each edge from prerequisite to course. Count each course's remaining incoming edges. A course with zero incoming edges can be completed now. Completing it removes one incoming edge from every course that follows it.
+Give each requirement a direction by drawing an edge from the prerequisite to the course that needs it. Then ask which courses you could take first. A course with no incoming edges has no unmet prerequisites, so nothing stops you from taking it right away. Finishing it satisfies one requirement for every course it points to, so each of those courses loses one incoming edge, and any course whose count reaches zero has just become available. Repeating this builds a sequence in which every course appears after all of its prerequisites. Such a sequence is called a topological order, and the prompt's real question is whether one exists that includes every course.
 
-Example input: `courseCount = 3`, `prerequisites = [[1, 0], [2, 1]]`.
+With `courseCount = 3` and `prerequisites = [[1, 0], [2, 1]]`, course 0 unlocks course 1, and course 1 unlocks course 2. The code below builds the edges, counts each course's unmet prerequisites, and works through the queue of available courses:
 
 ```ts
 export function canFinishAllCourses(
@@ -167,19 +174,21 @@ export function canFinishAllCourses(
 }
 ```
 
-Example output: `true`.
+`canFinishAllCourses(3, [[1, 0], [2, 1]])` returns `true`: course 0 seeds the queue, finishing it frees course 1, and finishing that frees course 2.
 
 If a directed cycle remains, every course in that cycle still depends on another course in the same cycle. None can enter the queue, so the finished count is smaller than the course count.
 
 ## Common mistakes
 
-- Traversing a graph without visited state.
-- Marking a vertex visited only after removing it from the queue or stack.
-- Using `shift()` repeatedly for a large breadth-first queue.
+These are the errors that show up most often in practice and in interviews:
+
+- Traversing a graph with no visited record, which loops forever on the first cycle.
+- Marking a vertex visited only after removing it from the queue or stack, which lets two neighbors enqueue the same vertex, as the trace above showed.
+- Using `shift()` repeatedly for a large breadth-first queue, paying to move every remaining element on each call.
 - Assuming every vertex is reachable from the chosen start.
 - Connecting diagonal grid cells when only shared edges are allowed.
-- Reversing the direction of a prerequisite edge.
-- Checking only one connected part when a cycle may exist elsewhere.
+- Reversing the direction of a prerequisite edge, so the counts measure how many courses depend on this one instead of how many it still needs.
+- Checking only the vertices reachable from one start when a cycle may sit in a part of the graph the search never touched.
 
 ## Practice path
 

@@ -1,111 +1,166 @@
 # Heaps and Priority Queues
 
-A priority queue removes items by priority instead of arrival order. A binary heap stores the highest-priority item at index `0`. For a node at index `i`, its children are at `2 * i + 1` and `2 * i + 2`.
+Suppose you are building a task scheduler. Jobs arrive all day, each with an urgency score, and whenever a worker frees up you must hand it the most urgent job waiting. A plain array makes one half of this easy and the other half painful. Appending a new job is instant, but finding the most urgent one means scanning everything, and keeping the array sorted makes every insertion slow instead. What you want is a container built around one specific question, asked over and over: "what is the most important item right now?"
+
+That container is called a **priority queue**. Unlike a normal queue, which hands items back in arrival order, a priority queue always hands back the item with the best priority, however you define "best." The standard way to build one is a **binary heap**, and the heap's whole design flows from a single decision: do not keep everything sorted, just keep the best item easy to find.
+
+A binary heap is a binary tree with two rules. First, the tree is **nearly complete**: every level is full except possibly the last, which fills from left to right with no gaps. Second, every parent beats its children. In a **min-heap** "beats" means "is smaller or equal," so the smallest value sits at the root; in a **max-heap** the comparison flips and the largest sits on top. Notice what these rules do not say. Siblings are in no particular order, and a value deep in the tree can be smaller than a value elsewhere at a shallower level. The heap is only as ordered as it needs to be for the root to be the answer.
 
 <HeapDiagram />
 
-The first two examples use these complete min-heap operations for numbers:
+## Storing the tree in an array
+
+Here is the part that surprises people: a heap needs no node objects and no pointers. Because the tree is nearly complete, you can lay its values into a plain array level by level, top to bottom, left to right, and the shape takes care of itself.
+
+Take a small min-heap holding `2, 5, 3, 9, 7`. As a tree, `2` is the root, its children are `5` and `3`, and `5` in turn has children `9` and `7`. Reading level by level gives the array `[2, 5, 3, 9, 7]`: index `0` holds the root, indexes `1` and `2` hold the second level, indexes `3` and `4` hold the third.
+
+Because the levels pack in with no gaps, family relationships become arithmetic. The children of the node at index `i` live at `2 * i + 1` and `2 * i + 2`, and the parent of index `i` lives at `Math.floor((i - 1) / 2)`. Check it against the small heap: the node at index `1` (value `5`) has children at indexes `3` and `4` (values `9` and `7`), and the parent of index `4` is `Math.floor(3 / 2) = 1`. No pointers to store, no nodes to allocate, and the root is always `heap[0]`.
+
+## Repairing the heap after a change
+
+Only two things ever happen to a heap, and each one dents the parent-beats-children rule in exactly one spot.
+
+When you **insert** a value, the only place it can go without breaking the shape rule is the next free slot at the bottom of the tree, which is simply the end of the array. The new value might beat its parent, though, so you repair the rule by **sifting up**: compare the new value with its parent, swap if the child wins, and repeat until the parent wins or the value reaches the root. Inserting `1` into `[2, 5, 3, 9, 7]` appends it at index `5`, swaps it with its parent `3`, then with the root `2`, and the heap settles as `[1, 5, 2, 9, 7, 3]`.
+
+When you **remove the root**, you cannot just delete index `0` and leave a hole. Instead, move the last array element into the root's place, shrink the array by one, and repair by **sifting down**: compare the moved value with its children, swap with the winning child, and repeat until neither child beats it or it reaches the bottom. Swapping with the winner matters. In a min-heap you must swap with the smaller child, because that child is about to become the parent of the other one and the rule must hold between them too.
+
+Both repairs walk one path between the root and a leaf, and a nearly complete tree with `n` values is only about `log n` levels tall. That is the heap's bargain: insert and remove each cost O(log n), and reading the best value is O(1).
+
+With the moves described, here they are in code. The helpers take a comparison function named `outranks`, where `outranks(a, b)` answers "should `a` sit above `b` in this heap?" Passing `(a, b) => a < b` makes a min-heap of numbers, and every example in this lesson reuses these same two functions.
 
 ```ts
-function pushMin(heap: number[], value: number): void {
+// outranks(a, b) answers: should a sit above b in this heap?
+type Outranks<T> = (a: T, b: T) => boolean
+
+function swap<T>(heap: T[], a: number, b: number): void {
+  const held = heap[a]
+  heap[a] = heap[b]
+  heap[b] = held
+}
+
+function pushHeap<T>(heap: T[], value: T, outranks: Outranks<T>): void {
+  // The next free slot at the bottom of the tree is the array's end.
   heap.push(value)
   let index = heap.length - 1
 
+  // Sift up: while the new value outranks its parent, swap them.
   while (index > 0) {
     const parent = Math.floor((index - 1) / 2)
 
-    if (heap[parent] <= heap[index]) {
+    // The parent already outranks us, so the rule holds everywhere.
+    if (!outranks(heap[index], heap[parent])) {
       break
     }
 
-    const parentValue = heap[parent]
-    heap[parent] = heap[index]
-    heap[index] = parentValue
+    swap(heap, index, parent)
     index = parent
   }
 }
 
-function popMin(heap: number[]): number {
-  const minimum = heap[0]
+function popHeap<T>(heap: T[], outranks: Outranks<T>): T {
+  // The root is always the best value; remember it to return later.
+  const top = heap[0]
+
+  // Fill the hole at the root with the last leaf.
   const last = heap.pop()!
-
   if (heap.length === 0) {
-    return minimum
+    return top
   }
-
   heap[0] = last
+
+  // Sift down: swap with the winning child until neither child outranks us.
   let index = 0
-
   while (true) {
-    const left = index * 2 + 1
-    const right = left + 1
-    let smallest = index
+    const left = 2 * index + 1
+    const right = 2 * index + 2
 
-    if (left < heap.length && heap[left] < heap[smallest]) {
-      smallest = left
+    // Find which of the parent and its children should sit on top.
+    let best = index
+    if (left < heap.length && outranks(heap[left], heap[best])) {
+      best = left
+    }
+    if (right < heap.length && outranks(heap[right], heap[best])) {
+      best = right
     }
 
-    if (right < heap.length && heap[right] < heap[smallest]) {
-      smallest = right
-    }
-
-    if (smallest === index) {
+    // The parent already wins against both children; the repair is done.
+    if (best === index) {
       break
     }
 
-    const currentValue = heap[index]
-    heap[index] = heap[smallest]
-    heap[smallest] = currentValue
-    index = smallest
+    swap(heap, index, best)
+    index = best
   }
 
-  return minimum
+  return top
 }
 ```
 
 ## Keep a bounded top-k set
 
-Example prompt: Return the kth-largest number without sorting the complete input.
+Now for the first place heaps earn their keep in interviews. The prompt: given `nums = [3, 2, 1, 5, 6, 4]` and `k = 2`, return the kth-largest value, here `5`, without sorting the whole input.
 
-Use a min-heap with at most `k` values. It stores the k largest values seen, and its root is the smallest retained value.
+The instinct is to reach for a max-heap, since the problem says "largest." Resist it for a moment, because the standard solution uses a min-heap, and understanding why is the most important idea in this lesson.
 
-Example input: `nums = [3, 2, 1, 5, 6, 4]`, `k = 2`.
+The plan is to keep a min-heap holding at most `k` values, and to maintain one promise: at every step, the heap contains the `k` largest values seen so far. If that promise holds when the input runs out, the answer is already sitting in plain sight. The heap holds the top `k` values, its root is the smallest of them, and the smallest member of the top 2 is exactly the 2nd largest overall. The kth-largest value is `heap[0]`, no searching required.
+
+Keeping the promise takes one rule. Push each new value, and if the heap has grown past `k` entries, pop the root. Popping the root is always safe, and here is the reasoning: the heap briefly holds `k + 1` values, and its root is the smallest of those `k + 1`. A value that is smallest among `k + 1` candidates cannot be one of the `k` largest, so evicting it can never throw away part of the answer. The min-heap direction is what makes the cheap eviction possible: the value we always want to discard is exactly the value a min-heap keeps at the root.
+
+Watch the promise hold on the example with `k = 2`. After `3` and `2` arrive, the heap holds `{2, 3}`. Then `5` arrives, the heap briefly holds `{2, 3, 5}`, and popping the root evicts `2`, leaving `{3, 5}`, the two largest so far. Then `6` evicts `3`, leaving `{5, 6}`. Finally `4` is pushed and immediately evicted, because among `{4, 5, 6}` it is the smallest. The input ends with the heap holding `{5, 6}` and the root is `5`, the 2nd-largest value.
 
 ```ts
+// a outranks b in a min-heap of numbers when a is smaller.
+const smallerFirst: Outranks<number> = (a, b) => a < b
+
 export function kthLargestValue(nums: number[], k: number): number {
   const heap: number[] = []
 
   for (const num of nums) {
-    pushMin(heap, num)
-    if (heap.length > k) popMin(heap)
+    pushHeap(heap, num, smallerFirst)
+
+    // Past k entries, the root is the smallest of k + 1 candidates,
+    // so it cannot be one of the k largest. Evict it.
+    if (heap.length > k) {
+      popHeap(heap, smallerFirst)
+    }
   }
 
+  // The heap holds the k largest values; its root is the kth largest.
   return heap[0]
 }
 ```
 
-Example output: `5`.
-
-`pushMin` adds at the end and swaps upward while the parent is larger. `popMin` moves the last value to the root and swaps downward with the smaller child. Each operation costs O(log k).
+`kthLargestValue([3, 2, 1, 5, 6, 4], 2)` returns `5`. The heap never exceeds `k` entries plus one, so each operation costs O(log k) and the whole pass costs O(n log k), which beats sorting when `k` is much smaller than the input.
 
 ## Prioritize the earliest ending work
 
-Example prompt: Return the minimum rooms required for half-open meeting intervals.
+The next problem asks a scheduling question. Given meetings as half-open intervals, meaning a meeting occupying `[5, 10)` has walked out by time `10`, how many rooms are needed so that no two overlapping meetings share one? For `meetings = [[0, 30], [5, 10], [15, 20]]` the answer is `2`, because the long meeting overlaps each short one, but the short ones never overlap each other.
 
-Sort meetings by start. A min-heap stores end times for active meetings. Remove end times less than or equal to the next start, then add the current end.
+Think about processing meetings in start order, which is why the first move is a sort. Walking through start times in sequence means that when a meeting begins, every meeting that could possibly conflict with it has already been seen. The only question left at each step is how many of those earlier meetings are still going.
 
-Example input: `meetings = [[0, 30], [5, 10], [15, 20]]`.
+That is what the heap tracks. It is a min-heap of end times, one entry per meeting currently in a room, and its root is the end time of the meeting that will finish soonest. When the next meeting starts at time `start`, any room whose meeting ends at or before `start` is free again, and because the soonest-ending meeting sits at the root, freeing rooms is a simple loop: while the root is at most `start`, pop it. The "at or before" comparison is where the half-open convention pays off; a meeting ending at exactly `start` has already vacated. Then push the new meeting's end time, claiming a room, and the heap's size at that moment is the number of rooms in use. The answer is the largest size the heap ever reaches.
 
 ```ts
 export function minimumMeetingRooms(meetings: [number, number][]): number {
-  const sorted = meetings.map(([start, end]) => [start, end] as [number, number])
-    .sort((left, right) => left[0] - right[0])
+  // Process meetings in start order, so every possible conflict
+  // with the current meeting has already been seen.
+  const sorted = [...meetings].sort((left, right) => left[0] - right[0])
+
+  // One end time per meeting still occupying a room.
+  // The root is the meeting that frees its room soonest.
   const endTimes: number[] = []
   let maximumRooms = 0
 
   for (const [start, end] of sorted) {
-    while (endTimes.length > 0 && endTimes[0] <= start) popMin(endTimes)
-    pushMin(endTimes, end)
+    // Any meeting ending at or before this start has vacated its room.
+    while (endTimes.length > 0 && endTimes[0] <= start) {
+      popHeap(endTimes, smallerFirst)
+    }
+
+    // The current meeting claims a room until its end time.
+    pushHeap(endTimes, end, smallerFirst)
+
+    // The heap's size is the number of rooms in use right now.
     maximumRooms = Math.max(maximumRooms, endTimes.length)
   }
 
@@ -113,15 +168,15 @@ export function minimumMeetingRooms(meetings: [number, number][]): number {
 }
 ```
 
-Example output: `2`.
+Trace the example. `[0, 30]` claims a room, size 1. `[5, 10]` starts before anything has ended, so it claims a second room, size 2. `[15, 20]` starts at 15; the root of the heap is `10`, which is at most `15`, so that room frees up before the new end time is pushed, and the size stays at 2. `minimumMeetingRooms([[0, 30], [5, 10], [15, 20]])` returns `2`.
 
 ## Merge several sorted sources
 
-Example prompt: Merge several ascending arrays into one ascending result.
+The last pattern shows up whenever several already-sorted streams must become one, such as merging log files that are each in time order. The prompt: merge several ascending arrays into one ascending result, so `arrays = [[1, 4, 7], [2, 5], [3, 6, 8]]` becomes `[1, 2, 3, 4, 5, 6, 7, 8]`.
 
-The heap contains at most one current value from each array. When one value is removed, add the next value from the same array.
+The wasteful approach dumps every value from every array into one heap. That works, but it ignores the gift the problem hands you: each array is already sorted, so only its first unconsumed value can possibly be the next output. The efficient version keeps the heap at exactly one **entry** per source array, where an entry records a value plus enough bookkeeping to find its successor: which array it came from and its position there. Pop the smallest entry, append its value to the output, and refill the heap with the next value from the same array. With `s` source arrays, the heap never grows past `s` entries, so merging `n` total values costs O(n log s).
 
-Example input: `arrays = [[1, 4, 7], [2, 5], [3, 6, 8]]`.
+Heap-wise there is nothing new here. The same `pushHeap` and `popHeap` from the top of the lesson do all the work; the only change is the comparison function, which now ranks entries instead of raw numbers. It compares values first, and when two values tie, it prefers the entry from the lower-numbered source array. That second comparison is worth a sentence, because it looks optional and is not: without it, equal values pop in whatever order the heap's internal swaps happen to leave them, and the function's output for tied values becomes an accident of implementation. The tie-breaker makes removal order predictable, which matters the moment a test, a caller, or a stable-merge requirement cares which source wins.
 
 ```ts
 type Entry = {
@@ -130,96 +185,49 @@ type Entry = {
   itemIndex: number
 }
 
+// Rank entries by value; on ties, the lower-numbered source array
+// wins so that removal order stays predictable.
+const smallerEntryFirst: Outranks<Entry> = (a, b) => {
+  if (a.value !== b.value) {
+    return a.value < b.value
+  }
+  return a.arrayIndex < b.arrayIndex
+}
+
 export function mergeSortedArrays(arrays: number[][]): number[] {
   const heap: Entry[] = []
-  const hasHigherPriority = (left: Entry, right: Entry): boolean => {
-    if (left.value !== right.value) {
-      return left.value < right.value
-    }
 
-    return left.arrayIndex < right.arrayIndex
-  }
-
-  const push = (entry: Entry): void => {
-    heap.push(entry)
-    let index = heap.length - 1
-
-    while (index > 0) {
-      const parent = Math.floor((index - 1) / 2)
-
-      if (hasHigherPriority(heap[parent], heap[index])) {
-        break
-      }
-
-      const parentEntry = heap[parent]
-      heap[parent] = heap[index]
-      heap[index] = parentEntry
-      index = parent
-    }
-  }
-
-  const pop = (): Entry => {
-    const minimum = heap[0]
-    const last = heap.pop()!
-
-    if (heap.length === 0) {
-      return minimum
-    }
-
-    heap[0] = last
-    let index = 0
-
-    while (true) {
-      const left = index * 2 + 1
-      const right = left + 1
-      let smallest = index
-
-      if (
-        left < heap.length &&
-        hasHigherPriority(heap[left], heap[smallest])
-      ) {
-        smallest = left
-      }
-
-      if (
-        right < heap.length &&
-        hasHigherPriority(heap[right], heap[smallest])
-      ) {
-        smallest = right
-      }
-
-      if (smallest === index) {
-        break
-      }
-
-      const currentEntry = heap[index]
-      heap[index] = heap[smallest]
-      heap[smallest] = currentEntry
-      index = smallest
-    }
-
-    return minimum
-  }
-
+  // Seed the heap with each array's first value: since every array
+  // is ascending, only these candidates can be the smallest overall.
   arrays.forEach((array, arrayIndex) => {
     if (array.length > 0) {
-      push({ value: array[0], arrayIndex, itemIndex: 0 })
+      pushHeap(
+        heap,
+        { value: array[0], arrayIndex, itemIndex: 0 },
+        smallerEntryFirst,
+      )
     }
   })
 
   const result: number[] = []
 
   while (heap.length > 0) {
-    const entry = pop()
+    // The root entry holds the smallest unconsumed value anywhere.
+    const entry = popHeap(heap, smallerEntryFirst)
     result.push(entry.value)
-    const nextIndex = entry.itemIndex + 1
 
+    // Refill from the same array, so it stays represented in the heap.
+    const nextIndex = entry.itemIndex + 1
     if (nextIndex < arrays[entry.arrayIndex].length) {
-      push({
-        value: arrays[entry.arrayIndex][nextIndex],
-        arrayIndex: entry.arrayIndex,
-        itemIndex: nextIndex,
-      })
+      pushHeap(
+        heap,
+        {
+          value: arrays[entry.arrayIndex][nextIndex],
+          arrayIndex: entry.arrayIndex,
+          itemIndex: nextIndex,
+        },
+        smallerEntryFirst,
+      )
     }
   }
 
@@ -227,22 +235,25 @@ export function mergeSortedArrays(arrays: number[][]): number[] {
 }
 ```
 
-Example output: `[1, 2, 3, 4, 5, 6, 7, 8]`.
-
-The comparator first uses the value, then the source-array position when values are equal. That second comparison makes removal order predictable.
+`mergeSortedArrays([[1, 4, 7], [2, 5], [3, 6, 8]])` returns `[1, 2, 3, 4, 5, 6, 7, 8]`. The first pop takes `1` from the first array, and its replacement `4` joins `2` and `3` in the heap, so the next pop finds `2`. Every value passes through the heap exactly once.
 
 ## Common mistakes
 
-- Using a max-heap when the smallest retained top-k value must be replaced.
-- Reversing the comparator and removing the wrong priority.
-- Forgetting deterministic tie-breakers for record entries.
-- Reading the root after removing the final heap item without checking length.
-- Sorting the full input while claiming O(n log k) time.
-- Adding every value from every sorted source to the heap at once.
+These are the errors that surface most often when heaps come up in practice and in interviews:
+
+- Reaching for a max-heap in top-k problems because the prompt says "largest." The value you need cheap access to is the smallest retained one, the eviction candidate, and that calls for a min-heap.
+- Writing the comparison function backwards, so the heap quietly becomes a max-heap when you wanted a min-heap. Everything still runs; it just pops the wrong end first.
+- Skipping the tie-breaker when heap entries are records rather than plain numbers, which leaves the pop order of equal values up to internal swap accidents.
+- Reading `heap[0]` without checking the length first. After the last pop the array is empty and the root is `undefined`.
+- Sorting the entire input inside a solution that claims O(n log k) time. The sort costs O(n log n) and the claimed bound is fiction.
+- Loading every value from every source into the heap in a k-way merge, which turns an O(n log s) merge into an O(n log n) one and defeats the point of the sorted inputs.
+- Sifting down toward an arbitrary child instead of the winning one, which can leave a child outranking its new parent and silently break the heap rule.
 
 ## Practice path
 
-1. Maintain a size-k min-heap.
-2. Track active meeting end times.
-3. Merge sorted sources with one queued entry per source.
-4. Explain heap direction, comparators, and sorting tradeoffs.
+The exercises build the lesson's ideas in the order you met them:
+
+1. Maintain a size-k min-heap that always holds the k largest values seen, evicting the root when the size exceeds k.
+2. Track active meeting end times in a min-heap, freeing rooms whose meetings end at or before the next start.
+3. Merge sorted sources with exactly one queued entry per source, refilling from the array each popped value came from.
+4. Explain in your own words when to point a heap in each direction, how a comparison function defines "best," and when a heap beats a full sort.

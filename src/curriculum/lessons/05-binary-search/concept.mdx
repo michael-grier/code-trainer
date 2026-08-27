@@ -1,20 +1,20 @@
 # Binary Search
 
-Binary search applies when candidates have a known order and one comparison can prove that many candidates are invalid. Each step checks a middle candidate and removes one half of the active interval.
+Think about how you find a name in a phone book. You do not read page one, then page two, then page three. You open somewhere near the middle, see that "Martinez" comes after the names on that page, and throw away the entire first half of the book in one motion. Then you do it again with what remains. A thousand-page book takes about ten of those splits, because each one cuts the remaining pages in half.
 
-The main work is not calculating the middle index. The main work is defining the active interval and proving that each update keeps every possible answer.
+That is binary search. It works whenever the data is sorted, or more generally whenever one comparison can tell you which side of the split the answer lives on. Try it on the sorted array `[-4, 0, 3, 7, 12]` while looking for `7`. Check the middle value, `3`. It is less than `7`, and the array is sorted, so `7` cannot be at that position or anywhere to its left. One comparison just eliminated three of the five candidates. Only `[7, 12]` remains, and the next comparison finds the answer. Five candidates, two comparisons.
+
+Computing a middle index is the easy part of writing this. The part that actually goes wrong is the bookkeeping: knowing at every moment exactly which positions could still hold the answer, and shrinking that range without ever throwing the answer away. This lesson is mostly about that bookkeeping.
 
 <BinarySearchDiagram />
 
 ## Exact search in sorted data
 
-Example prompt: Given a sorted ascending array of distinct numbers and a target, return the target index or `-1` if it is absent.
+Start with the phone-book version as a coding prompt. Given a sorted ascending array of distinct numbers and a target, return the index of the target, or `-1` if it is absent. For `nums = [-4, 0, 3, 7, 12]` and `target = 7`, the answer is `3`, the index where `7` sits.
 
-Use a closed interval `[left, right]`. Both endpoints are active candidates. The invariant is:
+The code tracks the still-possible positions with two variables, `left` and `right`. Before writing a single line of the loop, you have to make a decision that sounds pedantic but decides whether the code works: are the positions at `left` and `right` themselves still candidates, or are they fences just outside the candidates? Both conventions can work. What breaks code is not picking one, or drifting between the two mid-loop.
 
-> If the target exists, its index is between `left` and `right`, inclusive.
-
-Example input: `nums = [-4, 0, 3, 7, 12]`, `target = 7`.
+For exact search, the natural choice is that both endpoints are still in play. A range written `[left, right]` where both ends are included is called a **closed interval**. The square brackets on both sides are the notation for "inclusive." With that choice made, the promise the loop must keep is easy to state: if the target exists at all, its index is somewhere between `left` and `right`, endpoints included. A promise like this, one that stays true on every trip through the loop, is called an invariant, and every update inside the loop has to be checked against it.
 
 ```ts
 export function findSortedIndex(nums: number[], target: number): number {
@@ -43,21 +43,19 @@ export function findSortedIndex(nums: number[], target: number): number {
 }
 ```
 
-Example output: `3`.
+`findSortedIndex([-4, 0, 3, 7, 12], 7)` returns `3`.
 
-The loop uses `left <= right` because a closed interval with one index still contains a candidate. Both updates exclude `middle` because equality was already checked.
+Two details follow directly from the closed-interval choice. The loop condition is `left <= right`, not `left < right`, because when `left` equals `right` the interval still contains one candidate that has not been checked. Stopping early would skip it. And both updates step past `middle`, to `middle + 1` or `middle - 1`, because by the time either update runs, the code has already compared `nums[middle]` to the target and ruled it out. Keeping `middle` in the interval would waste a comparison at best and loop forever at worst.
 
 ## Search for the first qualifying index
 
-Some prompts ask for a boundary rather than one exact value.
+The next prompt looks similar but asks a different question. Given a sorted ascending array that may contain duplicates, return the first index whose value is greater than or equal to `target`. For `nums = [1, 3, 3, 5, 8]` and `target = 3`, the answer is `1`, the position of the first `3`.
 
-Example prompt: Given a sorted ascending array that may contain duplicates, return the first index whose value is greater than or equal to `target`.
+Notice what the sorted order does to the condition `nums[index] >= target`. Walk the array left to right and write down true or false at each position: false, true, true, true, true. The condition is false for a while, then flips to true and stays true. We are no longer hunting for one exact value. We are hunting for the exact spot where false becomes true.
 
-The condition `nums[index] >= target` is false for an initial part of the array and true for the remaining part. Search for the first true index with a half-open interval `[left, right)`. The invariant is:
+For this shape of search, a different interval convention pays off. A range written `[left, right)` that includes `left` but excludes `right` is called a **half-open interval**. The round bracket on the right is the notation for "exclusive." The reason to prefer it here is that `right` gets a second job: it marks the best qualifying index found so far, sitting just outside the region still being searched. Starting `right` at `nums.length` even gives the "nothing qualifies" case a natural home, one past the last real index.
 
-> Every array index before `left` is below the target, and every array index at or after `right` is greater than or equal to the target.
-
-Example input: `nums = [1, 3, 3, 5, 8]`, `target = 3`.
+The promise the loop keeps this time reads: every index before `left` has already been proven false, and every index at or after `right` has already been proven true. The unsearched middle ground shrinks until `left` and `right` meet, and where they meet is the first true index.
 
 ```ts
 export function firstIndexAtLeast(
@@ -84,21 +82,19 @@ export function firstIndexAtLeast(
 }
 ```
 
-Example output: `1`.
+`firstIndexAtLeast([1, 3, 3, 5, 8], 3)` returns `1`.
 
-When `middle` qualifies, do not subtract one from it. The half-open interval update `right = middle` keeps `middle` as a possible answer. When `middle` does not qualify, `left = middle + 1` removes it.
+The two update rules are not symmetric, and the asymmetry is the whole point. When `middle` fails the condition, the answer must be strictly after it, so `left = middle + 1` discards it. But when `middle` passes the condition, `middle` itself might be the first true index. The update `right = middle` narrows the search while keeping `middle` reachable, because in a half-open interval the answer lives at `right`'s final resting place. Writing `right = middle - 1` here, out of habit from the exact-search version, would throw away an index the code just confirmed as a valid answer. Run that mistake on our array with `target = 8`, where the answer should be index 4, the only qualifying index. The first probe lands on index 2, which holds `3` and fails, so `left` moves to 3. The next probe lands on index 4, which holds `8` and qualifies, and the broken update shrinks the interval to `[3, 3)`. The loop exits and returns index 3, which holds `5` and does not qualify at all. The one correct answer was confirmed and then thrown away.
 
 ## Search over numeric answers
 
-Binary search can also test possible answers that are not array indexes.
+So far the candidates have been array indexes. The final step is realizing they do not have to be. Binary search can run over any range of numbers, as long as some yes-or-no question flips from one value to the other exactly once along that range.
 
-Example prompt: Jobs run one at a time. A job of size `job` takes `Math.ceil(job / rate)` hours at an integer processing rate. Return the smallest rate that finishes all jobs within a given number of hours.
+Here is a prompt in that style. Jobs run one at a time, and a job of size `job` takes `Math.ceil(job / rate)` hours at an integer processing rate. Return the smallest rate that finishes all jobs within a given number of hours. For `workloads = [3, 6, 7, 11]` and `hours = 8`, the answer is `4`: at rate 4 the jobs take 1 + 2 + 2 + 3 = 8 hours, exactly on the limit, while rate 3 needs 10.
 
-For a fixed rate, the answer to “can all jobs finish?” is deterministic. Increasing the rate never increases the required hours. The condition is false for rates that are too small, then true for every sufficiently large rate.
+The question "can all jobs finish at this rate?" is the condition, and it has the same false-then-true shape as the last section. Increasing the rate never increases the hours any job needs, so the condition is false for rates that are too small, then true for every sufficiently large rate. That one-directional flip is what licenses binary search here. Without it, ruling out one rate would tell you nothing about its neighbors, and halving would prove nothing.
 
-Assume every job size is positive and `hours` is at least the number of jobs. Each job requires at least one hour, so no valid rate exists when fewer hours are available.
-
-Example input: `workloads = [3, 6, 7, 11]`, `hours = 8`.
+One assumption to state before it matters. Every job size is positive and `hours` is at least the number of jobs. Each job requires at least one hour no matter how fast the rate, so if fewer hours were available, no rate could ever succeed.
 
 ```ts
 export function minimumProcessingRate(
@@ -109,7 +105,7 @@ export function minimumProcessingRate(
     return 0
   }
 
-  // Find the largest job without passing the array as function arguments.
+  // Scan for the largest job to use as the upper bound.
   let low = 1
   let high = 0
 
@@ -147,23 +143,25 @@ export function minimumProcessingRate(
 }
 ```
 
-Example output: `4`.
+`minimumProcessingRate([3, 6, 7, 11], 8)` returns `4`.
 
-The lower and upper bounds must include every possible answer. Here a rate of `1` is the smallest allowed rate, and the largest job size is always sufficient because each job then takes one hour.
+The starting bounds deserve a sentence of justification, because bounds that miss the answer break the search silently. The lower and upper bounds must include every possible answer. Here a rate of `1` is the smallest allowed rate, and the largest job size is always sufficient because each job then takes one hour, and we assumed `hours` covers at least one hour per job.
 
 ## Common mistakes
 
-- Mixing closed and half-open interval rules in one loop.
-- Using `left < right` for exact search and failing to test the final candidate.
-- Setting `right = middle - 1` during a half-open first-true search and removing a possible answer.
-- Returning immediately when a duplicate target is found even though the prompt asks for the first target index.
-- Searching numeric answers without proving that the condition changes in only one direction.
-- Choosing bounds that exclude a possible answer.
-- Calculating `middle` without `Math.floor` in TypeScript.
+These are the failures that come up most often when people write binary search from memory:
+
+- Mixing the closed-interval and half-open rules in one loop, such as pairing `right = nums.length` with the condition `left <= right`, so the code reads one past the end of the array.
+- Using `left < right` in an exact search, where the closed interval can still hold one unchecked candidate when `left` equals `right`, so the final candidate is never tested.
+- Writing `right = middle - 1` in a first-true search after `middle` passes the condition. The exact-search version drills in the habit of always stepping past `middle`, but here `middle` has just been confirmed as a possible answer, and stepping past it can discard the very index the function should return. The half-open update `right = middle` keeps it in reach.
+- Returning as soon as any copy of the target is found when the prompt asks for the first index, which fails on arrays with duplicates like `[1, 3, 3, 5, 8]`.
+- Binary searching over numeric answers without first checking that the condition flips from false to true only once. If the condition can flip back, discarding half the range can discard the answer.
+- Choosing starting bounds that exclude a possible answer, such as starting the rate search above the true minimum rate.
+- Computing `middle` without `Math.floor`. JavaScript division produces fractions, and a fractional index reads `undefined` from the array.
 
 ## Practice path
 
-You will practice the concepts in this order:
+The exercises walk the same three rungs the lesson did, then ask you to explain the bookkeeping:
 
 1. Find an exact value in a sorted array of distinct numbers.
 2. Find the first value that satisfies a boundary condition.

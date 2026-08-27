@@ -1,28 +1,65 @@
 # Big-O Analysis and Tradeoffs
 
-Big-O notation describes how runtime or storage grows as input size grows. It does not measure exact seconds. Define the input size first, identify the work that grows, and state the assumptions behind collection or library operations.
+Suppose two solutions to the same problem both pass every test. One checks an array for duplicates by comparing every value with every other value. The other records values in a Set and checks each new value against it. On the ten-element test arrays, both finish instantly and look identical. Feed each one a million values and the story changes: the Set version still finishes in a blink, while the pair-comparison version has to make roughly a million times a million comparisons, about half a trillion of them, and hangs for minutes. The tests never showed the difference. Big-O notation is the language for predicting it before it happens.
+
+The core idea is to stop asking "how long does this take?" and start asking "how does the work grow when the input grows?" Look at these two loops over an array of length `n`:
+
+```ts
+// One pass: the loop body runs once per value, so n times total.
+for (const value of values) {
+  total += value
+}
+
+// A pass inside a pass: for each of the n outer values, the inner
+// loop runs n times, so the body runs n * n times total.
+for (const first of values) {
+  for (const second of values) {
+    comparisons += 1
+  }
+}
+```
+
+Double the input from 1,000 values to 2,000. The first loop does 2,000 steps instead of 1,000, twice the work. The second loop does 4,000,000 steps instead of 1,000,000, four times the work. Double the input again and the gap doubles again. Big-O names those growth shapes: the first loop is O(n), read "order n," meaning the work grows in step with the input. The second is O(n²), meaning the work grows with the square of the input. The `n` is whatever measures the input's size, usually the length of an array or string, and it is worth saying out loud which one you mean, because a function that takes two arrays needs two variables, say `n` and `m`, not one `n` doing double duty.
 
 <ComplexityGrowthDiagram />
 
-Ignore constant multipliers and lower-growth terms when describing the final growth class. For example, O(3n + 8) becomes O(n), while O(n² + n) becomes O(n²).
+## Why constants get thrown away
 
-## Exchange memory for fewer comparisons
+Here is the part of the notation that feels wrong at first. A loop that does three steps per element plus eight steps of setup performs `3n + 8` steps, yet we still call it O(n), not O(3n + 8). It looks like the notation is discarding real information, and it is, on purpose.
 
-Example prompt: Return whether an array contains a duplicate. Aim for O(n) average time and do not modify the input.
+Watch what happens as the input doubles. At `n = 1,000` the loop does 3,008 steps. At `n = 2,000` it does 6,008. At `n = 4,000`, 12,008. The 8 stops mattering almost immediately, and the 3 never changes the pattern: doubling the input always roughly doubles the work. A `3n` loop and a plain `n` loop have the same shape on the growth chart, just drawn at different heights. Constants change the speed; they do not change the shape, and the shape is what decides whether your function survives a million items.
 
-Comparing every pair takes O(n²) time. A Set records earlier values so each new value needs one average O(1) membership check.
+The same logic drops lower-growth terms. A function that does an O(n²) pass followed by an O(n) pass performs `n² + n` steps. At `n = 1,000` that is 1,000,000 steps from the square term and 1,000 from the linear one, a rounding error. As `n` grows, the fastest-growing term takes over completely, so `O(n² + n)` becomes O(n²). When you analyze a function, find the term that grows fastest and report that; everything else is noise at scale.
 
-Example input: `values = [4, 2, 7, 2]`.
+## The shapes between n and n²
+
+Two more growth shapes come up constantly, and you have already met both in earlier lessons.
+
+The first is O(log n), the shape of repeated halving. Binary search, from lesson 05, throws away half of the remaining interval on every comparison. Searching a million sorted values takes about 20 comparisons, because halving a million reaches one in 20 steps. Double the input to two million and the cost rises by exactly one comparison, to about 21. That is what "logarithmic" means in plain terms: the work grows by a constant amount each time the input doubles. Whenever an algorithm repeatedly halves what it still has to look at, expect O(log n).
+
+The second is O(n log n), the shape of comparison sorting, from lesson 06. Sorts like merge sort split the array into halves about log n times, and each level of splitting requires an O(n) pass to merge things back together, giving n work done log n times. O(n log n) sits between O(n) and O(n²), far closer to O(n) in practice: sorting a million values costs about 20 million steps, not a trillion. This is why "sort first, then scan" is so often a winning move. The sort costs O(n log n), and that is cheap compared to the O(n²) pair-checking it replaces.
+
+With those shapes in hand, the rest of this lesson works through three problems, each one buying a better time bound with a different resource: extra memory, a single remembered summary, and finally the input array itself.
+
+## Spending memory to buy time
+
+The first problem is the one from the opening: return whether an array contains a duplicate, in O(n) average time, without modifying the input.
+
+The opening of this lesson already showed the slow version: compare every pair, O(n²). The fix is to remember what you have already seen. A Set stores earlier values, and asking a Set "have you seen this?" takes O(1) time on average, a constant cost that does not grow with the Set's size. One pass, one cheap membership check per value.
+
+With `values = [4, 2, 7, 2]`, the walk goes: 4 is new, 2 is new, 7 is new, then the second 2 is found in the Set and the function returns early.
 
 ```ts
 export function hasDuplicateValue(values: number[]): boolean {
   const seen = new Set<number>()
 
   for (const value of values) {
+    // Membership check against everything seen so far, O(1) on average.
     if (seen.has(value)) {
       return true
     }
 
+    // Remember this value for every later check.
     seen.add(value)
   }
 
@@ -30,25 +67,31 @@ export function hasDuplicateValue(values: number[]): boolean {
 }
 ```
 
-Example output: `true`.
+`hasDuplicateValue([4, 2, 7, 2])` returns `true`.
 
-The improvement uses O(n) auxiliary space. State that Set lookup is O(1) on average rather than presenting it as an unconditional worst-case guarantee.
+The time improved from O(n²) to O(n), but not for free: the Set can grow to hold all `n` values, so the function uses O(n) extra memory. That extra memory is called **auxiliary space**, the storage a function allocates beyond the input it was handed. Trading auxiliary space for time is one of the most common moves in algorithm design, and naming the trade explicitly, "O(n) average time, O(n) auxiliary space," is what a complete analysis looks like.
 
-## Retain the summary that removes a nested loop
+One honesty note. Hash-based lookups in a Set or Map are O(1) on average, and that average is what you should claim. Degenerate cases can make individual lookups slower, so do not present O(1) as an unconditional worst-case guarantee.
 
-Example prompt: Choose one buy followed by one later sale and return the maximum nonnegative profit in O(n) time and O(1) space.
+## Replacing a nested loop with one remembered value
 
-A direct solution compares every valid buy-and-sell pair. For each selling time, only the cheapest earlier price is needed.
+The second problem tightens the space budget. Given a list of prices in time order, choose one buy followed by one later sale and return the maximum nonnegative profit, in O(n) time and O(1) auxiliary space.
 
-Example input: `prices = [7, 1, 5, 3, 6, 4]`.
+The direct approach tries every valid pair: for each selling price, check every earlier price as the buy. That is the nested-loop shape again, O(n²). But look at what the inner loop is actually doing: for a fixed selling price, it hunts for the cheapest earlier price, because the cheapest buy gives the biggest profit. You do not need to re-scan the past to find that minimum. You can carry it with you, updating it as you walk forward. One remembered number replaces the entire inner loop.
+
+With `prices = [7, 1, 5, 3, 6, 4]`, the cheapest-so-far value starts at 7, drops to 1 at the second price, and stays there. Selling at 5 yields profit 4, at 6 yields profit 5, and 5 is the best the walk ever sees.
 
 ```ts
 export function maximumSingleTradeProfit(prices: number[]): number {
+  // The cheapest price seen so far; Infinity means no price seen yet.
   let minimumEarlierPrice = Infinity
   let bestProfit = 0
 
   for (const price of prices) {
+    // Sell at today's price against the cheapest earlier buy.
     bestProfit = Math.max(bestProfit, price - minimumEarlierPrice)
+
+    // Only now let today's price compete to be the cheapest buy.
     minimumEarlierPrice = Math.min(minimumEarlierPrice, price)
   }
 
@@ -56,26 +99,41 @@ export function maximumSingleTradeProfit(prices: number[]): number {
 }
 ```
 
-Example output: `5`.
+`maximumSingleTradeProfit([7, 1, 5, 3, 6, 4])` returns `5`.
 
-The loop is O(n) because each price is processed once. The two numeric variables use O(1) auxiliary space. Updating profit before the minimum also ensures a price is not used as both buy and sale at the same time.
+Each price is handled once, so the time is O(n). The function allocates two numbers no matter how long the input is, so auxiliary space is O(1).
 
-## Use the input as bounded storage
+The order of the two lines inside the loop deserves its own moment, because it looks arbitrary and is not. The profit update runs first, while `minimumEarlierPrice` still describes only strictly earlier days. If you flipped the lines, the minimum would absorb today's price before the profit calculation, and on a day with the lowest price so far the function would compute `price - price = 0`, quietly treating one day as both the buy and the sale. The prompt says the sale must come after the buy, and the line ordering is what enforces that rule. This kind of dependency, where two updates in a loop must happen in a specific order to keep a variable meaning what you claim it means, is worth a comment in real code and a sentence in an interview.
 
-Example prompt: Return the smallest missing positive integer in O(n) time and O(1) extra space. The input may be modified.
+## Using the input itself as storage
 
-For an array of length `n`, the answer is between `1` and `n + 1`. Values below `1` or above `n` cannot fill a required index. Place each relevant value `v` at index `v - 1`, then scan for the first mismatch.
+The last problem asks for the smallest missing positive integer in O(n) time and O(1) auxiliary space, and it permits one thing the first problem forbade: the input may be modified.
 
-Example input: `values = [3, 4, -1, 1]`.
+This one forbids both of the previous tricks. O(1) auxiliary space rules out a Set, and no single summary value can capture "which positives are present." The escape hatch is in the prompt's last sentence: the input may be modified. The array itself becomes the storage.
+
+First, a bounding observation that makes the problem finite. For an array of length `n`, the answer must be between `1` and `n + 1`. If every one of the values `1` through `n` is present, the array is completely full of them and the answer is `n + 1`; otherwise some value in `1` through `n` is missing. So values below 1 or above `n` can never be the answer or block it, and we can ignore them.
+
+That suggests a home for every value that matters: put value `v` at index `v - 1`, so 1 lives at index 0, 2 at index 1, and so on. If we can rearrange the array that way, one final scan finds the first index whose resident is wrong, and that index plus one is the answer.
+
+With `values = [3, 4, -1, 1]` and length 4, the rearranging pass produces `[1, -1, 3, 4]`: the 3 travels to index 2, the 4 to index 3, the 1 to index 0, and the -1, which can never matter, ends up wherever the swaps leave it. The final scan sees 1 at index 0, then the wrong value at index 1, and returns `2`.
 
 ```ts
 export function smallestMissingPositive(values: number[]): number {
   for (let index = 0; index < values.length; index += 1) {
+    // Keep swapping the value at this index toward its home until
+    // the value here is one we cannot or need not place.
     while (
+      // The value is at least 1, so it has a home index in the array.
       values[index] >= 1 &&
+      // The value is at most the length, so its home index exists.
       values[index] <= values.length &&
+      // The home slot (index value - 1) does not already hold this
+      // value. If it does, swapping would loop forever on duplicates,
+      // and there is nothing left to fix anyway.
       values[values[index] - 1] !== values[index]
     ) {
+      // Swap the current value into its home slot, and take whatever
+      // was living there as the new current value to place.
       const destination = values[index] - 1
       const destinationValue = values[destination]
       values[destination] = values[index]
@@ -84,6 +142,7 @@ export function smallestMissingPositive(values: number[]): number {
   }
 
   for (let index = 0; index < values.length; index += 1) {
+    // The first index not holding index + 1 marks the missing value.
     if (values[index] !== index + 1) {
       return index + 1
     }
@@ -93,35 +152,41 @@ export function smallestMissingPositive(values: number[]): number {
 }
 ```
 
-Example output: `2`.
+`smallestMissingPositive([3, 4, -1, 1])` returns `2`.
 
-The nested `while` does not make the algorithm O(n²). Every successful swap places at least one relevant value at its final index, so at most O(n) successful swaps occur across the complete outer loop.
+Now the analysis, and this is the subtlest step in the lesson. A `while` loop nested inside a `for` loop looks exactly like the O(n²) shape from the opening, and if you count the way we counted there, "outer loop runs n times, inner loop could run up to n times," you would call this O(n²). That count is wrong here, and seeing why teaches a technique that applies far beyond this problem.
 
-## Analyze the complete operation
+The trick is to stop counting per iteration and instead count the total number of swaps across the entire run. Ask what each swap accomplishes. Every swap moves some value `v` in the range `1` to `n` into index `v - 1`, its final home. The `while` condition guarantees this: it only swaps when the home slot does not already hold `v`, so every swap places a value that was not home before. And once a value sits at its home index, no later swap ever moves it out, because moving it out could only happen by swapping some other value into that slot, and the condition refuses to swap a value into a slot that would take it away from where it belongs to put a wrong value in.
 
-- Consecutive full scans add: O(n) + O(n) is O(n).
-- Independent nested full scans multiply: O(n) × O(n) is O(n²).
-- Repeatedly halving an active interval takes O(log n) steps.
-- Comparison sorting takes O(n log n) time in the general case.
-- Building an output of length n requires O(n) output space even when auxiliary space is O(1).
-- Recursive call depth counts toward auxiliary space.
-- Two independent input lengths should use separate variables such as `n` and `m`.
+So each swap permanently retires at least one value: placed once, never disturbed again. There are only `n` values in the array, so across the whole outer loop, all iterations combined, at most `n` swaps can ever happen. Some outer iterations trigger several swaps and many trigger none, but the total is bounded by `n`. Add the `n` outer-loop checks and the final O(n) scan, and the whole function is O(n) time with O(1) auxiliary space, exactly what the prompt demanded. This style of argument, bounding the total work of a loop rather than its worst single iteration, is called amortized analysis, and "each unit of work permanently finishes something that can only be finished n times" is its most common form.
+
+## Putting an analysis together
+
+Real functions mix several pieces, and a few combining rules turn the shapes above into a complete answer.
+
+Work done one phase after another adds, and the fastest-growing term wins: a full scan followed by another full scan is O(n) + O(n), still O(n), and a sort followed by a scan is O(n log n) + O(n), which is O(n log n). Work done inside other work multiplies: a full scan performed once per element of an outer scan is O(n) × O(n), which is O(n²). This is why hiding a `.includes(...)` or a `.indexOf(...)` inside a loop silently produces O(n²); those array methods scan, and a scan per iteration multiplies.
+
+Space needs the same care, with one distinction worth keeping sharp. If the prompt asks you to build and return a list of `n` results, that output necessarily occupies O(n) space, and no cleverness removes it. **Output space** is the memory the answer itself requires; **auxiliary space** is the extra scratch memory beyond input and output. A function can honestly claim O(1) auxiliary space while returning an O(n) result, and saying which one you mean avoids talking past your interviewer. Recursion has a space cost too: each pending recursive call holds a stack frame, so a recursion that goes `n` calls deep uses O(n) auxiliary space even if it allocates nothing else.
 
 ## Common mistakes
 
-- Using `n` without stating what it measures.
-- Calling every nested loop O(n²) without counting total inner iterations.
-- Adding complexities for independent nested loops instead of multiplying them.
-- Ignoring sorting, slicing, spreading, or helper-function work.
-- Treating average O(1) hash lookup as an unconditional guarantee.
-- Ignoring recursion depth in space analysis.
-- Combining output space and auxiliary space without saying which is required.
-- Claiming O(1) extra space while allocating a Set, Map, or proportional array.
-- Optimizing a solution before the prompt's constraints require the added complexity.
+These are the analysis errors that show up most often in interviews and code review:
+
+- Using `n` without saying what it measures, which makes every later claim ambiguous, especially when a function takes two inputs that need separate variables like `n` and `m`.
+- Calling every nested loop O(n²) without counting total work, when an amortized argument like the swap-counting one above may show the true total is O(n).
+- Adding the costs of nested loops instead of multiplying them, and reporting O(n) for a scan performed inside another scan.
+- Forgetting the work hidden inside library calls, so a `.sort(...)`, `.slice(...)`, spread, or `.includes(...)` inside a loop goes uncounted.
+- Presenting average O(1) hash lookup for a Set or Map as an unconditional worst-case guarantee.
+- Ignoring recursion depth, and claiming O(1) space for a function whose call stack grows to `n` frames.
+- Blending output space and auxiliary space into one number, instead of saying the answer itself needs O(n) while the scratch space is O(1).
+- Claiming O(1) extra space while quietly allocating a Set, Map, or array that grows with the input.
+- Optimizing before the constraints ask for it, and trading simple correct code for a cleverer version the input sizes never justify.
 
 ## Practice path
 
-1. Use additional memory to remove repeated pair comparisons.
-2. Retain one summary value to replace a nested scan.
-3. Use input positions as storage to meet both time and space constraints.
-4. Explain input variables, dominant work, auxiliary space, and justified tradeoffs.
+The exercises retrace the lesson's three trades in the order you met them:
+
+1. Spend extra memory on a Set to replace repeated pair comparisons with single average O(1) lookups.
+2. Carry one remembered summary value forward to replace a nested scan, watching the update order inside the loop.
+3. Use the input array's own positions as storage to meet an O(n) time and O(1) auxiliary space constraint at once, and justify the bound with a swap-counting argument.
+4. Explain, in your own words, what your input variables measure, which term dominates the time, what auxiliary space you use, and why each tradeoff is justified.

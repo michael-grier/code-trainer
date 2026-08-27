@@ -1,16 +1,16 @@
 # Graph Shortest Paths
 
-A shortest route depends on what an edge costs and which routes are allowed. Before choosing an algorithm, ask three direct questions: Are all edge costs equal? Are all weights nonnegative? Is there a limit on the number of edges?
+Suppose you are planning a trip between cities. Roads connect some pairs of cities, and each road has a cost, maybe a toll, maybe a travel time. You want the cheapest way from where you are to where you are going. This is the shortest path problem, and it shows up everywhere routing does: network packets, flight bookings, delivery trucks, even the hop count between two people in a social graph.
+
+Here is the twist that makes it a three-part lesson instead of one: what counts as "shortest" depends on what an edge costs. When every road costs the same, shortest just means fewest roads, and a simple queue solves it. When roads have different nonnegative costs, fewest roads is no longer cheapest, and we need a smarter order of exploration. And when the prompt caps how many roads you may use, even the smarter order breaks down, and we count roads round by round instead. Each of the three problems below breaks the previous solution, and each break motivates the next algorithm. A short recap at the end helps you pick between them.
 
 <WeightedGraphDiagram />
 
 ## Equal edge costs: breadth-first search
 
-Example prompt: Return the smallest number of directed edges from `start` to `target`, or `-1` when the target cannot be reached.
+Start with the simplest cost model: every edge costs the same. A prompt in this shape might read, return the smallest number of directed edges from `start` to `target`, or `-1` when the target cannot be reached. With `graph = [[1, 2], [3], [3], []]`, meaning vertex 0 points to 1 and 2, vertices 1 and 2 each point to 3, and vertex 3 points nowhere, the shortest route from `start = 0` to `target = 3` uses `2` edges.
 
-Breadth-first search visits routes in increasing edge count. When it first reaches a vertex, no later route can reach that vertex with fewer edges.
-
-Example input: `graph = [[1, 2], [3], [3], []]`, `start = 0`, `target = 3`.
+When every edge costs the same, the cheapest route is simply the one with the fewest edges, so we should explore routes in order of edge count. That is exactly what breadth-first search does. It visits the start vertex, then everything one edge away, then everything two edges away, and so on, ring by ring. A plain queue keeps that order for free: vertices enter the queue in the order they are discovered, and vertices discovered earlier sit closer to the start. The payoff is a strong guarantee. The first time breadth-first search reaches a vertex, it got there through one of the shortest possible routes, because every route with fewer edges was already fully explored.
 
 ```ts
 export function shortestUnweightedDistance(
@@ -18,6 +18,7 @@ export function shortestUnweightedDistance(
   start: number,
   target: number,
 ): number {
+  // Reject out-of-range vertices before touching the graph.
   if (
     start < 0 ||
     start >= graph.length ||
@@ -27,12 +28,15 @@ export function shortestUnweightedDistance(
     return -1
   }
 
+  // -1 means "never reached"; any other value is a final distance.
   const distances = Array<number>(graph.length).fill(-1)
   distances[start] = 0
   const queue = [start]
   let readIndex = 0
 
   while (readIndex < queue.length) {
+    // Take the next vertex in discovery order instead of calling
+    // queue.shift(), which re-indexes the whole array each time.
     const vertex = queue[readIndex]
     readIndex += 1
 
@@ -41,6 +45,8 @@ export function shortestUnweightedDistance(
     }
 
     for (const neighbor of graph[vertex]) {
+      // A recorded distance means a route with equal or fewer edges
+      // already found this neighbor, so a later visit cannot improve it.
       if (distances[neighbor] === -1) {
         distances[neighbor] = distances[vertex] + 1
         queue.push(neighbor)
@@ -52,26 +58,100 @@ export function shortestUnweightedDistance(
 }
 ```
 
-Example output: `2`.
+`shortestUnweightedDistance([[1, 2], [3], [3], []], 0, 3)` returns `2`, for the route 0 to 1 to 3. The route 0 to 2 to 3 also uses two edges, and breadth-first search happily returns either count; the count is what the prompt asks for.
 
-The distance array also serves as visited state. A value of `-1` means the vertex has not entered the queue.
+One detail in that code earns its keep twice. The `distances` array records each vertex's distance, but it also acts as the visited set: a value of `-1` means the vertex has never entered the queue, and anything else means it has. That saves a separate `Set`, and it also enforces the guarantee from a moment ago. Because a vertex's distance is written exactly once, at first discovery, the shortest-route answer can never be overwritten by a longer route found later.
 
-## Nonnegative weights: Dijkstra's algorithm
+## Different costs: Dijkstra's algorithm
 
-Example prompt: A signal follows directed edges with nonnegative travel times. Return the earliest time when every vertex has received it, or `-1` when a vertex is unreachable.
+Now let edges carry different costs, and breadth-first search stops working. Picture three cities where the road from 0 to 1 takes 2 minutes, the road from 1 to 2 takes 1 minute, and a direct road from 0 to 2 takes 5 minutes. Fewest edges says take the direct road. Cheapest says go through city 1, arriving in 3 minutes instead of 5. Counting edges no longer answers the question.
 
-Dijkstra's algorithm keeps the shortest known distance to each vertex. A min-heap supplies the route with the smallest current distance. When a shorter route to a vertex is found, record it and add a new heap entry. An older entry may remain in the heap, so skip it when its distance no longer matches the recorded distance.
+A prompt in this shape might read, a signal starts at one vertex and follows directed edges with nonnegative travel times; return the earliest time when every vertex has received it, or `-1` when some vertex never does. Using the three cities above, the input is `nodeCount = 3`, `edges = [[0, 1, 2], [0, 2, 5], [1, 2, 1]]`, and `start = 0`, and the answer is `3`, the arrival time at the last vertex to hear the signal.
 
-Example input: `nodeCount = 3`, `edges = [[0, 1, 2], [0, 2, 5], [1, 2, 1]]`, `start = 0`.
+The fix, due to Dijkstra, keeps the spirit of breadth-first search but changes what "next" means. Instead of visiting vertices in order of edge count, visit them in order of total distance from the start: always process the unvisited vertex whose known distance is smallest. Why is that safe? Because when the closest unvisited vertex is chosen, no future discovery can beat its distance. Every other route to it would have to pass through some vertex that is at least as far away already, and adding more road on top of that can only make the route longer. Chosen means settled, permanently.
+
+Notice the hidden assumption in "adding more road can only make the route longer." That is only true when every edge cost is zero or more. One negative edge breaks the promise: a route through a farther vertex could pick up a negative cost and come back cheaper than the distance we already declared final. So nonnegative weights are not a footnote to Dijkstra's algorithm; they are the condition that makes it correct at all. When negative weights are possible, use the round-based method in the next section instead.
+
+Two mechanisms make the idea runnable. The first has a name worth learning, because problem discussions use it constantly: **relaxation**. To relax an edge is to check whether traveling along it gives a cheaper route to its endpoint than the best route recorded so far, and if it does, to update the record. That is the whole meaning. Found a cheaper route, wrote it down.
+
+The second mechanism answers a question the first one raises. Each step needs the unvisited vertex with the smallest known distance, and scanning every vertex to find it would be slow. A **min-heap** does this efficiently. It is a container that always hands back its smallest element first, and both inserting an entry and removing the smallest take time proportional to the logarithm of its size. We push `[distance, vertex]` pairs, and the heap keeps the closest candidate on top.
+
+Heaps introduce one genuinely subtle wrinkle, and it deserves a slow walk because it trips up nearly everyone the first time. Suppose the heap holds the entry `[5, 2]`, meaning "vertex 2 is reachable at cost 5," and then relaxation finds a cheaper route to vertex 2 at cost 3. We update `distances[2] = 3` and push a new entry `[3, 2]`. But the old `[5, 2]` entry is still sitting in the heap. It is now stale: it describes a route we know is not the best. You might expect the fix is to remove it, but a heap only knows how to remove its top element; plucking an entry from the middle means searching for it and repairing the heap's internal shape, which is slow and fiddly. So we do something lazier and simpler. Leave the stale entry where it is, and when it eventually reaches the top and gets popped, compare its distance against `distances` for that vertex. The two disagree, which is exactly how we recognize it as stale, and we skip it. This is called lazy deletion: never remove outdated entries, just recognize and ignore them when they surface. In the three-city example, `[3, 2]` pops before `[5, 2]` because 3 is smaller, vertex 2 is settled at distance 3, and when `[5, 2]` finally pops, `5 !== distances[2]` and the loop moves on.
+
+The main function below reads top to bottom as the algorithm we just described. The heap helpers `pushDistance` and `popDistance` come after it; all you need while reading is that they keep the smallest-distance entry first.
 
 ```ts
 type DistanceEntry = [distance: number, vertex: number]
 
-// These helpers maintain the smallest distance at index zero.
+export function networkDelayTime(
+  nodeCount: number,
+  edges: Array<[number, number, number]>,
+  start: number,
+): number {
+  // Rebuild the edge list as an adjacency list so each vertex can
+  // hand over its outgoing edges directly.
+  const graph = Array.from({ length: nodeCount }, () =>
+    [] as Array<[vertex: number, time: number]>,
+  )
+
+  for (const [from, to, time] of edges) {
+    graph[from].push([to, time])
+  }
+
+  // Infinity means no route to this vertex has been found yet.
+  const distances = Array<number>(nodeCount).fill(Infinity)
+  distances[start] = 0
+  const heap: DistanceEntry[] = [[0, start]]
+
+  while (heap.length > 0) {
+    const [distance, vertex] = popDistance(heap)
+
+    // Lazy deletion happens here. If this entry's distance no longer
+    // matches the recorded distance, a cheaper route was found after
+    // this entry was pushed. The entry is stale, so skip it; the
+    // fresher, cheaper entry for this vertex already popped earlier.
+    if (distance !== distances[vertex]) {
+      continue
+    }
+
+    for (const [neighbor, travelTime] of graph[vertex]) {
+      const nextDistance = distance + travelTime
+
+      // Relaxation: a cheaper route to this neighbor was just found,
+      // so update the record and push a fresh heap entry for it.
+      if (nextDistance < distances[neighbor]) {
+        distances[neighbor] = nextDistance
+        pushDistance(heap, [nextDistance, neighbor])
+      }
+    }
+  }
+
+  // The signal has reached everyone once the slowest vertex has it,
+  // so the answer is the largest finite distance.
+  let delay = 0
+
+  for (const distance of distances) {
+    if (distance === Infinity) {
+      return -1
+    }
+
+    delay = Math.max(delay, distance)
+  }
+
+  return delay
+}
+
+// The two helpers below store the heap in a plain array, where the
+// children of index i live at 2i + 1 and 2i + 2. Their only job is
+// to keep the smallest-distance entry at index 0.
+
 function pushDistance(heap: DistanceEntry[], entry: DistanceEntry): void {
+  // Place the new entry at the bottom of the heap.
   heap.push(entry)
   let index = heap.length - 1
 
+  // Bubble it upward: while it is smaller than its parent, swap the
+  // two. It stops at the spot where the ordering holds again.
   while (index > 0) {
     const parent = Math.floor((index - 1) / 2)
 
@@ -87,7 +167,11 @@ function pushDistance(heap: DistanceEntry[], entry: DistanceEntry): void {
 }
 
 function popDistance(heap: DistanceEntry[]): DistanceEntry {
+  // The smallest entry always sits at index 0. Save it to return.
   const closest = heap[0]
+
+  // Removing index 0 directly would leave a hole, so move the last
+  // entry into its place and shrink the array by one.
   const last = heap.pop()!
 
   if (heap.length === 0) {
@@ -97,6 +181,8 @@ function popDistance(heap: DistanceEntry[]): DistanceEntry {
   heap[0] = last
   let index = 0
 
+  // The moved entry is probably too large for the top, so sink it:
+  // swap it with its smaller child until neither child is smaller.
   while (true) {
     const left = index * 2 + 1
     const right = left + 1
@@ -122,66 +208,21 @@ function popDistance(heap: DistanceEntry[]): DistanceEntry {
 
   return closest
 }
-
-export function networkDelayTime(
-  nodeCount: number,
-  edges: Array<[number, number, number]>,
-  start: number,
-): number {
-  const graph = Array.from({ length: nodeCount }, () =>
-    [] as Array<[vertex: number, time: number]>,
-  )
-
-  for (const [from, to, time] of edges) {
-    graph[from].push([to, time])
-  }
-
-  const distances = Array<number>(nodeCount).fill(Infinity)
-  distances[start] = 0
-  const heap: DistanceEntry[] = [[0, start]]
-
-  while (heap.length > 0) {
-    const [distance, vertex] = popDistance(heap)
-
-    if (distance !== distances[vertex]) {
-      continue
-    }
-
-    for (const [neighbor, travelTime] of graph[vertex]) {
-      const nextDistance = distance + travelTime
-
-      if (nextDistance < distances[neighbor]) {
-        distances[neighbor] = nextDistance
-        pushDistance(heap, [nextDistance, neighbor])
-      }
-    }
-  }
-
-  let delay = 0
-
-  for (const distance of distances) {
-    if (distance === Infinity) {
-      return -1
-    }
-
-    delay = Math.max(delay, distance)
-  }
-
-  return delay
-}
 ```
 
-Example output: `3`.
+`networkDelayTime(3, [[0, 1, 2], [0, 2, 5], [1, 2, 1]], 0)` returns `3`. The signal reaches vertex 1 at time 2 and vertex 2 at time 3 through vertex 1, and 3 is the moment the last vertex has heard it.
 
-Nonnegative weights are required. A negative edge could later create a shorter route to a vertex whose distance had already been treated as final.
+## Limited edges: relaxation in counted rounds
 
-## Limited edges: copied relaxation rounds
+The third problem changes the rules again. A prompt in this shape might read, given flights with prices, return the cheapest route from a source city to a destination using at most `maxStops` intermediate cities, or `-1` when no such route exists. Take flights `[[0, 1, 100], [1, 2, 100], [0, 2, 500]]`, source `0`, destination `2`, and `maxStops = 1`. Flying 0 to 1 to 2 costs `200` and passes through one intermediate city, which is allowed, so the answer is `200`.
 
-Example prompt: Return the cheapest flight route using at most `maxStops` intermediate cities.
+Dijkstra's algorithm cannot enforce a limit like this, because it settles each vertex at its cheapest distance without tracking how many edges that route used. The cheapest route to a city might use too many stops while a slightly pricier route stays within the limit, and Dijkstra's algorithm would have already discarded the pricier one. We need edge count back in the picture.
 
-At most `maxStops` intermediate cities means at most `maxStops + 1` edges. In each round, examine every flight but read only the previous round's prices. This makes one round add at most one edge.
+First, translate stops into edges, because the loop will count edges. Count it out on the winning route above. Flying 0 to 1 to 2 touches one intermediate city, city 1, and uses two flights: one into the intermediate city and one out of it. Each additional intermediate city adds exactly one more flight, so a route with at most `maxStops` intermediate cities uses at most `maxStops + 1` flights. With `maxStops = 1`, routes of up to two flights are allowed.
 
-Example input: flights `[[0, 1, 100], [1, 2, 100], [0, 2, 500]]`, source `0`, destination `2`, and `maxStops = 1`.
+Now the algorithm, a bounded version of the Bellman-Ford method. Keep a price array where `prices[city]` is the cheapest known way to reach that city, starting at 0 for the source and `Infinity` everywhere else. Then run exactly `maxStops + 1` rounds. In each round, relax every flight, in the same sense as before: if the flight's departure city is reachable and taking the flight beats the best known price at its arrival city, record the improvement. After one round, `prices` holds the best routes using at most one flight. After two rounds, at most two flights. After `maxStops + 1` rounds, exactly the routes the prompt allows, and no cheaper-but-too-long route ever sneaks in.
+
+That guarantee has one requirement, and it is the part people get wrong. Each round must read only the previous round's prices while writing its improvements somewhere else. Watch what happens in the example without that rule. In round one, relaxing flight 0 to 1 sets city 1's price to 100, and if the round then relaxes flight 1 to 2 against that same array, it reads the fresh 100 and sets city 2 to 200. A two-flight route just got recorded during round one, the round that is supposed to allow only single flights. Here that happens to be harmless, but with a tighter stop limit the same leak would return a cheap route the prompt forbids. The fix is mechanical: copy the price array at the top of each round, read from the old copy, write to the new one, and only then let the new copy become the current prices.
 
 ```ts
 export function cheapestRouteWithStops(
@@ -191,13 +232,20 @@ export function cheapestRouteWithStops(
   destination: number,
   maxStops: number,
 ): number {
+  // Infinity means no route to this city has been found yet.
   let prices = Array<number>(cityCount).fill(Infinity)
   prices[source] = 0
 
+  // maxStops intermediate cities allow maxStops + 1 flights, and
+  // each round extends the best routes by at most one flight.
   for (let edgeCount = 0; edgeCount <= maxStops; edgeCount += 1) {
+    // Write improvements to a copy so every read inside this round
+    // sees only prices from the previous round.
     const nextPrices = [...prices]
 
     for (const [from, to, price] of flights) {
+      // Only relax flights whose departure city is reachable;
+      // Infinity plus a price is still not a real route.
       if (prices[from] !== Infinity) {
         nextPrices[to] = Math.min(nextPrices[to], prices[from] + price)
       }
@@ -210,26 +258,32 @@ export function cheapestRouteWithStops(
 }
 ```
 
-Example output: `200`.
+`cheapestRouteWithStops(3, [[0, 1, 100], [1, 2, 100], [0, 2, 500]], 0, 2, 1)` returns `200`. Round one records the direct flight to city 2 at 500 and the flight to city 1 at 100. Round two reads city 1's price of 100 from the previous round and improves city 2 to 200.
 
-Updating `prices` directly inside a round would allow a route to use several newly improved edges in that same round. That could exceed the stop limit. Copy first, write to the copy, then use it for the next round.
+One more property falls out for free. Because each round only reads prices that were already correct, a negative flight price cannot corrupt anything; it just makes some route cheaper. The round-counting method tolerates negative weights, which is exactly what Dijkstra's algorithm cannot do.
+
+## Choosing between the three
+
+With all three algorithms in hand, the choice comes down to the edges. When every edge costs the same, use breadth-first search, since fewest edges and cheapest route are the same thing. When edges have different costs that are all zero or more, use Dijkstra's algorithm with a min-heap. When the prompt limits how many edges a route may use, or when weights can be negative, run counted relaxation rounds against a copied price array.
 
 ## Common mistakes
 
-- Using depth-first search to find a shortest unweighted route.
-- Marking an unweighted vertex only after removing it from the queue.
-- Using Dijkstra's algorithm when edge weights can be negative.
-- Forgetting that a vertex may have old entries in the min-heap.
-- Returning the first weighted route that reaches the destination without proving it is cheapest.
-- Treating `maxStops` as the number of edges instead of intermediate vertices.
-- Updating the same price array that a limited relaxation round reads.
-- Returning a finite answer when some required network vertex is unreachable.
+These are the errors that show up most often in practice and in interviews:
+
+- Using depth-first search to find a shortest unweighted route. Depth-first search runs down one route as far as it can before trying another, so the first route it finds to the target says nothing about the minimum edge count.
+- Marking an unweighted vertex visited only when it leaves the queue instead of when it enters. Between entering and leaving, the same vertex can be pushed again by other neighbors, bloating the queue with duplicates.
+- Using Dijkstra's algorithm when edge weights can be negative. Its correctness rests on the promise that a settled vertex can never be improved, and a negative edge breaks that promise.
+- Forgetting that a vertex can have stale entries in the min-heap. Without the check that a popped distance still matches the recorded one, the algorithm reprocesses vertices from routes it already beat.
+- Returning the first weighted route that reaches the destination. In a weighted graph, reaching the destination proves nothing; the destination is only settled when it is popped from the heap with a matching distance.
+- Treating `maxStops` as a count of flights instead of intermediate cities. A route with `maxStops` intermediate cities uses `maxStops + 1` flights, and confusing the two runs one round too few.
+- Updating the same price array that a counted round reads. A route can then chain several flights inside one round and slip past the stop limit.
+- Returning a finite answer when some required vertex is unreachable. The network delay problem asks for the time every vertex has the signal, so one `Infinity` left in the distances means the answer is `-1`.
 
 ## Practice path
 
-You will practice the concepts in this order:
+The exercises build the lesson's ideas in the same order you met them:
 
 1. Find a shortest route when every edge has equal cost.
 2. Find all shortest arrival times with nonnegative weights.
-3. Minimize price while limiting the number of intermediate vertices.
-4. Explain which shortest-path method matches each edge condition.
+3. Minimize price while limiting the number of intermediate cities.
+4. Explain which shortest-path method matches each edge condition and why.

@@ -1,20 +1,20 @@
 # Sorting and Comparison Patterns
 
-Sorting is useful when a known order makes later decisions simpler. After sorting, values that may belong together are often adjacent, and a single scan can process them.
+Suppose you have a pile of exam papers and you want to find every pair of students with the same score. Unsorted, you would compare every paper against every other one. Sorted by score, papers with equal scores sit next to each other, and one pass down the pile finds every pair. That is the real reason to sort: a known order puts related values side by side, so a decision that looked like "compare everything with everything" becomes "look at your neighbor."
 
-Before calling `sort`, define the exact order, every tie-breaker, and whether modifying the input is allowed.
+Getting that order right takes more care than just calling `sort`, though, and three questions decide whether the call does what you want. First, what is the exact order? JavaScript does not know that you mean "highest score first"; you tell it with a **comparator**, a small function that looks at two values and reports which one comes first. Second, what happens on ties? When two values are equal under the main rule, a **tie-breaker** is the backup rule that decides between them; without one, equal values land in whatever order the engine happens to produce, and your output changes from run to run. Third, are you allowed to modify the input? `Array.prototype.sort` rearranges the very array you hand it, so if the caller still needs the original order, you must sort a copy. Every problem in this lesson comes down to answering those three questions before writing the sort.
 
 ## Write a complete comparator
 
-Example prompt: Given candidates with a name and score, return their names ordered by score from highest to lowest, then by name in ascending order when scores are equal.
+You are given candidates with a name and score, and you must return their names ordered by score from highest to lowest, with equal scores broken by name in ascending order. So the primary order is by score, and the tie-breaker is by name.
 
-A TypeScript comparator must return:
+A comparator receives two values, call them the left and the right, and answers with a number:
 
 - A negative number when the first item must be ordered before the second.
 - Zero when the items are equal under every ordering rule.
 - A positive number when the first item must be ordered after the second.
 
-Example input:
+The sort engine calls your comparator over and over on pairs from the array and arranges the values to match every answer. Take the concrete input:
 
 ```ts
 const candidates = [
@@ -23,6 +23,8 @@ const candidates = [
   { name: 'cal', score: 8 },
 ]
 ```
+
+Ari's score of 10 beats both 8s, so she comes first. Bea and Cal tie at 8, and the tie-breaker puts `'bea'` before `'cal'` alphabetically. Here is a comparator that encodes both rules:
 
 ```ts
 type Candidate = {
@@ -54,19 +56,19 @@ export function rankCandidates(candidates: Candidate[]): string[] {
 }
 ```
 
-Example output: `["ari", "bea", "cal"]`.
+`rankCandidates(candidates)` returns `["ari", "bea", "cal"]`, exactly the order we reasoned out by hand.
 
-Do not return a boolean from a comparator. JavaScript converts `false` to `0` and `true` to `1`, so a boolean does not represent all three required outcomes. Also remember that `Array.prototype.sort` modifies its array. Copy the array first when the prompt requires the input to remain unchanged.
+Two traps hide in this simple setup. Do not return a boolean from a comparator. JavaScript converts `false` to `0` and `true` to `1`, so a boolean can never produce the negative answer, and the sort quietly misorders values instead of failing loudly. And remember the mutation question from the start of the lesson: `Array.prototype.sort` modifies its array, which is why the code above spreads `candidates` into a fresh array before sorting.
 
 ## Sort before combining ranges
 
-Example prompt: Given inclusive intervals, combine every pair of intervals that overlaps and return the result ordered by start.
+The ranking problem only needed the sorted order itself. More often, sorting is step one, and the payoff comes in a scan afterward. Here is a classic case: given inclusive intervals, combine every pair of intervals that overlaps and return the result ordered by start.
 
-Sorting by start means the next interval can only overlap the last interval in the result. The invariant is:
+Take `intervals = [[5, 7], [1, 3], [2, 6]]`. In that order, `[5, 7]` and `[2, 6]` overlap even though `[1, 3]` sits between them, so an unsorted scan would have to check each new interval against everything already merged. Sorting by start fixes that. Sorted, the list is `[[1, 3], [2, 6], [5, 7]]`, and now something useful is guaranteed: each interval starts no earlier than every interval before it. Walk it through. `[1, 3]` goes into the result as is. Then `[2, 6]` arrives, and the only merged interval it could possibly overlap is the last one, `[1, 3]`; anything merged earlier ended even sooner. It does overlap, since 2 is inside `[1, 3]`, so the two combine into `[1, 6]`. Then `[5, 7]` arrives, and again only the last merged interval matters. 5 falls inside `[1, 6]`, so they combine into `[1, 7]`. Every earlier merged interval is finished for good the moment a new interval clears it, which is what lets a single forward scan do the whole job.
+
+The scan maintains one promise the whole way through:
 
 > `merged` contains the complete combined result for every sorted interval processed so far.
-
-Example input: `intervals = [[5, 7], [1, 3], [2, 6]]`.
 
 ```ts
 type Interval = [number, number]
@@ -97,19 +99,21 @@ export function mergeOverlappingIntervals(
 }
 ```
 
-Example output: `[[1, 7]]`.
+`mergeOverlappingIntervals([[5, 7], [1, 3], [2, 6]])` returns `[[1, 7]]`, the single interval our walkthrough built.
 
-The comparison `start > previous[1]` matches inclusive endpoints. If `start` equals the previous end, the intervals share that endpoint and are combined.
+The comparator here packs the tie-breaker into one line: `left[0] - right[0] || left[1] - right[1]`. Read it left to right. If the starts differ, the first subtraction is nonzero, and `||` returns it as the answer. If the starts are equal, the subtraction is `0`, which JavaScript treats as falsy, so `||` falls through to the second subtraction and the ends break the tie. It is the same two-rule comparator as the ranking example, compressed into a chain.
+
+One more detail: the scan uses `start > previous[1]` to decide that intervals are separate, which matches inclusive endpoints. If `start` equals the previous end, the intervals share that endpoint and are combined.
 
 ## Compare two possible pair orders
 
-Sometimes a value does not have a useful independent sort key. The correct order depends on how two values interact.
+Both problems so far had an obvious sort key sitting on each value: the score, the start. Sometimes no single value carries a useful key on its own, because the right order depends on how two values interact.
 
-Example prompt: Arrange non-negative integers so their decimal strings form the largest possible concatenated number.
+Here is the problem that makes this concrete: arrange non-negative integers so their decimal strings form the largest possible concatenated number.
 
-For strings `a` and `b`, compare `a + b` with `b + a`. If `a + b` is larger, order `a` first. This directly compares the result produced by the two possible pair orders.
+Your first instinct is probably to sort by numeric value, largest first, or maybe by length. Try that on `12` and `121`. By value, `121` is bigger, so it would come first, producing `"12112"`. But the other order produces `"12121"`, which is larger. Neither number is "bigger" in any standalone sense that predicts this; what matters is what the pair looks like glued together each way. So make that the comparator: for strings `a` and `b`, build both concatenations and compare them. If `a + b` is larger than `b + a`, then `a` belongs first. The comparator tests the exact thing the problem cares about, the combined string, instead of a stand-in like value or length.
 
-Example input: `nums = [3, 30, 34, 5, 9]`.
+With `nums = [3, 30, 34, 5, 9]`, this rule puts `9` first, since `"9"` followed by anything beats anything followed by `"9"`, and it correctly orders `3` before `30` because `"330"` beats `"303"`.
 
 ```ts
 export function largestConcatenatedNumber(nums: number[]): string {
@@ -134,21 +138,23 @@ export function largestConcatenatedNumber(nums: number[]): string {
 }
 ```
 
-Example output: `"9534330"`.
+`largestConcatenatedNumber([3, 30, 34, 5, 9])` returns `"9534330"`.
 
-Sorting by numeric value or string length is incorrect. For example, `"12" + "121"` is larger than `"121" + "12"`, so `12` must come before `121` even though it has fewer digits.
+A comparator this inventive comes with a duty. The sort engine trusts your answers to be consistent with each other, and one form of consistency is easy to break by accident: if your rule says `a` comes before `b`, and `b` comes before `c`, it must also say `a` comes before `c`. Imagine a playing-card comparator with a rock-paper-scissors rule in it: 2 beats ace, ace beats king, and king beats 2. Now there is no valid order at all. Every arrangement violates one of the rules, so the sort returns some arbitrary shuffle that satisfies whichever comparisons it happened to make, and the bug shows up as output that looks almost sorted but is not, often only on certain inputs. The pair-order comparator above is safe because comparing `a + b` with `b + a` is really comparing two fixed strings, and string comparison never contradicts itself. When you invent a comparison rule, pause and convince yourself it cannot produce a cycle like the card example.
 
 ## Common mistakes
 
-- Returning a boolean from a comparator.
-- Defining the primary order but omitting a required tie-breaker.
-- Returning inconsistent results for the same pair of values.
-- Defining rules where `a` sorts before `b` and `b` sorts before `c`, but `a` does not sort before `c`.
-- Forgetting that `sort` modifies the array.
-- Copying the outer interval array but then modifying the original inner tuples.
-- Sorting intervals by end when the scan assumes they are ordered by start.
-- Comparing concatenated-number inputs by numeric value instead of comparing both pair orders.
-- Returning multiple zero characters when every input value is zero.
+These are the errors that show up most often in practice and in interviews:
+
+- Returning a boolean from a comparator, which collapses the required three outcomes into two and silently misorders values.
+- Defining the primary order but omitting a required tie-breaker, so equal values land in an unpredictable order.
+- Returning inconsistent results for the same pair of values, for example by comparing floating-point results that vary between calls.
+- Defining rules where `a` sorts before `b` and `b` sorts before `c`, but `a` does not sort before `c`, like the rock-paper-scissors card comparator; the sort then returns an arbitrary order.
+- Forgetting that `sort` modifies the array it is called on, surprising a caller that still needs the original order.
+- Copying the outer interval array but then modifying the original inner tuples, which leaks changes back to the caller through the shared tuples.
+- Sorting intervals by end when the scan assumes they are ordered by start, breaking the guarantee that only the last merged interval can overlap.
+- Comparing concatenated-number inputs by numeric value instead of comparing both pair orders, which misorders pairs like `12` and `121`.
+- Returning multiple zero characters, such as `"000"`, when every input value is zero.
 
 ## Practice path
 

@@ -1,23 +1,14 @@
 # Arrays and Hashing
 
-Arrays give you an ordered sequence. Hash-backed structures give you fast lookup by key. Many interview problems become easier when you stop repeatedly scanning an array and instead ask, "What should I remember as I move through the input?"
+Someone hands you two lowercase strings, `left = "listen"` and `right = "silent"`, and asks whether they are anagrams: do they contain exactly the same characters, the same number of times? Your first instinct might be to take each character of `left` and scan all of `right` looking for it. That works, but every character triggers a fresh scan of the whole other string, and for long inputs the cost piles up fast.
+
+The better instinct, and the one this whole lesson is about, is to ask a different question as you walk through the input: "What should I remember, so I never have to look back?" If you remember how many of each character `left` contains, then one pass over `right` can check the whole thing. The tool for remembering is a `Map` (or a `Set`, when you only care whether something exists), and both answer "have I seen this?" in roughly constant time no matter how much they hold.
 
 ## The core pattern
 
-Most array and hashing solutions follow the same loop:
+Let's solve the anagram question that way. First walk through `left` once, counting each character into a `Map` from character to count. For `"listen"`, that map ends up holding one each of `l`, `i`, `s`, `t`, `e`, and `n`. Then walk through `right`, and for each character, subtract one from its count. If a count would go negative, `right` used a character more times than `left` provided, and the answer is `false`. If you finish `right` with nothing left over, the strings match.
 
-1. Choose the key that represents the thing you need to find again.
-2. Store what you have already seen in a `Set`, `Map`, or object.
-3. On each item, check the structure before or after updating it.
-4. Keep an invariant you can explain in one sentence.
-
-Example prompt: Given two lowercase strings, return whether they contain the same characters with the same frequencies.
-
-For a two-sum style problem, the key is the number you have already seen. For an anagram problem like this one, the key is a character or a canonical character-count signature. For deduplication, the key is usually an ID.
-
-For valid anagrams, a useful invariant is: after each character from `right` is processed, `counts` stores exactly the characters from `left` that still need to be matched.
-
-Example input: `left = "listen"`, `right = "silent"`.
+One small idiom appears in the code before anything else, so let's read it here first: `counts.get(char) ?? 0`. When `char` is not in the map yet, `get` returns `undefined`, and the `?? 0` says "treat a missing entry as zero." That is exactly what a count should be before you have seen anything, and you will meet this line in nearly every counting solution you write.
 
 ```ts
 export function areAnagrams(left: string, right: string): boolean {
@@ -56,15 +47,20 @@ export function areAnagrams(left: string, right: string): boolean {
 }
 ```
 
-Example output: `true`.
+`areAnagrams("listen", "silent")` returns `true`.
+
+Look at what the second loop is quietly promising. After it processes each character of `right`, the map holds exactly the characters from `left` that still need a match, no more and no less. A one-sentence promise like that, kept true through every step of a loop, is called an **invariant**, and it is why the delete-at-zero branch exists: without it, finished characters would linger in the map with a count of zero and the final `counts.size === 0` check would lie. When you can state your loop's promise in one plain sentence, you usually have the solution.
+
+Zooming out, every solution in this lesson follows the same four moves:
+
+1. Choose the key, meaning the value you look things up by, that represents the thing you need to find again. Here the key was a single character.
+2. Store what you have already seen in a `Set` or `Map`.
+3. On each item, check the structure before or after updating it, depending on what the problem asks.
+4. Keep a one-sentence promise about what the structure contains, like the one above, and make every update preserve it.
 
 ## Frequency maps
 
-Use a frequency map when the count matters, not just whether something exists.
-
-Example prompt: Given a lowercase word, return how many times each character appears.
-
-Example input: `word = "banana"`.
+The map in `areAnagrams` tracked how many of each character remained. A map used that way, from a value to how many times it occurs, is called a frequency map, and it is the right tool whenever the count matters and not just existence. Suppose the prompt is simpler: given a lowercase word such as `"banana"`, return how many times each character appears.
 
 ```ts
 export function countCharacters(word: string): Map<string, number> {
@@ -80,24 +76,20 @@ export function countCharacters(word: string): Map<string, number> {
 }
 ```
 
-Example output: `Map { "b" => 1, "a" => 3, "n" => 2 }`.
+`countCharacters("banana")` returns `Map { "b" => 1, "a" => 3, "n" => 2 }`.
 
-The important detail is the default value. A missing key is usually a count of zero, and forgetting that default is a common source of `NaN`, negative counts, or false positives.
+The default value is the detail that bites people. A missing key should mean a count of zero, and the `?? 0` supplies that. Forget it, and `undefined + 1` produces `NaN`, or a subtraction produces a bogus negative count, and the bug can hide until a test feeds in a character the map has never seen.
 
-Frequency maps are a good fit for:
+Frequency maps show up in a family of problems worth recognizing on sight:
 
-- Valid anagrams.
-- Character replacement windows.
-- Counting duplicate IDs.
-- Grouping values by a canonical key.
+- Valid anagrams, where two frequency maps must agree exactly.
+- Sliding windows that replace characters, where the map tracks how many of each character the current window holds.
+- Counting duplicate IDs, where any count above one flags a problem.
+- Grouping values that share a canonical key, which the last section of this lesson builds in full.
 
 ## Sets
 
-Use a `Set` when membership is the only question.
-
-Example prompt: Given an array of numbers, return whether any number appears more than once.
-
-Example input: `nums = [3, 1, 4, 1]`.
+Sometimes the count is more than you need. Suppose the prompt is: given an array of numbers such as `[3, 1, 4, 1]`, return whether any number appears more than once. You do not care whether a number appeared twice or fifty times. The only question is membership, "have I seen this before?", and for that a `Set` is the leaner tool: it stores each value once and answers `has` in roughly constant time.
 
 ```ts
 export function hasDuplicate(nums: number[]): boolean {
@@ -119,32 +111,28 @@ export function hasDuplicate(nums: number[]): boolean {
 }
 ```
 
-Example output: `true`.
+`hasDuplicate([3, 1, 4, 1])` returns `true`, because the second `1` is already in the set when the loop reaches it.
 
-A set is also useful when duplicates should not affect the answer. In longest consecutive sequence, duplicate values can be stored once because the problem asks for distinct integer runs.
+A set also earns its keep when duplicates should not affect the answer at all. In the longest consecutive sequence problem, which you will meet in the practice path, duplicate values collapse into a single set entry for free, because the problem only asks about runs of distinct integers.
 
 ## Choosing a key
 
-The key is the design choice. A weak key makes different inputs collide; an expensive key can erase the benefit of hashing.
+In `areAnagrams` the key was a single character. In `hasDuplicate` it was the number itself. Choosing the key is the real design decision in this pattern, and some problems make you build one. Here is a prompt that does: given lowercase English words, group the words that are anagrams of each other. With `words = ["eat", "tea", "bat"]`, the answer is `[["eat", "tea"], ["bat"]]`.
 
-Example prompt: Given lowercase English words, group words that are anagrams of each other.
-
-For grouped anagrams, sorting every word gives a clear key:
+You want every anagram of a word to land in the same group, which means every anagram must produce the same key. The word itself will not do, since `"eat"` and `"tea"` are different strings. What you need is a canonical form, one agreed-upon representative that all anagrams of a word share. The simplest choice is the word with its letters sorted:
 
 ```ts
 "eat" -> "aet"
 "tea" -> "aet"
 ```
 
-For lowercase English words, a 26-count signature also works. The array has one slot per letter: index `0` represents `a`, index `1` represents `b`, and index `25` represents `z`. For `"eat"`, the counts for `a`, `e`, and `t` are `1`, and every other count is `0`.
+Both words become `"aet"`, so both land under the same map key. A second choice avoids sorting: a 26-count signature. Build an array with one slot per letter of the alphabet, where index `0` counts the letter `a`, index `1` counts `b`, and index `25` counts `z`. For `"eat"`, the slots for `a`, `e`, and `t` each hold `1` and every other slot holds `0`. Joining the slots with `#` turns that array into a string the map can use as a key:
 
 ```ts
 "eat" -> "1#0#0#0#1#0#0#0#0#0#0#0#0#0#0#0#0#0#0#1#0#0#0#0#0#0"
 ```
 
-That signature becomes the actual key in the map:
-
-Example input: `words = ["eat", "tea", "bat"]`.
+Read it left to right: the leading `1` is the count of `a`, the `1` five slots in is the count of `e`, and the `1` at index 19 is the count of `t`. Any rearrangement of `"eat"` produces those same counts, so any rearrangement produces this same string.
 
 ```ts
 function createSignature(word: string): string {
@@ -179,28 +167,28 @@ export function groupAnagrams(words: string[]): string[][] {
 }
 ```
 
-Example output: `[["eat", "tea"], ["bat"]]`.
+`groupAnagrams(["eat", "tea", "bat"])` returns `[["eat", "tea"], ["bat"]]`: the shared signature puts `"eat"` and `"tea"` in one group, and `"bat"` sits alone.
 
-The sorted key is simpler. The count key avoids sorting cost and makes the character-frequency idea explicit.
+Between the two keys, the sorted string is simpler to write and fine for short words. The count signature skips the sorting cost and states the character-frequency idea outright. What you must avoid is a key with either failure mode: a key that is too loose, so that two words which are not anagrams end up with the same key and get wrongly grouped together (using word length alone would do this, since `"eat"` and `"bat"` are both three letters), or a key so expensive to build that constructing it costs more than the scanning it was supposed to replace.
 
 ## Complexity and pitfalls
 
-Hashing usually trades memory for speed. Average lookup is O(1), but you still pay for:
+Hashing trades memory for speed. The map or set answers each lookup in O(1) time on average, but that headline number hides several real costs, and they are where solutions go wrong in practice:
 
-- Extra memory for keys and values.
-- Creating canonical keys.
-- Handling missing defaults.
-- Preserving output order when tests or product behavior require it.
-- Normalizing input when casing, whitespace, Unicode, or punctuation matter.
+- Extra memory for the keys and values themselves, which for large inputs can matter as much as time.
+- The work of building canonical keys, like sorting each word or constructing a 26-count signature.
+- Supplying defaults for missing entries, because a forgotten `?? 0` turns into `NaN` or a wrong count.
+- Preserving output order when the tests or the product require it, since it is your responsibility to know that `Map` and `Set` iterate in insertion order and to lean on that deliberately.
+- Normalizing the input first when casing, whitespace, Unicode, or punctuation could make two equal-in-spirit values hash to different keys.
 
-Before writing code, state your assumptions. In this lesson's code exercises, strings use lowercase English letters unless the prompt says otherwise.
+Before writing code, say your assumptions out loud. In this lesson's code exercises, strings contain only lowercase English letters unless the prompt says otherwise, which is exactly what makes the 26-slot signature safe.
 
 ## Practice path
 
-You will build this topic in layers:
+The exercises build this topic in layers, in the same order the lesson introduced the ideas:
 
 1. Check whether two strings are valid anagrams with a frequency map.
-2. Group words by an anagram signature while preserving deterministic order.
+2. Group words by an anagram signature while keeping the output order deterministic.
 3. Use a set to find the longest consecutive integer run in O(n) average time.
-4. Explain when hashing is the right choice.
+4. Explain in your own words when hashing is the right choice and when it is not.
 5. Design a bounded duplicate filter that applies the same lookup idea to product-style state.
