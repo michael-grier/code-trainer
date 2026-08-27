@@ -7,6 +7,7 @@ import { DiffEditor } from '@/components/editor/DiffEditor'
 import { ApproachesPanel } from '@/components/problems/ApproachesPanel'
 import { StaticCheckResults } from '@/components/problems/StaticCheckResults'
 import { ProblemResults } from '@/components/problems/TestResults'
+import { TypeCheckResults } from '@/components/problems/TypeCheckResults'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -28,7 +29,9 @@ import {
   getProblemStarterCode,
   runCode,
   runStaticChecks,
+  runTypeCheckInWorker,
   type CodeRunResult,
+  type TypeCheckResult,
 } from '@/runtime'
 import { useProgress } from '@/state/progressContext'
 
@@ -51,6 +54,7 @@ export function RunnableProblemView({
   const [code, setCode] = useState(savedDraft ?? starterCode)
   const [consoleResult, setConsoleResult] = useState<CodeRunResult>()
   const [testResult, setTestResult] = useState<CodeRunResult>()
+  const [typeResult, setTypeResult] = useState<TypeCheckResult | { error: string }>()
   const [isEvaluating, setIsEvaluating] = useState(false)
   const [isLogging, setIsLogging] = useState(false)
   const isBusy = isEvaluating || isLogging
@@ -74,6 +78,7 @@ export function RunnableProblemView({
   const handleReset = () => {
     setConsoleResult(undefined)
     setTestResult(undefined)
+    setTypeResult(undefined)
     setCode(starterCode)
     progress.saveDraft(lessonSlug, problem.id, starterCode)
   }
@@ -122,23 +127,41 @@ export function RunnableProblemView({
 
     setIsEvaluating(true)
     setTestResult(undefined)
+    setTypeResult(undefined)
 
     try {
-      const result = await runCode({
-        code,
-        functionName: problem.functionName,
-        tests: problem.tests,
-      })
+      // Run behavior tests and the type check (when the problem carries a
+      // hidden fixture) side by side; they are independent verdicts.
+      const [result, typeCheck] = await Promise.all([
+        runCode({
+          code,
+          functionName: problem.functionName,
+          tests: problem.tests,
+        }),
+        problem.typeFixture
+          ? runTypeCheckInWorker({ code, typeFixture: problem.typeFixture })
+          : Promise.resolve(undefined),
+      ])
 
       setTestResult(result)
+      setTypeResult(typeCheck)
+
+      const typesPassed =
+        !problem.typeFixture ||
+        (typeCheck !== undefined && 'compilerVersion' in typeCheck && typeCheck.passed)
 
       if (
         result.status === 'passed' &&
+        typesPassed &&
         (problem.kind !== 'refactor' || allStaticChecksPassed(checkResults))
       ) {
         progress.markComplete(lessonSlug, problem.id)
         toast.success('Problem completed', {
           description: 'All workspace checks passed.',
+        })
+      } else if (result.status === 'passed' && !typesPassed) {
+        toast.warning('Type checks still need work', {
+          description: 'Tests passed, but the compiler reported diagnostics.',
         })
       } else if (result.status === 'passed') {
         toast.warning('Static checks still need work', {
@@ -233,11 +256,15 @@ export function RunnableProblemView({
         <div
           className={cn(
             'grid min-w-0 gap-4',
-            problem.kind === 'refactor' && 'xl:grid-cols-2',
+            (problem.kind === 'refactor' || problem.typeFixture) &&
+              'xl:grid-cols-2',
           )}
         >
           {problem.kind === 'refactor' ? (
             <StaticCheckResults results={staticCheckResults} />
+          ) : null}
+          {problem.typeFixture ? (
+            <TypeCheckResults isChecking={isEvaluating} result={typeResult} />
           ) : null}
           <ProblemResults
             consoleResult={consoleResult}

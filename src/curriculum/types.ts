@@ -36,6 +36,10 @@ export type CodeProblem = BaseProblem & {
   functionName: string
   starter: string
   tests: TestCase[]
+  // Hidden type-test fixture compiled below the submission under the fixed
+  // strict compiler options. When present, completion also requires a clean
+  // type check. See src/runtime/typeGrader.ts.
+  typeFixture?: string
 }
 
 export type DebugProblem = BaseProblem & {
@@ -45,6 +49,7 @@ export type DebugProblem = BaseProblem & {
   brokenCode: string
   tests: TestCase[]
   bugHints?: string[]
+  typeFixture?: string
 }
 
 export type StaticCheck =
@@ -63,6 +68,7 @@ export type RefactorProblem = BaseProblem & {
   tests: TestCase[]
   goals: string[]
   staticChecks: StaticCheck[]
+  typeFixture?: string
 }
 
 export type TraceQuestion =
