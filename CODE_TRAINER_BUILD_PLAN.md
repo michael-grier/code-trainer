@@ -949,6 +949,11 @@ Implementation notes (grader shipped):
   unsatisfied marker fails through the compiler's own TS2578 diagnostic. When a
   fixture is present, completion requires clean diagnostics in addition to the
   problem's behavior tests and static checks.
+- Fixtures are hidden from the problem UI, not secret. All grading runs in the
+  learner's browser by design (section 21 forbids backend dependencies), so
+  fixtures are as inspectable as test expectations and reference approaches,
+  and that is acceptable for a self-study product with no leaderboard or
+  certification to defend.
 
 Completion rules:
 
