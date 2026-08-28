@@ -36,6 +36,13 @@ export type CodeProblem = BaseProblem & {
   functionName: string
   starter: string
   tests: TestCase[]
+  // Type-test fixture compiled below the submission under the fixed strict
+  // compiler options. When present, completion also requires a clean type
+  // check. "Hidden" means not displayed in the problem UI, not secret: all
+  // grading in this app is client-side by design (build plan section 21
+  // forbids backend dependencies), exactly like test expectations and
+  // reference approaches. See src/runtime/typeGrader.ts.
+  typeFixture?: string
 }
 
 export type DebugProblem = BaseProblem & {
@@ -45,6 +52,7 @@ export type DebugProblem = BaseProblem & {
   brokenCode: string
   tests: TestCase[]
   bugHints?: string[]
+  typeFixture?: string
 }
 
 export type StaticCheck =
@@ -63,6 +71,7 @@ export type RefactorProblem = BaseProblem & {
   tests: TestCase[]
   goals: string[]
   staticChecks: StaticCheck[]
+  typeFixture?: string
 }
 
 export type TraceQuestion =

@@ -933,6 +933,28 @@ couples grading too closely to editor state, use the TypeScript compiler with a
 small virtual file system in a lazily loaded worker. Record the exact compiler
 version and compiler options used by each authored problem set.
 
+Implementation notes (grader shipped):
+
+- `src/runtime/typeGrader.ts` runs the TypeScript compiler over a virtual file
+  system, decoupled from Monaco. The fixed strict options live in
+  `TYPE_GRADER_COMPILER_OPTIONS`, and every result records the compiler
+  version. The grader core is environment-agnostic and unit-tested in Node.
+- `src/runtime/typeWorker.ts` bundles the ES lib chain (no DOM) as raw text and
+  runs the grader in a dedicated worker; `src/runtime/typeRunner.ts` keeps one
+  worker alive across checks with a timeout that discards a hung worker. The
+  typescript package must never be imported into the main bundle.
+- Problems opt in through an optional `typeFixture` string on code, debug, and
+  refactor problems: a hidden fixture compiled below the submission in the same
+  module, using type-level assertions and `@ts-expect-error` markers. An
+  unsatisfied marker fails through the compiler's own TS2578 diagnostic. When a
+  fixture is present, completion requires clean diagnostics in addition to the
+  problem's behavior tests and static checks.
+- Fixtures are hidden from the problem UI, not secret. All grading runs in the
+  learner's browser by design (section 21 forbids backend dependencies), so
+  fixtures are as inspectable as test expectations and reference approaches,
+  and that is acceptable for a self-study product with no leaderboard or
+  certification to defend.
+
 Completion rules:
 
 - Runtime-focused problems complete after their deterministic trace answers or
