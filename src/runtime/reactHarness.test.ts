@@ -159,6 +159,31 @@ describe('react harness', () => {
     expect(results[0].error).toContain('count is 9')
   })
 
+  it('accepts a default React import without redeclaring the prelude binding', async () => {
+    const defaultImportCode = `import React from 'react'
+import { useState } from 'react'
+
+export function Toggle() {
+  const [on, setOn] = useState(false)
+
+  return React.createElement(
+    'button',
+    { onClick: () => setOn(!on) },
+    on ? 'on' : 'off',
+  )
+}
+`
+    const results = await run(defaultImportCode, 'Toggle', [
+      {
+        name: 'toggles on',
+        steps: [{ action: 'click', text: 'off' }],
+        expect: [{ type: 'text-present', text: 'on' }],
+      },
+    ])
+
+    expect(results[0].status).toBe('passed')
+  })
+
   it('reports a missing export as an error', () => {
     expect(() => harness.loadReactComponent(counterCode, 'Missing')).toThrow(
       'Expected exported component "Missing" to exist.',

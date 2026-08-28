@@ -34,7 +34,9 @@ export function transpileReactCode(code: string): string {
       const parts: string[] = []
       const defaultBinding = defaultName ?? bareDefault
 
-      if (defaultBinding) {
+      // The prelude below always declares React, so emitting it again for
+      // "import React from 'react'" would be a duplicate const declaration.
+      if (defaultBinding && defaultBinding !== 'React') {
         parts.push(`const ${defaultBinding} = globalThis.__REACT__;`)
       }
 
@@ -213,7 +215,15 @@ function applyStep(container: Element, step: ReactTestStep, dom: HarnessDom) {
 
   if (props?.onChange) {
     flushSync(() => {
-      props.onChange?.({ target: input, currentTarget: input })
+      // Enough synthetic-event surface that ordinary handlers (reading
+      // type or calling preventDefault) do not crash on the stand-in.
+      props.onChange?.({
+        type: 'change',
+        target: input,
+        currentTarget: input,
+        preventDefault: () => undefined,
+        stopPropagation: () => undefined,
+      })
     })
     return
   }
