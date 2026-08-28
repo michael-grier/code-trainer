@@ -1302,6 +1302,8 @@ Lesson structure and presentation:
   code.
 - Keep examples small and self-contained. Avoid tests based only on surprising
   coercion or syntax details unless the behavior prevents a realistic bug.
+- Exemplar: `src/curriculum/lessons/21-scope-closures-and-prototypes` models this
+  track's voice, structure, and problem shapes. Read it before authoring.
 
 Default three-problem progression:
 
@@ -1349,6 +1351,22 @@ Recommended problem mix:
 - Use `design` for state architecture, routing/layout architecture, forms architecture, and client/server state boundaries.
 - Use `written` for accessibility, browser security, networking, and tradeoff explanations.
 
+Lesson structure and presentation:
+
+- Open with a component that misbehaves in a way the learner can see, then derive
+  the React contract the bug violates (render cycle, state ownership, hooks
+  rules), then show the corrected pattern and what it costs.
+- The runtime cannot execute React components. Concept pages show JSX to be
+  read, not run; runnable problems extract the logic into plain TypeScript
+  (reducers, derived-state selectors, event handlers as pure functions), and
+  component-level work uses trace, refactor with static checks, design, and
+  written prompts.
+- Use terminal transcripts for render and effect ordering or logged output, and
+  diagrams for render cycles, state ownership, and data flow when the visual
+  removes real cognitive load.
+- Exemplar: `src/curriculum/lessons/34-props-state-and-derived-state` models this
+  track's voice, structure, and problem shapes. Read it before authoring.
+
 ### Track 4: Backend TypeScript and Data
 
 45. Node.js runtime fundamentals
@@ -1371,6 +1389,20 @@ Recommended problem mix:
 - Use `trace` for async request lifecycle and Node.js runtime behavior.
 - Use `written` for auth/security tradeoffs, data evolution risks, and consistency guarantees.
 
+Lesson structure and presentation:
+
+- Open with a concrete product scenario, show the naive design that looks fine,
+  then break it concretely (a race, a slow query, a privilege hole), then revise
+  the design and state what the revision costs. The payoff of this track is
+  judgment about tradeoffs, not a single right answer.
+- Runnable problems live at the boundary in plain TypeScript: validators,
+  authorization guards, serializers, and handlers as pure functions. SQL and
+  HTTP appear as read examples, with request/response or query transcripts.
+- Design prompts carry real weight in this track. Their rubrics must tie back to
+  the tradeoffs the lesson taught, not generic criteria.
+- Exemplar: `src/curriculum/lessons/47-api-design-and-resource-modeling` models
+  this track's voice, structure, and problem shapes. Read it before authoring.
+
 ### Track 5: Testing, Design, and Production Readiness
 
 55. Unit testing strategy
@@ -1388,6 +1420,19 @@ Recommended problem mix:
 - Use `written` for testing strategy, debugging process, and production-readiness tradeoffs.
 - Use `design` for system design, architecture capstones, observability, reliability, and rollout planning.
 - Use `code` only when implementation is the point of the lesson, such as writing a test helper, refactoring a module, or implementing a small pattern.
+
+Lesson structure and presentation:
+
+- Open with a concrete failure story (a flaky test, a brittle suite, a
+  production incident), diagnose why it happened, extract the principle from the
+  fix, and state when the principle does not apply. Every principle must be
+  earned by a failure the lesson just showed; this track is the most exposed to
+  the broad-survey writing that section 15.2 bans.
+- Runnable problems are test helpers, small refactors graded by tests plus
+  static checks, and failing-test debug problems. Strategy and process live in
+  written and design prompts with lesson-tied rubrics.
+- Exemplar: `src/curriculum/lessons/55-unit-testing-strategy` models this
+  track's voice, structure, and problem shapes. Read it before authoring.
 
 ## 16. Lesson Authoring Template
 

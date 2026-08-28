@@ -1,14 +1,164 @@
 # Props, State, and Derived State
 
-This placeholder concept page reserves the lesson slot for **Props, State, and Derived State**. The content pass will replace it with the final interview-focused MDX lesson.
+Here is a small search component with a bug that testers love and developers dread. It filters an inventory list as you type, and it shows a match count above the results. Read it, then watch what it does. The JSX in this lesson is meant to be read on the page, not executed; the transcripts show what React would put on screen.
 
-## What this lesson will cover
+```tsx
+import { useState } from 'react'
 
-- Core interview signals for props, state, and derived state.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+function InventorySearch({ initialItems }: { initialItems: string[] }) {
+  const [items, setItems] = useState(initialItems)
+  const [query, setQuery] = useState('')
+  const [matchCount, setMatchCount] = useState(initialItems.length)
+
+  function handleQueryChange(nextQuery: string) {
+    setQuery(nextQuery)
+    setMatchCount(items.filter((item) => item.includes(nextQuery)).length)
+  }
+
+  function handleRemove(target: string) {
+    setItems(items.filter((item) => item !== target))
+  }
+
+  const visibleItems = items.filter((item) => item.includes(query))
+
+  return (
+    <div>
+      <input value={query} onChange={(e) => handleQueryChange(e.target.value)} />
+      <p>{matchCount} matching items</p>
+      <ul>
+        {visibleItems.map((item) => (
+          <li key={item}>
+            {item} <button onClick={() => handleRemove(item)}>remove</button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+```
+
+Render it with `initialItems` set to `['apple', 'banana', 'cherry']` and type `an` into the input. Only `banana` contains `an`, so the screen is exactly right:
+
+<TerminalTranscript
+  label="screen after typing 'an'"
+  lines={[
+    { type: 'output', text: '1 matching items' },
+    { type: 'output', text: '- banana [remove]' },
+  ]}
+/>
+
+Now click remove next to banana:
+
+<TerminalTranscript
+  label="screen after removing banana"
+  lines={[{ type: 'output', text: '1 matching items' }]}
+/>
+
+The list is empty, and the header still claims one match. Nothing crashed and no warning fired. The component is simply lying, and it will keep lying until the user happens to type in the search box again. To see why, we need the contract this component violated, which takes three definitions.
+
+## What a render is
+
+A React **component** is a function that takes inputs and returns a description of what should be on screen. When React calls that function, the call is named a **render**. The word sounds heavier than it is: a render is one plain function call, top to bottom, producing the JSX return value.
+
+The part that matters for this lesson is when those calls happen. React renders the component again every time its state changes. Type a letter, the component function runs again from the top. Click remove, it runs again. Every variable declared inside the function body, like `visibleItems` above, is recomputed from scratch on each of those runs. Nothing inside the function body survives between renders unless you explicitly ask React to keep it.
+
+## Props, state, and the third kind of value
+
+With "render" defined, the three kinds of values in the opening component can each get a plain name.
+
+**Props** are the inputs the parent passes in, like `initialItems`. The parent owns them. The component reads them and must not change them, the same way a function should not scribble on its arguments. When the parent passes different props, React renders the component again with the new values.
+
+**State** is the component's own memory. A call like `const [query, setQuery] = useState('')` asks React to store a value that survives across renders, hand back the current value each render, and re-render the component whenever the setter is called. State is the right home for facts the component learns over time and nothing else knows: what the user typed, which items remain after removals.
+
+The third kind has no hook at all. A **derived value** is anything you can compute from props and state you already have. `visibleItems` is derived: given `items` and `query`, filtering produces it. It lives as a plain `const` in the function body, and because a render is just a function call, it is recomputed fresh on every render and can never disagree with the values it came from.
+
+```
+props (parent owns)  ─┐
+                      ├─▶ component function runs ─▶ derived values ─▶ JSX
+state (React stores) ─┘        (one render)          (plain consts)
+```
+
+The rule this lesson exists to teach: state should hold only **source of truth**, meaning facts that cannot be computed from anything else. Everything computable belongs in the derived column. The opening component put a derived value in the state column, and that is the whole bug.
+
+## Why the count went stale
+
+Look at the three `useState` calls again. `items` and `query` are genuine sources of truth. But `matchCount` is fully determined by them: it is always supposed to equal `items.filter((item) => item.includes(query)).length`. Storing it in state creates a second copy of a fact the component already knows, and now every update path is responsible for keeping the copy in sync.
+
+Trace the failure on the concrete input. After typing `an`, `handleQueryChange` runs, and it dutifully updates both copies: `query` becomes `'an'` and `matchCount` becomes 1. The screen is correct. Then the remove click runs `handleRemove`, which updates `items` to `['apple', 'cherry']` and touches nothing else. React re-renders, `visibleItems` is recomputed from the new `items` and correctly comes out empty, but `matchCount` is state, so React faithfully hands back the stored 1.
+
+That is the signature of stale derived state, and it is worth pausing on. The bug is not in the code that runs. `handleRemove` is three perfectly reasonable lines. The bug is in the code that does not run: an update path the author forgot needs to also recompute the copy. Adding a fourth update path tomorrow, say an "add item" form, silently breaks the count again. A derived value stored in state turns every future edit of the component into a chance to reintroduce this bug.
+
+## The fix is a deletion
+
+Since `matchCount` is computable, stop storing it. Delete the `useState`, delete the sync line in the handler, and compute the count where `visibleItems` is already computed:
+
+```tsx
+function InventorySearch({ initialItems }: { initialItems: string[] }) {
+  const [items, setItems] = useState(initialItems)
+  const [query, setQuery] = useState('')
+
+  function handleQueryChange(nextQuery: string) {
+    setQuery(nextQuery)
+  }
+
+  function handleRemove(target: string) {
+    setItems(items.filter((item) => item !== target))
+  }
+
+  // Derived during render: recomputed from scratch on every render,
+  // so no update path can ever leave it out of date.
+  const visibleItems = items.filter((item) => item.includes(query))
+  const matchCount = visibleItems.length
+
+  return (
+    <div>
+      <input value={query} onChange={(e) => handleQueryChange(e.target.value)} />
+      <p>{matchCount} matching items</p>
+      <ul>
+        {visibleItems.map((item) => (
+          <li key={item}>
+            {item} <button onClick={() => handleRemove(item)}>remove</button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+```
+
+Replay the same clicks. Removing banana updates `items`, React re-renders, and both `visibleItems` and `matchCount` are recomputed from the new list:
+
+<TerminalTranscript
+  label="screen after removing banana, fixed version"
+  lines={[{ type: 'output', text: '0 matching items' }]}
+/>
+
+Notice what the fix cost: negative lines of code. The component got shorter, `handleQueryChange` collapsed to a one-line setter, and the sync obligation vanished because there is no longer a copy to sync. When you catch yourself calling two setters in one handler where the second value is computed from the first, that is usually this bug waiting to be deleted.
+
+The same reasoning applies to props. A component that copies a prop into state, something like `useState(props.items)`, has created a second source of truth that stops following the parent after the first render. The opening component does exactly this with `initialItems`, and there it is intentional: the prop is a starting value, the component owns the list afterward, and the `initial` prefix in the name announces that the parent's later changes will be ignored. Copy a prop into state only when you mean that, and say so in the name.
+
+## When deriving in render is enough
+
+Deriving on every render sounds wasteful the first time you hear it, so put a number on it. Filtering a few hundred strings takes microseconds, and a render was already going to happen for the state change that made the answer different. For nearly every derived value you will write, filters, counts, sums, sorted copies, formatted labels, the recomputation is far too cheap to measure, and correctness by construction is worth vastly more.
+
+The honest exception is a derivation that is genuinely expensive, thousands of items through heavy work on every keystroke. React has a dedicated tool for caching those, and lesson 40 covers it; reaching for caching before you have measured a real cost trades away the simplicity you just gained.
+
+## Common mistakes
+
+These are the errors that show up most often in interviews and code review:
+
+- Storing a computable value in state and updating it in some handlers but not others. The symptom is a display that is right after one action and wrong after a different one, exactly like the match count.
+- Copying a prop into state to "have it locally", then wondering why the component ignores the parent's updates. State initialized from a prop reads that prop once, on the first render.
+- Calling two setters in one handler where the second value is computed from the first. The second piece of state is almost always derivable, and deleting it removes the sync burden.
+- Fixing stale derived state by adding the missing sync call to one more handler. That patches today's path and leaves the trap armed for the next person; deleting the stored copy fixes every path at once.
+- Mutating state in place, such as `items.push(next)`, instead of building a new array with the setter. React decides whether to re-render by comparing the old and new values, and a mutated array compares as unchanged.
+- Reaching for caching machinery on a cheap derivation. Compute it in render first, and optimize only after measuring a real cost.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+The exercises build the lesson's ideas in the order you met them:
+
+1. Trace a plain TypeScript store that keeps a stored copy of a derived count, and predict where the copy and the truth disagree.
+2. Debug a task-list state manager whose stored count goes stale on some update paths, and fix it by deriving at read time.
+3. Implement a pure derived-state selector that computes visible todos from source-of-truth state.
+4. Explain the store-versus-derive decision rule in your own words.

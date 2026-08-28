@@ -1,14 +1,199 @@
 # Scope, Closures, and Prototypes
 
-This placeholder concept page reserves the lesson slot for **Scope, Closures, and Prototypes**. The content pass will replace it with the final interview-focused MDX lesson.
+Before reading any further, try to predict what this program prints.
 
-## What this lesson will cover
+```ts
+function makeGreeting() {
+  let name = 'Ada'
 
-- Core interview signals for scope, closures, and prototypes.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+  function greet() {
+    console.log(`Hello, ${name}`)
+  }
+
+  name = 'Grace'
+  return greet
+}
+
+const greet = makeGreeting()
+greet()
+```
+
+<TerminalTranscript
+  label="console"
+  lines={[{ type: 'output', text: 'Hello, Grace' }]}
+/>
+
+If you expected `Hello, Ada`, you are in good company. The `greet` function was created while `name` still held `'Ada'`, so it feels like the function should have taken a snapshot of that value. It did not, because a JavaScript function never remembers the values of outside variables. It remembers where to look them up. By the time `greet` actually runs, the place it looks holds `'Grace'`. This lesson builds the model that makes that behavior predictable, along with a whole family of interview questions built on it.
+
+## Scopes are boxes, and the source text draws them
+
+A **scope** is the region of a program where a variable name can be seen. The cleanest way to picture scopes is as nested boxes. The file itself is the outermost box. Every function call creates a new box inside it, holding that call's parameters and local variables, and every block with a `let` or `const` declaration adds a smaller box of its own.
+
+When a line of code uses a name, JavaScript starts looking in the innermost box around that line. If the box does not contain the name, the search moves one box outward, and it keeps moving outward until some box supplies the name or the boxes run out.
+
+<ScopeChainDiagram />
+
+Which box sits inside which is decided by where functions are *written* in the source text, not by where they are called from. `greet` was written inside `makeGreeting`, so its lookup chain runs through `makeGreeting`'s box no matter who calls it or when. This position-in-the-text rule is called **lexical scope**, and it is why you can work out any lookup with your eyes alone: the nesting on the screen is the nesting in the machine.
+
+One consequence falls out immediately. If an inner box declares a name that an outer box also has, the search stops at the inner one, and the outer variable is invisible from there. The inner declaration is said to **shadow** the outer one. Shadowing is legal and sometimes handy, but an accidental shadow means a line quietly reads or writes a different variable than the one you meant.
+
+## A closure is a function plus its birth scope
+
+Ordinarily, the box created by a function call is discarded when the call returns. Closures are what happens when it cannot be.
+
+```ts
+function makeCounter() {
+  // Each call to makeCounter creates a fresh box holding its own count.
+  let count = 0
+
+  return function increment() {
+    // increment was written inside makeCounter, so its lookup
+    // chain reaches the box where this count lives.
+    count += 1
+    return count
+  }
+}
+
+const tickets = makeCounter()
+const orders = makeCounter()
+
+console.log(tickets())
+console.log(tickets())
+console.log(orders())
+```
+
+<TerminalTranscript
+  label="console"
+  lines={[
+    { type: 'output', text: '1' },
+    { type: 'output', text: '2' },
+    { type: 'output', text: '1' },
+  ]}
+/>
+
+The call `makeCounter()` returns, but the `increment` function it produced still points into the box holding `count`, so that box stays alive for as long as the function does. A function that has outlived the call it was born in, and still carries access to that call's variables, is called a **closure**.
+
+Two details in that transcript carry most of the meaning. First, `tickets` counts 1, then 2: the box persists between calls, so the counter genuinely remembers. Second, `orders` starts back at 1: each call to `makeCounter` made its own box, so the two counters share nothing. And notice what the outside world can do to `count` directly: nothing. No code outside `makeCounter` can reach that variable except by calling the function that closed over it. Interviewers call this private state, and it is the honest answer to "what are closures for?"
+
+Now the opening puzzle explains itself. `greet` closed over the *variable* `name`, not the value `'Ada'`. The line `name = 'Grace'` wrote into the box before `greet` ever ran, and when the call finally happened, the lookup found what the box held at that moment. Closures capture variables, never values. That one sentence resolves most closure surprises you will meet.
+
+## One box shared by many functions
+
+The capture rule has a sharp edge, and it is the classic closure bug. Watch what happens when several functions are created inside one loop.
+
+```ts
+function readLabels(labels: string[]): string[] {
+  const readers: Array<() => string> = []
+  let position = 0
+
+  while (position < labels.length) {
+    // Every reader created here closes over the same position box.
+    readers.push(() => labels[position])
+    position += 1
+  }
+
+  return readers.map((read) => read())
+}
+
+console.log(readLabels(['save', 'edit', 'delete']))
+```
+
+<TerminalTranscript
+  label="console"
+  lines={[{ type: 'output', text: '[ undefined, undefined, undefined ]' }]}
+/>
+
+Count the boxes. `position` was declared once, before the loop, so there is exactly one box holding it, and all three readers close over that same box. The loop then pushes `position` to 3 and stops. When the readers finally run, each one looks up `position`, finds 3, and reads `labels[3]`, which does not exist. Three functions were created at three different moments, but the moment of creation does not matter. Only the shared box does.
+
+The fix is to give every pass through the loop its own box:
+
+```ts
+for (let position = 0; position < labels.length; position += 1) {
+  // A let in the for header creates a new position box per iteration,
+  // so each reader closes over its own copy.
+  readers.push(() => labels[position])
+}
+```
+
+<TerminalTranscript
+  label="console"
+  lines={[{ type: 'output', text: "[ 'save', 'edit', 'delete' ]" }]}
+/>
+
+A `let` or `const` declared in a `for` header, or inside the loop body, is boxed fresh on every iteration, so each created function captures its own variable. This is the single most common closure question in interviews, usually dressed up with `setTimeout` or event handlers, and the diagnosis is always the same question: how many boxes are there?
+
+## Prototypes are the same walk, on objects
+
+Variable lookup walks outward through scope boxes. JavaScript objects have a second lookup that works the same way, and seeing the two side by side makes both easier to keep straight.
+
+Every object can have a **prototype**: another object it defers to when asked for a property it does not have. Read `settings.fontSize` and JavaScript first checks whether `settings` itself has a `fontSize` property. If not, it checks the prototype of `settings`, then that object's prototype, and so on up the chain until the property is found or the chain ends.
+
+```ts
+const defaults = { theme: 'light', fontSize: 14 }
+
+// settings starts empty, with defaults as its prototype.
+const settings: typeof defaults = Object.create(defaults)
+settings.theme = 'dark'
+
+console.log(settings.theme)
+console.log(settings.fontSize)
+console.log(Object.keys(settings))
+```
+
+<TerminalTranscript
+  label="console"
+  lines={[
+    { type: 'output', text: 'dark' },
+    { type: 'output', text: '14' },
+    { type: 'output', text: "[ 'theme' ]" },
+  ]}
+/>
+
+Line by line: `theme` is found on `settings` itself, so the lookup never reaches `defaults`, exactly the way an inner variable shadows an outer one. `fontSize` is missing from `settings`, so the search moves one link up and finds it on `defaults`. And `Object.keys` lists only the properties an object holds itself, its **own properties**, which is why `fontSize` does not appear even though `settings.fontSize` reads perfectly well. Spreading an object with `...` copies own properties only too, a detail that regularly surprises people migrating data.
+
+This chain is also where methods live. When you write a `class`, every method you declare is stored once, on the prototype that all instances share, rather than copied onto each instance:
+
+```ts
+class Timer {
+  seconds = 0
+
+  tick() {
+    this.seconds += 1
+  }
+}
+
+const a = new Timer()
+const b = new Timer()
+
+console.log(a.tick === b.tick)
+```
+
+<TerminalTranscript
+  label="console"
+  lines={[{ type: 'output', text: 'true' }]}
+/>
+
+`a` and `b` each own their `seconds` field, but `a.tick` and `b.tick` are the very same function, found by walking up to the shared prototype. One method definition serves every instance, which is the point: prototypes let a thousand objects share behavior while keeping their own data.
+
+The unifying idea is worth saying once, plainly. Scope lookup and property lookup are both "walk a chain until someone supplies the name, and let the nearest holder win." Master that walk and both halves of this lesson become the same skill.
+
+## Common mistakes
+
+These are the errors that show up most often in interviews and code review:
+
+- Expecting a closure to capture a value snapshot. It captures the variable itself, so later assignments are visible to the function.
+- Creating several functions in a loop over one shared variable, so all of them read its final value. Declare the loop variable with `let` in the `for` header, or copy it into a `const` inside the body, to get one box per iteration.
+- Reasoning about a function's lookup chain from where it is called. Lexical scope means the chain was fixed where the function was written.
+- Sharing one captured variable between two closures by accident. Shared capture is exactly how a counter's reader and writer cooperate on purpose, so the question is never "is sharing bad" but "how many boxes did I mean to create?"
+- Accidentally shadowing an outer variable by redeclaring its name, then wondering why assignments seem to vanish.
+- Expecting `Object.keys`, spread, or `JSON.stringify` to include inherited properties. All three see own properties only, even though ordinary property reads walk the whole chain.
+- Copying a method onto every instance when the prototype already shares it, or the reverse, storing per-instance data on the prototype where every instance sees the same value.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+The exercises build the lesson's ideas in the order you met them:
+
+1. Trace a closure-heavy program and predict its output before running it.
+2. Debug a function factory whose closures all share one loop variable.
+3. Implement the property-lookup walk over a prototype chain represented as data.
+4. Explain, in your own words, what closures capture and when two functions share state.

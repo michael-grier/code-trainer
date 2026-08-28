@@ -15,6 +15,7 @@ import {
   HeapDiagram,
   LinkedListDiagram,
   QueueDequeDiagram,
+  ScopeChainDiagram,
   SlidingWindowDiagram,
   StackDiagram,
   TwoPointersDiagram,
@@ -42,11 +43,13 @@ describe('structure diagrams', () => {
         <AdvancedDynamicProgrammingDiagram />
         <GreedyAlgorithmDiagram />
         <ComplexityGrowthDiagram />
+        <ScopeChainDiagram />
       </>,
     )
 
-    expect(markup.match(/<figure/g)).toHaveLength(17)
-    expect(markup.match(/<figcaption/g)).toHaveLength(17)
+    expect(markup.match(/<figure/g)).toHaveLength(18)
+    expect(markup.match(/<figcaption/g)).toHaveLength(18)
+    expect(markup).toContain('A variable lookup starts in the innermost box')
     expect(markup).toContain('Opposing pointers begin at both ends.')
     expect(markup).toContain('The highlighted cells form one contiguous window.')
     expect(markup).toContain('A min-heap keeps each parent no larger')
