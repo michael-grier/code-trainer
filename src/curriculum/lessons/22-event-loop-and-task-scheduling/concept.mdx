@@ -1,14 +1,143 @@
 # Event Loop and Task Scheduling
 
-This placeholder concept page reserves the lesson slot for **Event Loop and Task Scheduling**. The content pass will replace it with the final interview-focused MDX lesson.
+Predict the output of this program before reading on. Every line looks innocent.
 
-## What this lesson will cover
+```ts
+console.log('start')
 
-- Core interview signals for event loop and task scheduling.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+setTimeout(() => console.log('timer'), 0)
+
+Promise.resolve().then(() => console.log('promise'))
+
+console.log('end')
+```
+
+<TerminalTranscript
+  label="console"
+  lines={[
+    { type: 'output', text: 'start' },
+    { type: 'output', text: 'end' },
+    { type: 'output', text: 'promise' },
+    { type: 'output', text: 'timer' },
+  ]}
+/>
+
+Two things here surprise almost everyone the first time. The timer asked for a delay of zero milliseconds, yet it printed last. And the promise callback, which was scheduled *after* the timer, jumped ahead of it. Lesson 20 explained the synchronous call stack and lesson 21 explained which variables a function can see. Neither explains this ordering, because the ordering is decided by a separate piece of machinery: the scheduler that chooses which function runs next once the current code finishes. This lesson builds that model, and by the end the transcript above will feel inevitable rather than mysterious.
+
+## Finish the stack first
+
+Start with the rule you already know from the call stack lesson: JavaScript runs one function at a time, and it runs the current code to completion. Nothing interrupts a running function. Not a timer firing, not a promise settling, not a click. Whatever those events want to run has to wait until the stack is empty.
+
+So where does the waiting work go? Into queues. When you call `setTimeout(fn, 0)`, the engine does not run `fn` and does not promise to run it soon. It records "once at least 0 ms have passed *and* the stack is empty, `fn` may have a turn." When a promise settles, its `.then` callback is recorded the same way, in a different queue. The loop that sits at the center of all this does one simple thing forever: wait for the stack to empty, pick the next queued callback, run it to completion, repeat. That loop is the **event loop**.
+
+Notice what that description rules out: interleaving. Two callbacks never run at the same time and never trade control midway. Each one gets the whole stack to itself, runs to its final line, and only then does the loop pick again. This is why the opening program printed `start` and `end` before anything else: the whole script is itself one run of the stack, and no callback can squeeze in before it finishes.
+
+## Two queues, and one of them always wins
+
+The reason `promise` beat `timer` is that the waiting work lives in two different queues with different priorities.
+
+The **task queue** holds callbacks from timers and similar sources, such as messages arriving in a worker. The **microtask queue** holds promise reactions, meaning `.then`, `.catch`, `.finally` callbacks and the resumption of an `async` function after `await`, plus anything you schedule with `queueMicrotask`. The drain rule that relates them is the single most important fact in this lesson:
+
+> After every run of the stack, the microtask queue drains completely. The task queue gets one callback per turn.
+
+"Drains completely" means the loop keeps taking microtasks until none are left, including microtasks that were queued by other microtasks during the drain. Only when the microtask queue is empty does one task get its turn, and after that task's stack run, the microtasks drain completely again before the next task.
+
+Here is the whole cycle as a timeline, reading top to bottom:
+
+```text
+run script to completion        console: start, end
+drain ALL microtasks            console: promise
+run ONE task (the timer)        console: timer
+drain ALL microtasks            (queue is empty, nothing prints)
+wait for the next task ...
+```
+
+This also settles what `setTimeout(fn, 0)` actually promises. The zero means "no sooner than 0 ms," never "now." The callback still has to wait for the current stack run, then for the entire microtask queue, then for its turn in the task queue. A zero-delay timer is a way of saying "run this later, after everything more urgent," and pending microtasks are always more urgent.
+
+## Walking a full trace
+
+The model earns its keep on programs that mix all three kinds of work. Walk this one with the drain rule in hand, then check yourself against the transcript.
+
+```ts
+console.log('one')
+
+setTimeout(() => {
+  console.log('timer A')
+  Promise.resolve().then(() => console.log('promise in timer A'))
+}, 0)
+
+setTimeout(() => console.log('timer B'), 0)
+
+Promise.resolve().then(() => {
+  console.log('promise 1')
+  Promise.resolve().then(() => console.log('promise 2'))
+})
+
+console.log('two')
+```
+
+<TerminalTranscript
+  label="console"
+  lines={[
+    { type: 'output', text: 'one' },
+    { type: 'output', text: 'two' },
+    { type: 'output', text: 'promise 1' },
+    { type: 'output', text: 'promise 2' },
+    { type: 'output', text: 'timer A' },
+    { type: 'output', text: 'promise in timer A' },
+    { type: 'output', text: 'timer B' },
+  ]}
+/>
+
+Line by line, in execution order:
+
+1. The script runs to completion. It prints `one`, queues timer A and timer B as tasks, queues one promise reaction as a microtask, and prints `two`. Stack empty.
+2. Microtasks drain. The reaction prints `promise 1` and queues a *new* microtask. Draining completely means that new microtask runs now too, printing `promise 2`. The timers are still waiting, even though timer A was queued before either promise line.
+3. The task queue gets one turn. Timer A prints `timer A` and queues a microtask of its own. Timer A's callback runs to its final line, and the stack is empty again.
+4. Microtasks drain before the next task. That is why `promise in timer A` prints *before* `timer B`, even though timer B was queued way back in step 1. This is the subtlest step in the lesson: a microtask created inside a task cuts ahead of every task that was already waiting.
+5. Timer B finally gets its turn and prints `timer B`.
+
+If you can reproduce step 4 without looking, you have the model. Most interview versions of this question are testing exactly that step.
+
+## The queue that can starve the other
+
+The drain rule has a sharp edge. Because microtasks drain *completely*, a microtask that always queues another microtask never lets the drain finish, and the task queue never gets a turn.
+
+```ts
+function spin() {
+  // Each microtask queues the next one, so the drain never ends.
+  queueMicrotask(spin)
+}
+
+setTimeout(() => console.log('this never prints'), 0)
+queueMicrotask(spin)
+```
+
+The timer callback is queued and ready, but ready is not enough. The loop will not touch the task queue while microtasks remain, and here microtasks always remain. The program is not blocked in the usual sense, since the stack empties over and over, yet timers, messages, and rendering are all frozen out. The same trap in task form is harmless: a task that queues another task still yields between turns, so everything else keeps getting served.
+
+That asymmetry gives you the practical rule for choosing a scheduler. Use `queueMicrotask` (or an already-resolved promise) when the work must happen after the current stack run but before anything else observes the world, such as batching several synchronous changes into one notification. Use `setTimeout` when the work should *yield*, letting timers, incoming messages, and other tasks take their turns first. Reaching for the microtask queue inside a loop that feeds itself is how you starve everything else.
+
+## Where this model holds
+
+Browsers, Node.js, and workers all run this same two-queue loop, though browsers add rendering steps between tasks that this lesson does not need. This app runs your practice code in a worker, where there is no rendering and the model is exactly as described: one stack, a complete microtask drain after every run, one task per turn. Every transcript on this page and every trace answer below follows from those rules alone, so what you practice here transfers directly to browser and server code.
+
+## Common mistakes
+
+These are the misreadings that show up most often in interviews and in real bug hunts:
+
+- Reading `setTimeout(fn, 0)` as "run now" or "run next." It means "no sooner than 0 ms," and pending microtasks always go first.
+- Expecting callbacks to interleave. Each callback runs to completion on an empty stack; nothing pauses a running function to run another.
+- Forgetting that the microtask queue drains completely, so a chain of `.then` calls all runs before the first waiting timer.
+- Missing that a microtask queued *inside* a timer callback runs before the next timer, even a timer that was queued much earlier.
+- Treating `await` as special. After `await`, the rest of the `async` function is just a microtask, ordered by the same drain rule as any `.then`.
+- Queueing microtasks from microtasks without a stopping condition, which starves timers and messages forever. Self-queueing tasks are safe; self-queueing microtasks are not.
+- Choosing between `queueMicrotask` and `setTimeout` by habit instead of by the yield question: should everything already waiting get a turn before this work, or not?
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+The exercises apply the model in the order you built it:
+
+1. Trace a script mixing synchronous logs, a timer, and promise reactions, and predict the order.
+2. Trace a harder program where `await` suspends a function and a timer queues its own microtask.
+3. Implement a scheduler probe that records the true execution order of sync, microtask, and timer work.
+4. Explain the two queues and the drain rule in your own words.

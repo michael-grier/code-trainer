@@ -1,14 +1,180 @@
 # JavaScript Runtime Fundamentals
 
-This placeholder concept page reserves the lesson slot for **JavaScript Runtime Fundamentals**. The content pass will replace it with the final interview-focused MDX lesson.
+The function below is meant to build a dark-theme preview of the user's settings without touching the saved ones. Read it and predict the two logged lines before looking at the transcript.
 
-## What this lesson will cover
+```ts
+function withDarkTheme(settings: { theme: string; fontSize: number }) {
+  const updated = settings
+  updated.theme = 'dark'
+  return updated
+}
 
-- Core interview signals for javascript runtime fundamentals.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+const saved = { theme: 'light', fontSize: 14 }
+const preview = withDarkTheme(saved)
+
+console.log(preview.theme)
+console.log(saved.theme)
+```
+
+<TerminalTranscript
+  label="console"
+  lines={[
+    { type: 'output', text: 'dark' },
+    { type: 'output', text: 'dark' },
+  ]}
+/>
+
+The preview is dark, as intended. So are the saved settings, which nobody asked for. The line `const updated = settings` reads like it makes a copy, and it makes nothing of the sort. This lesson builds the model of what assignment, function calls, and the call stack actually do, so that "I think this copies" becomes "I know this shares." Every example here runs as an ordinary module under Node.js with TypeScript's strict mode, and none of it depends on browser-only APIs.
+
+## Two kinds of values
+
+JavaScript values come in two families, and assignment treats them differently.
+
+Numbers, strings, booleans, `null`, and `undefined` are **primitives**. A variable holds a primitive directly, and assigning it to another variable copies the value. After the copy, the two variables have nothing to do with each other.
+
+```ts
+let visits = 10
+let visitsCopy = visits
+visitsCopy += 5
+
+console.log(visits)
+console.log(visitsCopy)
+```
+
+<TerminalTranscript
+  label="console"
+  lines={[
+    { type: 'output', text: '10' },
+    { type: 'output', text: '15' },
+  ]}
+/>
+
+Objects and arrays work the other way. A variable never holds an object directly. It holds a **reference**: directions to where the one object lives in memory. Assignment still copies what the variable holds, but what it holds is the directions, so after `const alias = profile` both names lead to the same object.
+
+```ts
+const profile = { name: 'Ada' }
+const alias = profile
+alias.name = 'Grace'
+
+console.log(profile.name)
+console.log(profile === alias)
+```
+
+<TerminalTranscript
+  label="console"
+  lines={[
+    { type: 'output', text: 'Grace' },
+    { type: 'output', text: 'true' },
+  ]}
+/>
+
+Writing through `alias` changed what `profile` sees, because there is only one object to change. The second line makes the sharing visible another way: `===` on objects compares the directions, not the contents, so it answers "are these the same object?" and here the answer is yes. Two separately built objects with identical contents would compare `false`.
+
+```text
+visits      [ 10 ]              visitsCopy  [ 15 ]      two independent numbers
+
+profile     [ ref ] ──┐
+                      ├──→ { name: 'Grace' }            one shared object
+alias       [ ref ] ──┘
+```
+
+The rule in one sentence: assignment copies what the variable holds, which is the value itself for a primitive and the directions for an object.
+
+## Mutation is not reassignment
+
+Two operations both read as "changing a variable," and keeping them separate explains most `const` confusion. **Reassignment** points a variable at a different value: `cart = otherCart`. **Mutation** follows the reference and edits the object it leads to: `cart.items = 3`. `const` forbids only the first.
+
+```ts
+const cart = { items: 2 }
+
+cart.items = 3
+console.log(cart.items)
+```
+
+<TerminalTranscript
+  label="console"
+  lines={[{ type: 'output', text: '3' }]}
+/>
+
+The mutation runs fine. Adding `cart = { items: 9 }` would not: TypeScript rejects that line at compile time with the diagnostic `Cannot assign to 'cart' because it is a constant`, and in plain JavaScript the same line throws a `TypeError` at runtime. Either way, `const` promises that the variable keeps pointing at the same object. It promises nothing about the object staying the same.
+
+## A function call pushes a stack frame
+
+So far every surprise came from assignment. Function calls are the same surprise wearing a different outfit, because passing an argument is an assignment.
+
+When you call a function, the runtime pushes a **stack frame**: a workspace holding that call's parameters and local variables. Each parameter is assigned from the matching argument, following the rule from earlier. A primitive argument gets copied into the frame, so the function can never touch the caller's number. An object argument copies only the directions, so the parameter inside the frame and the variable outside it lead to the same object.
+
+That is the whole explanation of the opening puzzle. Calling `withDarkTheme(saved)` assigned `settings` the same directions `saved` holds. The line `const updated = settings` added a third name for the same object. `updated.theme = 'dark'` then edited the one object all three names share.
+
+```text
+withDarkTheme frame    settings [ ref ] ─┐
+                       updated  [ ref ] ─┼──→ { theme: 'dark', fontSize: 14 }
+script frame           saved    [ ref ] ─┘
+```
+
+When the function returns, its frame pops off the stack and the runtime resumes the frame below it. The stack also explains a guarantee you have been relying on without naming it: JavaScript runs one frame stack at a time, so a piece of synchronous code runs to completion before anything else gets a turn. Nothing interrupts it halfway to change your variables. What happens once the stack empties and timers or network responses get their turn is lesson 22's territory, and where a function may look up variables it did not declare is the next lesson's.
+
+## Making a real copy
+
+Since assignment never copies an object, copying takes an explicit step. Spreading an object with `{ ...saved }` builds a new object and copies each property into it; `array.slice()` and `array.map(...)` do the same for arrays. The catch is that these copy exactly one level. Each property is copied by assignment, so a property that holds a nested object copies the directions, and the nested object stays shared.
+
+```ts
+const saved = { theme: 'light', notifications: { email: true } }
+const copy = { ...saved }
+
+copy.theme = 'dark'
+copy.notifications.email = false
+
+console.log(saved.theme)
+console.log(saved.notifications.email)
+```
+
+<TerminalTranscript
+  label="console"
+  lines={[
+    { type: 'output', text: 'light' },
+    { type: 'output', text: 'false' },
+  ]}
+/>
+
+The top-level `theme` was safely copied, so the first mutation stayed inside `copy`. The `notifications` object was shared, so the second mutation leaked into `saved`. The fix is mechanical: copy every level you intend to change. `{ ...saved, notifications: { ...saved.notifications, email: false } }` rebuilds both levels and leaves `saved` untouched. Functions that follow this discipline, taking data in and returning a new value instead of editing their arguments, are called **pure**, and they are the standard cure for the corrupted-caller bugs this lesson keeps showing.
+
+## When the stack runs out
+
+Each call pushes a frame, and frames take memory, so the stack has a limit. A recursive function that never reaches a stopping condition pushes frames until the runtime gives up.
+
+```ts
+function askAgain(question: string): string {
+  // Every call makes another call. No branch ever just returns.
+  return askAgain(question + '?')
+}
+
+askAgain('why')
+```
+
+<TerminalTranscript
+  label="console"
+  lines={[{ type: 'error', text: 'RangeError: Maximum call stack size exceeded' }]}
+/>
+
+This is a runtime error, not a compiler diagnostic; TypeScript is perfectly happy with the types here. Node.js typically allows on the order of ten thousand frames before throwing, so the error also appears with a correct base case that the arguments never actually reach, or with legitimate recursion over very deep data. When you see it, the question to ask is which call in the chain was supposed to stop and did not.
+
+## Common mistakes
+
+These are the errors this lesson's model catches most often in interviews and code review:
+
+- "Copying" an object or array with plain assignment. `const copy = original` creates a second name for one object, so every mutation through the copy corrupts the original.
+- Believing `const` makes an object immutable. It prevents reassigning the variable and nothing else; `Object.freeze` exists precisely because `const` does not do this.
+- Mutating a parameter inside a function and assuming the caller cannot see it. The parameter holds the same directions the caller's variable holds, so the caller's object changes too.
+- Spreading once over nested data and assuming a full copy. Spread and `slice` copy one level; nested objects and arrays remain shared until each changed level is rebuilt.
+- Comparing objects with `===` and expecting content comparison. It compares identity, so two objects built separately never compare equal however identical they look.
+- Writing recursion whose base case exists but is unreachable for some inputs, such as a countdown that skips over zero. The stack overflow reports the symptom; the missing stop condition is the bug.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+The exercises walk the lesson's ideas in the order you met them:
+
+1. Trace a program that mixes primitive copies, shared references, and a mutating function call, and predict every logged line.
+2. Debug a discount preview whose "copy" of a cart is really an alias, so computing the preview corrupts the caller's prices.
+3. Implement a pure settings updater that returns a new object without mutating either argument, including a nested level that a single spread would leave shared.
+4. Explain the values-versus-references rule in your own words, well enough to hand to a teammate.
