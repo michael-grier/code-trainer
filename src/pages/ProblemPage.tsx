@@ -117,6 +117,10 @@ export function ProblemPage() {
 }
 
 function getCompletionDescription(problemKind: string) {
+  if (problemKind === 'react-code') {
+    return 'Passing every component interaction test marks this problem complete.'
+  }
+
   if (problemKind === 'trace') {
     return 'Grade every trace question correctly to complete this problem.'
   }

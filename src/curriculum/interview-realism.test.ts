@@ -115,6 +115,16 @@ function getProblemText(problem: Problem): string[] {
     ]
   }
 
+  if (problem.kind === 'react-code') {
+    return [
+      ...baseText,
+      problem.componentName,
+      problem.starter,
+      ...(problem.bugHints ?? []),
+      ...problem.tests.map((test) => test.name),
+    ]
+  }
+
   if (problem.kind === 'trace') {
     return [
       ...baseText,

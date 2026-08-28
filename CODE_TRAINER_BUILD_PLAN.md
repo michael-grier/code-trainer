@@ -966,6 +966,50 @@ Completion rules:
 - Written and design explanations remain guided self-review. Do not claim that
   prose or architectural judgment has been automatically verified.
 
+### 12.7 React Component Runner
+
+Track 3 problems need learner-submitted React components to actually run:
+render with props, receive clicks and typed input, and update the screen.
+The runner executes them in a dedicated Web Worker, the only environment the
+app can terminate outright, so a component stuck in a render loop is killed by
+the same timeout discipline as the JS runner. Workers have no DOM, so the
+worker hosts a lightweight DOM implementation (linkedom) and renders through
+the real react-dom/client against it.
+
+Files:
+
+- `src/runtime/reactHarness.ts` (environment-agnostic core, unit-tested in Node)
+- `src/runtime/reactWorker.ts`
+- `src/runtime/reactRunner.ts`
+
+Requirements:
+
+- Learner code is a single TSX file that imports only from `react` and exports
+  the named component. Imports from `react` are rewritten to the copy bundled
+  in the worker; any other import fails loudly.
+- Problems use the `react-code` kind: `componentName`, `starter`, and
+  declarative, JSON-serializable `tests`. Each test renders with `props`,
+  applies `steps` (`click` targets the deepest element whose text matches;
+  `type` targets an input by placeholder or aria-label), and checks
+  `expect` entries (`text-present` / `text-absent`) against the rendered
+  container's text.
+- The harness flushes the task queue after render and after each step, so
+  passive effects commit before expectations run, matching browser timing.
+- React reports uncaught render errors through the root's `onUncaughtError`
+  option; the harness collects and rethrows them so a crashing component
+  grades as an error, not a silent failure.
+- Typing drives the element's React `onChange` prop directly, because React's
+  synthetic change events depend on browser feature detection a lightweight
+  DOM cannot satisfy. Uncontrolled inputs receive a native input event.
+- One worker per run, terminated on completion or timeout.
+- React, react-dom, and linkedom must stay in the lazily created worker chunk,
+  never the main bundle.
+
+Known limits, stated rather than hidden: there is no layout, navigation, or
+real focus management, so problems assert on rendered text and structure, not
+visual behavior; and `click`/`type` are the only interactions until a problem
+genuinely needs more.
+
 ## 13. MDX Lesson Rendering
 
 Add `src/mdx.d.ts`:
