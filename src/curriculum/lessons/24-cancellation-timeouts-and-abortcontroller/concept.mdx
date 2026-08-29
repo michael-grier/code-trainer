@@ -58,7 +58,7 @@ console.log(controller.signal.aborted)
 
 Calling `abort()` does very little: it flips `signal.aborted` from `false` to `true`, permanently, records a reason on `signal.reason` (an `AbortError` unless you pass one), and fires one `abort` event on the signal. Calling it again after that does nothing. That is the whole mechanism. Nothing stops, nothing is interrupted, no error is thrown anywhere. Whether anything actually halts depends entirely on some piece of work reading that signal.
 
-The built-in APIs that accept a signal do read it. Pass one to `fetch` and an abort makes the request reject with an error named `AbortError`, and the browser stops processing the request:
+The built-in APIs that accept a signal do read it. Pass one to `fetch` and an abort makes the request reject with the signal's reason — the default `AbortError` here, since `abort()` gets no argument — and the browser stops processing the request:
 
 ```ts
 const controller = new AbortController()
