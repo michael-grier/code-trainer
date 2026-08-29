@@ -160,16 +160,17 @@ syncRecords(['r1', 'r2', 'r3', 'r4'], 2).then((result) => console.log(result))
   signal: AbortSignal,
 ): Promise<string> {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => resolve(\`\${query}-results\`), delayMs)
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort)
+      resolve(\`\${query}-results\`)
+    }, delayMs)
 
-    signal.addEventListener(
-      'abort',
-      () => {
-        clearTimeout(timer)
-        reject(new Error('aborted'))
-      },
-      { once: true },
-    )
+    function onAbort() {
+      clearTimeout(timer)
+      reject(new Error('aborted'))
+    }
+
+    signal.addEventListener('abort', onAbort, { once: true })
   })
 }
 
@@ -248,7 +249,7 @@ search('cat', 10)
         },
       ],
       explanation:
-        "Both search calls run their synchronous part first. search('ca', 30) finds latestController null, so the optional call does nothing; it stores its controller and suspends at the await. search('cat', 10) then aborts that stored controller, which fires ca's abort listener synchronously: the listener clears ca's 30ms timer and rejects ca's promise. That rejection lands in ca's catch block on the microtask queue, so \"dropped ca\" prints first. Ten milliseconds later cat's timer resolves and \"rendered cat-results\" prints. The clearTimeout in the abort listener is cleanup, not correctness of the output: a promise can only settle once, so without it the late resolve at 30ms would be ignored, but the timer would still run for no reason and, in a bigger program, keep its closure alive.",
+        "Both search calls run their synchronous part first. search('ca', 30) finds latestController null, so the optional call does nothing; it stores its controller and suspends at the await. search('cat', 10) then aborts that stored controller, which fires ca's abort listener synchronously: the listener clears ca's 30ms timer and rejects ca's promise. That rejection lands in ca's catch block on the microtask queue, so \"dropped ca\" prints first. Ten milliseconds later cat's timer resolves and \"rendered cat-results\" prints. The clearTimeout in the abort listener is cleanup, not correctness of the output: a promise can only settle once, so without it the late resolve at 30ms would be ignored, but the timer would still run for no reason and, in a bigger program, keep its closure alive. The removeEventListener on the success path is the same duty in the other direction: once the timer has won, the abort listener is dead weight on a signal that may live on in latestController.",
     },
     {
       id: 'cooperative-model-review',
@@ -259,13 +260,13 @@ search('cat', 10)
         'A teammate added an AbortController to a long-running import, wired a cancel button to controller.abort(), and is confused that pressing cancel changes nothing. In your own words, explain: what abort() actually does, why the import kept running, the two ways an async function can notice a signal and when each fits, what cleanup each way owes, and one thing cancellation cannot undo. Use a short example of your own.',
       estimatedMinutes: 12,
       referenceAnswer:
-        "Calling abort() does exactly two things: it flips signal.aborted from false to true, permanently, and it fires one abort event on the signal. It does not stop any loop, interrupt any await, or reject any promise on its own. Cancellation in JavaScript is cooperative, so the work itself must read the signal and agree to stop. Your import kept running because nothing in it ever looks at the signal; the cancel button is wired to a flag nobody checks.\n\nThere are two ways for the work to check. Work shaped like a loop of steps polls at checkpoints: before each step it reads signal.aborted and returns early when it is true, for example `if (signal.aborted) return { rows, aborted: true }` at the top of each pass of the import loop. The limit is granularity, because an abort during one slow step is only noticed at the next checkpoint. Work with nothing to poll, like a single delay or a wrapped callback, listens for the abort event instead, and rejects its promise the moment the event fires, so the caller is released immediately.\n\nEach style owes cleanup. The event style must remove its abort listener when the work finishes normally and clear its timer when the abort wins, because listeners left on a long-lived signal leak and orphaned timers fire into code that no longer wants them. Both styles must handle a signal that arrives already aborted, since the abort event fired in the past and will not fire again for a new listener.\n\nFinally, cancellation cannot undo work that already happened. Aborting a request does not reach into the server: if the import already wrote 400 rows, those rows are written, and cancelling a POST and retrying can perform the write twice. Aborted is not undone.",
+        "Calling abort() does very little: it flips signal.aborted from false to true, permanently, records a reason on signal.reason (an AbortError unless one is passed), and fires one abort event on the signal; calling it again does nothing. It does not stop any loop, interrupt any await, or reject any promise on its own. Cancellation in JavaScript is cooperative, so the work itself must read the signal and agree to stop. Your import kept running because nothing in it ever looks at the signal; the cancel button is wired to a flag nobody checks.\n\nThere are two ways for the work to check. Work shaped like a loop of steps polls at checkpoints: before each step it reads signal.aborted and returns early when it is true, for example `if (signal.aborted) return { rows, aborted: true }` at the top of each pass of the import loop. The limit is granularity, because an abort during one slow step is only noticed at the next checkpoint. Work with nothing to poll, like a single delay or a wrapped callback, listens for the abort event instead, and rejects its promise the moment the event fires, so the caller is released immediately.\n\nEach style owes cleanup. The event style must remove its abort listener when the work finishes normally and clear its timer when the abort wins, because listeners left on a long-lived signal leak and orphaned timers fire into code that no longer wants them. Both styles must handle a signal that arrives already aborted, since the abort event fired in the past and will not fire again for a new listener.\n\nFinally, cancellation cannot undo work that already happened. Aborting a request does not reach into the server: if the import already wrote 400 rows, those rows are written, and cancelling a POST and retrying can perform the write twice. Aborted is not undone.",
       rubric: [
         {
           id: 'cooperative-model',
           label: 'Cooperative model',
           description:
-            'States that abort() only sets signal.aborted and fires one event, and that work which never reads the signal runs to completion.',
+            'States that abort() only marks the signal aborted and fires one event — it stops nothing by itself — and that work which never reads the signal runs to completion.',
         },
         {
           id: 'two-observation-styles',

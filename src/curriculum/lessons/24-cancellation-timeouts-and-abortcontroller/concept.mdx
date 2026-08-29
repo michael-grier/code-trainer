@@ -30,7 +30,7 @@ The examples assume a modern runtime, meaning any current browser or Node.js. `A
 
 ## You cannot kill a promise
 
-The first thing to accept is a hard limit of the language. Once an async operation has started, no outside code can stop it. There is no `promise.cancel()`. A promise is only a placeholder for a result; the work producing that result is somewhere else entirely, and holding the placeholder gives you no lever over it. If a loop is awaiting its way through ten thousand rows, nothing outside that loop can make it stop early.
+The first thing to accept is a hard limit of the language. Once an async operation has started, no outside code can force it to stop. There is no `promise.cancel()`. A promise is only a placeholder for a result; the work producing that result is somewhere else entirely, and holding the placeholder gives you no lever over it. If a loop is awaiting its way through ten thousand rows, nothing outside that loop can make it stop early.
 
 So cancellation in JavaScript is **cooperative**. It always takes two willing parties: the side that wants to cancel must say so, and the work itself must be written to check for that request and agree to stop. If the work never checks, cancellation silently does nothing. Most real-world cancellation bugs are exactly that: someone wired up the cancel side and assumed the work side would stop on its own.
 
@@ -56,9 +56,9 @@ console.log(controller.signal.aborted)
   ]}
 />
 
-Calling `abort()` does exactly two things: it flips `signal.aborted` from `false` to `true`, permanently, and it fires an `abort` event on the signal. That is the whole mechanism. Nothing stops, nothing is interrupted, no error is thrown anywhere. Whether anything actually halts depends entirely on some piece of work reading that signal.
+Calling `abort()` does very little: it flips `signal.aborted` from `false` to `true`, permanently, records a reason on `signal.reason` (an `AbortError` unless you pass one), and fires one `abort` event on the signal. Calling it again after that does nothing. That is the whole mechanism. Nothing stops, nothing is interrupted, no error is thrown anywhere. Whether anything actually halts depends entirely on some piece of work reading that signal.
 
-The built-in APIs that accept a signal do read it. Pass one to `fetch` and an abort makes the request reject with an error named `AbortError`, and the browser actually drops the network connection:
+The built-in APIs that accept a signal do read it. Pass one to `fetch` and an abort makes the request reject with an error named `AbortError`, and the browser stops processing the request:
 
 ```ts
 const controller = new AbortController()
@@ -225,7 +225,7 @@ Typing `cat` aborts the `ca` request before its own request leaves. The `ca` fet
 
 ## What cancellation can and cannot prevent
 
-Cancellation earns its complexity in two ways. It stops your program from acting on results that no longer matter, which is the stale-render bug. And it stops wasted work on your side: loops that quit at a checkpoint free the thread, and an aborted fetch releases its network connection.
+Cancellation earns its complexity in two ways. It stops your program from acting on results that no longer matter, which is the stale-render bug. And it stops wasted work on your side: loops that quit at a checkpoint free the thread, and an aborted fetch stops transferring bytes nobody will read.
 
 Be honest about the boundary, because interviewers probe it. Aborting a request does not reach into the server. By the time your abort travels anywhere, the server may have already run the query, written the row, or charged the card. For a read, that is harmless; some work was wasted and nobody cares. For a write, it means an aborted request is not an undone request. Cancelling a POST and retrying it can perform the write twice, which is why cancellable writes need server-side support such as idempotency keys, and why the patterns in this lesson are applied freely to reads and carefully to writes.
 
