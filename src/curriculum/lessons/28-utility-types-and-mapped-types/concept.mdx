@@ -1,14 +1,278 @@
 # Utility Types and Mapped Types
 
-This placeholder concept page reserves the lesson slot for **Utility Types and Mapped Types**. The content pass will replace it with the final interview-focused MDX lesson.
+Here is a bug that the compiler watched happen and said nothing about. An invoice type and its update type live a few lines apart. The update type was written by hand, copied field by field from the source, back when the money field was called `amountCents`. Last sprint someone renamed it to `totalCents` and updated every place the compiler complained about. The copy was not one of those places.
 
-## What this lesson will cover
+```ts
+type Invoice = {
+  id: string
+  totalCents: number // renamed last sprint, used to be amountCents
+  paidAt: string | null
+}
 
-- Core interview signals for utility types and mapped types.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+// Hand-copied from Invoice before the rename. Nothing ties it to the source.
+type InvoiceUpdate = {
+  amountCents?: number
+  paidAt?: string | null
+}
+
+function applyInvoiceUpdate(invoice: Invoice, update: InvoiceUpdate): Invoice {
+  return { ...invoice, ...update }
+}
+
+const updated = applyInvoiceUpdate(
+  { id: 'inv_1', totalCents: 1200, paidAt: null },
+  { amountCents: 500 },
+)
+
+console.log(updated.totalCents)
+```
+
+<TerminalTranscript
+  label="compiler and console"
+  lines={[
+    { type: 'command', text: 'tsc --noEmit' },
+    { type: 'info', text: 'exit code 0, no errors' },
+    { type: 'command', text: 'node invoice.js' },
+    { type: 'output', text: '1200' },
+  ]}
+/>
+
+The caller believes it just changed the total to 500. The compiler agrees that everything lines up, because everything does line up: `{ amountCents: 500 }` is a perfectly valid `InvoiceUpdate`. But `Invoice` has no `amountCents` field anymore, so the spread copies a stray key onto the result and `totalCents` keeps its old value. The update silently does nothing. This is what type drift looks like: two types that were supposed to describe the same data, connected only by the discipline of whoever edits them, quietly disagreeing.
+
+The fix is to stop copying and start deriving. TypeScript can compute one type from another, so the update type can be defined as "every field of `Invoice`, made optional" rather than as a second list of fields. This lesson covers the built-in types that do that computing, and then the mapped-type machinery they are all built from.
+
+One note on environment before the examples start. Everything here is plain TypeScript under strict mode, checked with `tsc --noEmit` targeting ES2022, which is also how this lesson's practice problems are graded. None of these types exist at runtime; that distinction matters and gets its own section below.
+
+## Derived types track their source
+
+The derived version of the update type is one line:
+
+```ts
+type InvoiceUpdate = Partial<Invoice>
+```
+
+`Partial<Invoice>` means "the type `Invoice`, with every field optional." It is computed from `Invoice` each time the compiler needs it, so it cannot fall behind. Rerun the buggy call against this version and the rename is caught at the exact call site that would have failed silently before:
+
+<TerminalTranscript
+  label="compiler"
+  lines={[
+    { type: 'command', text: 'tsc --noEmit' },
+    { type: 'error', text: "invoice.ts:15:5 - error TS2353: Object literal may only specify known properties, and 'amountCents' does not exist in type 'Partial<Invoice>'." },
+  ]}
+/>
+
+That is the whole argument for derived types in one transcript. A hand-copied type makes a rename compile everywhere and break at runtime. A derived type makes the same rename fail to compile at the one line that needs fixing.
+
+`Partial` has a small family of siblings, all shipped with TypeScript. Each one answers a question you would otherwise answer by copying fields:
+
+```ts
+// Just the fields named. Good for lightweight list views.
+type InvoiceSummary = Pick<Invoice, 'id' | 'totalCents'>
+// { id: string; totalCents: number }
+
+// Everything except the fields named. Good for stripping one field out.
+type StoredInvoice = Omit<Invoice, 'paidAt'>
+// { id: string; totalCents: number }
+
+// Every field required again. Undoes Partial.
+type CompleteInvoice = Required<Partial<Invoice>>
+// { id: string; totalCents: number; paidAt: string | null }
+
+// Every field locked against assignment.
+type FrozenInvoice = Readonly<Invoice>
+```
+
+`Readonly` deserves a demonstration, because it is the first utility here that changes what you may *do* with a value rather than which fields it has:
+
+```ts
+const frozen: Readonly<Invoice> = { id: 'inv_1', totalCents: 1200, paidAt: null }
+
+frozen.totalCents = 0
+```
+
+<TerminalTranscript
+  label="compiler"
+  lines={[
+    { type: 'command', text: 'tsc --noEmit' },
+    { type: 'error', text: "invoice.ts:9:8 - error TS2540: Cannot assign to 'totalCents' because it is a read-only property." },
+  ]}
+/>
+
+Two more utilities round out the set you will actually reach for. `Record<K, V>` builds an object type from a set of keys and one value type. Its useful trick is taking a union of specific keys, because then the compiler demands every key be present:
+
+```ts
+type InvoiceStatus = 'draft' | 'sent' | 'paid'
+
+const statusLabels: Record<InvoiceStatus, string> = {
+  draft: 'Draft',
+  sent: 'Awaiting payment',
+}
+```
+
+<TerminalTranscript
+  label="compiler"
+  lines={[
+    { type: 'command', text: 'tsc --noEmit' },
+    { type: 'error', text: "labels.ts:3:7 - error TS2741: Property 'paid' is missing in type '{ draft: string; sent: string; }' but required in type 'Record<InvoiceStatus, string>'." },
+  ]}
+/>
+
+Add a fourth status to the union and every `Record` keyed by it stops compiling until the new case is handled. That is drift protection again, pointed at lookup tables instead of update payloads.
+
+Finally, `ReturnType` and `Parameters` derive types from functions instead of from object types, which lets you name a function's contract without restating it:
+
+```ts
+function formatCents(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`
+}
+
+type Formatted = ReturnType<typeof formatCents> // string
+type FormatArgs = Parameters<typeof formatCents> // [cents: number]
+```
+
+The `typeof` is needed because `formatCents` is a value, and these utilities operate on types. `typeof formatCents` is the function's type, and `ReturnType` and `Parameters` take it apart. Change the function's signature and both aliases follow.
+
+## The machinery underneath: mapped types
+
+Every utility above is an ordinary type alias you could have written yourself. They are all built from one construct, the **mapped type**, and reading that construct is the skill that turns the utilities from memorized names into things you can extend.
+
+A mapped type builds a new object type by walking the keys of an existing one. Here is the simplest possible mapped type, one that changes nothing, so the machinery is visible on its own:
+
+```ts
+type Identity<T> = {
+  [K in keyof T]: T[K]
+}
+```
+
+Read it inside out. `keyof T` is the union of `T`'s property names; for `Invoice` that is `'id' | 'totalCents' | 'paidAt'`. The `[K in ...]` part is a loop written as a type: `K` takes each name in that union, one at a time. And `T[K]` is an **indexed access type**, which looks up the type of property `K` on `T`, the type-level version of reading `invoice[key]`. So for `Identity<Invoice>` the compiler walks: `K` is `'id'`, and `T['id']` is `string`; then `K` is `'totalCents'`, and `T['totalCents']` is `number`; then `K` is `'paidAt'`, and `T['paidAt']` is `string | null`. The result is a fresh object type with exactly `Invoice`'s fields.
+
+Changing what happens per key is what makes mapped types useful. `Partial` is the identity map plus a `?` on each property, and that is genuinely its whole definition in the standard library:
+
+```ts
+type Partial<T> = {
+  [K in keyof T]?: T[K]
+}
+```
+
+The `?` and `readonly` markers on a mapped type are called **modifiers**, and they can be removed as well as added by prefixing them with a minus sign. `-?` strips the optional marker, which is exactly how `Required` works, and `-readonly` unlocks a locked type:
+
+```ts
+// The standard library's Required: keep every field, remove the ?.
+type Required<T> = {
+  [K in keyof T]-?: T[K]
+}
+
+// Not built in, but a common hand-rolled companion to Readonly.
+type Mutable<T> = {
+  -readonly [K in keyof T]: T[K]
+}
+```
+
+You can also ignore `T[K]` entirely and map every key to one type. This mapped type describes a change report for any object shape: same keys, every value a boolean.
+
+```ts
+type ChangedFlags<T> = {
+  [K in keyof T]: boolean
+}
+
+type InvoiceChanges = ChangedFlags<Invoice>
+// { id: boolean; totalCents: boolean; paidAt: boolean }
+```
+
+`ChangedFlags` is derived, so it enjoys the same guarantee as `Partial<Invoice>` did: add a field to `Invoice` and `InvoiceChanges` grows a flag for it, with no edit and no chance to forget.
+
+## Renaming keys with `as`
+
+So far every mapped type kept the source's key names. A mapped type can also rewrite each key as it goes, using an `as` clause after the loop variable. Combined with template literal types, which build string types the way template literals build strings, this can derive an entire API surface from a data shape:
+
+```ts
+type Getters<T> = {
+  [K in keyof T & string as `get${Capitalize<K>}`]: () => T[K]
+}
+
+type InvoiceGetters = Getters<Invoice>
+// {
+//   getId: () => string
+//   getTotalCents: () => number
+//   getPaidAt: () => string | null
+// }
+```
+
+Two details keep this honest. The intersection `keyof T & string` narrows the keys to strings, because object keys may also be symbols and a symbol cannot be spliced into a template literal type. And `Capitalize<K>` is a small string utility, a sibling of the object utilities above, that uppercases the first letter so `totalCents` becomes `getTotalCents`. Rename `totalCents` to `total` in `Invoice` and every use of `getTotalCents` stops compiling. The derived method names track the source just like derived fields do.
+
+Key remapping goes further than renaming; an `as` clause that produces `never` drops the key entirely, which is how keys get filtered. Doing that requires conditional types, which are the next lesson's subject, so park the thought until then.
+
+## The types are erased at runtime
+
+Every construct in this lesson is compile-time only. When TypeScript compiles to JavaScript, `Partial`, `Omit`, mapped types, and all the rest are deleted, and nothing they promised is enforced on the running program. The place this bites hardest is `Omit`, because its name sounds like it removes data. It does not. It removes a field from a *type*.
+
+```ts
+type UserAccount = {
+  id: string
+  email: string
+  displayName: string
+  passwordHash: string
+}
+
+type PublicUser = Omit<UserAccount, 'passwordHash'>
+
+// Looks like it strips the hash. It only relabels the object.
+function toPublicUser(account: UserAccount): PublicUser {
+  return { ...account }
+}
+
+const storedAccount = {
+  id: 'u1',
+  email: 'ada@example.com',
+  displayName: 'Ada',
+  passwordHash: 'a1b2c3',
+}
+
+console.log(Object.keys(toPublicUser(storedAccount)))
+```
+
+<TerminalTranscript
+  label="console"
+  lines={[
+    { type: 'output', text: "[ 'id', 'email', 'displayName', 'passwordHash' ]" },
+  ]}
+/>
+
+The spread copies every runtime key, hash included, and the compiler accepts it because an object with extra properties is still assignable to `PublicUser`. Serialize that value into an API response and the hash ships to the client with a type that swears it is not there. Removing data takes runtime code; the honest version destructures the secret field out and returns the rest:
+
+```ts
+function toPublicUser(account: UserAccount): PublicUser {
+  // Pull passwordHash out so the rest object genuinely lacks the key.
+  const { passwordHash: _dropped, ...publicFields } = account
+  return publicFields
+}
+```
+
+Now the type and the runtime object agree, which is the standard to hold every derived type to: the type describes the data, and some real line of code makes the data match.
+
+## When deriving beats redeclaring
+
+Deriving is the right default whenever one type is mechanically related to another inside the same codebase: an update payload, a summary view, a public projection, a flags or labels table. In each of those, the second type has no opinions of its own; it is the source type plus one transformation, and writing it by hand just gives it room to drift.
+
+Deriving is the wrong move when two types merely happen to look alike today. The classic case is an external API's wire format next to your internal domain model. Derive one from the other and every internal rename becomes a change to what you send over the wire, which is a breaking change for someone else. Types that evolve for different reasons, on different schedules, should be declared separately on purpose, usually with an explicit conversion function between them. The test is not "do these look similar" but "is there one source of truth here." One source, derive. Two, declare both and convert.
+
+## Common mistakes
+
+These are the errors that show up most often in interviews and code review:
+
+- Hand-copying an update, summary, or projection type from its source, so a rename compiles in one place and misbehaves at runtime in another, as the opening example showed.
+- Expecting `Omit` or `Pick` to remove data at runtime. They relabel; only destructuring, deleting, or rebuilding the object changes what keys exist.
+- Reaching for `Partial<T>` as the model's own type instead of at the update boundary. A model where every field is optional forces null checks everywhere; keep the model complete and apply the `Partial` update onto a complete value.
+- Writing `Record<string, V>` when the keys are a known union. String keys accept any name and demand none, so a missing entry and a typo both compile. `Record<'draft' | 'sent' | 'paid', V>` catches both.
+- Deriving across a boundary that should stay independent, such as computing a wire format from a domain model, which turns internal renames into breaking API changes.
+- Forgetting `typeof` with `ReturnType` and `Parameters`, and passing the function value where a function type is needed.
+- Trying to put a possibly-symbol key into a template literal type when remapping. Intersect with `string` first: `[K in keyof T & string as ...]`.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+The exercises build the lesson's ideas in the order you met them:
+
+1. Derive an update type with `Partial` and apply it, so the drift bug from the opening cannot happen.
+2. Write a mapped type by hand and implement the runtime function that fills it in.
+3. Refactor hand-copied projection types into derived ones, and make the runtime object honor what `Omit` promises.
+4. Explain, in your own words, what deriving buys over hand-copying, and why `Omit` does not remove data at runtime.

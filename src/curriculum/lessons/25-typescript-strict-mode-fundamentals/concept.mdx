@@ -1,14 +1,323 @@
 # TypeScript Strict-Mode Fundamentals
 
-This placeholder concept page reserves the lesson slot for **TypeScript Strict-Mode Fundamentals**. The content pass will replace it with the final interview-focused MDX lesson.
+The program below looks after users. With TypeScript's `strict` option off, which was the default for years and still is in plenty of older projects, it compiles without a single complaint.
 
-## What this lesson will cover
+```ts
+type User = { name: string; email: string }
 
-- Core interview signals for typescript strict-mode fundamentals.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+function findUser(users: User[], name: string) {
+  return users.find((user) => user.name === name)
+}
+
+const user = findUser([], 'ada')
+console.log(user.email.toUpperCase())
+```
+
+<TerminalTranscript
+  label="terminal"
+  lines={[
+    { type: 'command', text: 'tsc --noEmit lookup.ts' },
+    { type: 'info', text: '(no errors)' },
+    { type: 'command', text: 'node lookup.js' },
+    {
+      type: 'error',
+      text: "TypeError: Cannot read properties of undefined (reading 'email')",
+    },
+  ]}
+/>
+
+The list is empty, so `find` has nothing to return. It hands back `undefined`, the property read on `undefined` throws, and the program dies at runtime, exactly the kind of crash a type checker exists to prevent. Now the same file, checked with `strict` turned on:
+
+<TerminalTranscript
+  label="terminal"
+  lines={[
+    { type: 'command', text: 'tsc --noEmit --strict lookup.ts' },
+    {
+      type: 'error',
+      text: "lookup.ts(8,13): error TS18048: 'user' is possibly 'undefined'.",
+    },
+  ]}
+/>
+
+Same code, same compiler, and the crash is now a compile error pointing at the exact expression that would have thrown. That is the whole subject of this lesson. Strict mode is not extra pedantry layered on top of TypeScript. It is the set of switches that make the compiler stop accepting programs it cannot actually vouch for.
+
+One note on environment before we go on: every example here is checked with TypeScript 5.9 under `strict: true`, targeting ES2022, and run with Node.js. The practice problems at the end are graded under the same strict configuration, so nothing in this lesson is theoretical.
+
+## What the strict switch actually turns on
+
+`"strict": true` in `tsconfig.json` is shorthand for a family of individual flags. Four of them do most of the work in day-to-day code, and each one closes a specific hole:
+
+- `strictNullChecks` removes `null` and `undefined` from every ordinary type. A `User` is a `User`; a value that might be missing must say so, as `User | undefined`. This is the flag that caught the crash above.
+- `noImplicitAny` refuses to let a value silently become `any` when the compiler cannot work out its type. Untyped function parameters are the classic case.
+- `useUnknownInCatchVariables` types the value in a `catch` clause as `unknown` instead of `any`, because JavaScript lets code throw anything, not just `Error` objects.
+- `strictFunctionTypes` checks function assignments by their parameters, so a handler that only accepts strings cannot be stored where a handler for strings or numbers is expected.
+
+There are a few more under the umbrella, such as `strictPropertyInitialization` for class fields, but the four above are the ones interviews and real code reviews return to. The rest of this lesson walks through each, always in the same shape: code that hides a bug, what the compiler says, and the refactor that makes the contract honest.
+
+## strictNullChecks: absence becomes part of the type
+
+Without `strictNullChecks`, `undefined` and `null` are quietly assignable to everything, so the type `User` really means "a `User`, or nothing, who knows". The compiler cannot warn about a missing value because missing values are legal everywhere. With the flag on, `users.find(...)` returns `User | undefined`, and that union follows the value wherever it goes. Reading `.email` from it is rejected until the code proves the `undefined` case cannot happen.
+
+The proof is ordinary control flow. Check for the missing case, and inside the branch where it has been ruled out, the compiler narrows the type for you:
+
+```ts
+const user = findUser([], 'ada')
+
+if (user === undefined) {
+  console.log('no such user')
+} else {
+  // In this branch the undefined case is ruled out,
+  // so user has type User and the read is safe.
+  console.log(user.email.toUpperCase())
+}
+```
+
+<TerminalTranscript
+  label="console"
+  lines={[{ type: 'output', text: 'no such user' }]}
+/>
+
+Notice what changed and what did not. The runtime behavior for a found user is identical. The only addition is a branch for the case that was always possible, and the compiler is what forced you to write it. That is the trade strict mode offers everywhere: the possible-but-unhandled case moves from a 2am production crash to a red squiggle while the code is still in front of you.
+
+TypeScript also accepts a shortcut here, and it is worth meeting early because it shows up in so much real code. Writing `findUser([], 'ada')!` with a trailing exclamation mark, the **non-null assertion**, tells the compiler "trust me, this is never undefined". The error disappears, the code compiles, and if you were wrong the program still crashes at runtime, now without even a warning. The assertion does not check anything. It deletes the check. There are rare moments where you genuinely know more than the compiler, but as a habit, every `!` is a place where the original crash is still live and merely hidden. The honest alternatives are the guard above, optional chaining like `user?.email`, or a default with `??`, all of which handle the missing case instead of denying it.
+
+## noImplicitAny: the compiler stops guessing
+
+Here is a discount helper with no parameter types. Loose TypeScript compiles it happily:
+
+```ts
+function applyDiscount(price, percent) {
+  return price - price * (percent / 100)
+}
+```
+
+<TerminalTranscript
+  label="terminal"
+  lines={[
+    { type: 'command', text: 'tsc --noEmit --strict discount.ts' },
+    {
+      type: 'error',
+      text: "discount.ts(1,24): error TS7006: Parameter 'price' implicitly has an 'any' type.",
+    },
+    {
+      type: 'error',
+      text: "discount.ts(1,31): error TS7006: Parameter 'percent' implicitly has an 'any' type.",
+    },
+  ]}
+/>
+
+Without the flag, both parameters silently get the type `any`, which means "anything goes, check nothing". A caller can pass `applyDiscount(2000, '10%')`, the string arithmetic produces `NaN`, and the `NaN` flows onward into totals and invoices with no error anywhere. The fix costs two annotations:
+
+```ts
+function applyDiscount(price: number, percent: number): number {
+  return price - price * (percent / 100)
+}
+
+console.log(applyDiscount(2000, 10))
+```
+
+<TerminalTranscript
+  label="console"
+  lines={[{ type: 'output', text: '1800' }]}
+/>
+
+Now `applyDiscount(2000, '10%')` is a compile error at the call site, which is where the bug actually lives. The name of the flag is worth reading carefully: it forbids *implicit* any. You can still write `any` on purpose, and the next section is about why you mostly should not.
+
+## any versus unknown at the boundary
+
+Every program has edges where data arrives without a compile-time type: `JSON.parse`, network responses, environment variables, storage reads. TypeScript gives you two types for "I do not know what this is yet", and they behave like opposites.
+
+`any` switches the checker off. Every operation on an `any` value is allowed, and worse, the `any` spreads: values computed from it become `any` too, so one loose edge quietly unchecks a whole file. Watch it launder a wrong type without a single diagnostic:
+
+```ts
+const response: any = JSON.parse('{"total":"12.50"}')
+
+// The server sent total as a string, but any lets us claim it is a number.
+const total: number = response.total
+
+console.log(total + 5)
+```
+
+<TerminalTranscript
+  label="console"
+  lines={[{ type: 'output', text: '12.505' }]}
+/>
+
+The declared type says `number`, the value is the string `'12.50'`, and `+ 5` performed string concatenation. Nothing threw. The program simply computed a wrong answer and kept going, which is a worse failure mode than a crash, because nothing tells you where it happened.
+
+`unknown` is the honest version of the same idea. It also means "could be anything", but it inverts the permissions: you can put any value into an `unknown`, and you can do nothing with it until you have checked what it is.
+
+```ts
+const payload: unknown = JSON.parse('{"total":"12.50"}')
+const total: number = payload.total
+```
+
+<TerminalTranscript
+  label="terminal"
+  lines={[
+    { type: 'command', text: 'tsc --noEmit --strict boundary.ts' },
+    {
+      type: 'error',
+      text: "boundary.ts(2,23): error TS18046: 'payload' is of type 'unknown'.",
+    },
+  ]}
+/>
+
+To use an `unknown` value, prove its shape with runtime checks, and the compiler narrows the type as each check passes. Here is the full path from raw parse to trusted number, with the checks doing real work:
+
+```ts
+const payload: unknown = JSON.parse('{"total":12.5}')
+
+let total = 0
+
+// Step 1: prove the payload is an object at all. typeof null is
+// also 'object', so the null check is part of the proof.
+if (typeof payload === 'object' && payload !== null) {
+  // Step 2: we know it is an object, but nothing about its values,
+  // so read them as a bag of unknowns, not as any.
+  const value = (payload as Record<string, unknown>).total
+
+  // Step 3: prove this particular value is a number before using it.
+  if (typeof value === 'number') {
+    total = value
+  }
+}
+
+console.log(total)
+```
+
+<TerminalTranscript
+  label="console"
+  lines={[{ type: 'output', text: '12.5' }]}
+/>
+
+Read step 2 closely, because it holds the discipline in miniature. `Record<string, unknown>` says "an object whose values I have not checked yet", which is true, so each value still has to pass its own `typeof` test. Casting to `any`, or to a specific shape like `{ total: number }`, would say more than we know and put us right back where the `12.505` bug lives. A cast is a claim; make only claims the surrounding checks have already proven. This is the entire skill of handling external data, and lesson 31 builds a full parsing toolkit on top of it.
+
+The rule of thumb that falls out: `any` is a decision to stop checking, `unknown` is a decision to check before using. At a boundary, `unknown` is almost always the type you want.
+
+## Catch clauses throw anything
+
+The same reasoning explains `useUnknownInCatchVariables`. JavaScript permits `throw 'oops'` and `throw 42`, so the value in a `catch` is genuinely unknowable. Loose TypeScript types it `any` and lets this compile:
+
+```ts
+try {
+  JSON.parse('not json')
+} catch (error) {
+  console.log(error.message)
+}
+```
+
+<TerminalTranscript
+  label="terminal"
+  lines={[
+    { type: 'command', text: 'tsc --noEmit --strict report.ts' },
+    {
+      type: 'error',
+      text: "report.ts(4,15): error TS18046: 'error' is of type 'unknown'.",
+    },
+  ]}
+/>
+
+Under strict mode the caught value is `unknown`, so the `.message` read is rejected until the code earns it. An `instanceof` check is the usual proof, with a branch for the values that are not `Error` at all:
+
+```ts
+try {
+  JSON.parse('not json')
+} catch (error) {
+  if (error instanceof Error) {
+    console.log(error.message)
+  } else {
+    console.log('something non-Error was thrown', error)
+  }
+}
+```
+
+<TerminalTranscript
+  label="console"
+  lines={[
+    {
+      type: 'output',
+      text: `Unexpected token 'o', "not json" is not valid JSON`,
+    },
+  ]}
+/>
+
+If a caught `.message` read has ever crashed your error handler, this flag is the one that would have caught it. There is a certain comedy in error reporting code being a common source of new errors, and this is precisely the hole it leaks through.
+
+## strictFunctionTypes: handlers must handle everything they claim
+
+The last flag in our set guards a subtler spot: storing one function where another function type is expected. Suppose a registry accepts handlers for values that may be strings or numbers:
+
+```ts
+type NumberOrStringHandler = (value: string | number) => void
+
+const upperCaseOnly = (value: string) => {
+  console.log(value.toUpperCase())
+}
+
+const handle: NumberOrStringHandler = upperCaseOnly
+handle(42)
+```
+
+<TerminalTranscript
+  label="terminal"
+  lines={[
+    { type: 'command', text: 'tsc --noEmit --strict handlers.ts' },
+    {
+      type: 'error',
+      text: "handlers.ts(7,7): error TS2322: Type '(value: string) => void' is not assignable to type 'NumberOrStringHandler'.",
+    },
+    { type: 'error', text: "  Types of parameters 'value' and 'value' are incompatible." },
+    { type: 'error', text: "    Type 'string | number' is not assignable to type 'string'." },
+    { type: 'error', text: "      Type 'number' is not assignable to type 'string'." },
+  ]}
+/>
+
+The reasoning reads bottom-up. A `NumberOrStringHandler` promises to cope with any `string | number`. `upperCaseOnly` copes with strings only, so the moment `handle(42)` runs, a number reaches `.toUpperCase()` and the program throws. Loose TypeScript accepted this assignment; `strictFunctionTypes` rejects it because the narrow handler cannot keep the broad promise. You will rarely think about this flag directly, and that is the point. It quietly rules out a whole class of callback bugs while you write ordinary code.
+
+## Making the invalid state unrepresentable
+
+Everything so far reacts to the compiler. The stronger move, and the one interviews probe for, is designing types so the compiler has something worth saying. Consider an order that sometimes has a discount coupon. The loose habit is to type the whole thing `any`, or to leave `coupon` off the type and read it hopefully:
+
+```ts
+// Loose: nothing records that coupon might be absent.
+function summarize(order: any): string {
+  return `${order.items.length} items, coupon ${order.coupon.code}`
+}
+```
+
+Every caller without a coupon crashes this function, and the type system had no chance to object, because `any` erased the question. Now spell the truth into the type:
+
+```ts
+type Order = {
+  items: string[]
+  totalCents: number
+  // The ? records, in the type itself, that some orders have no coupon.
+  coupon?: { code: string }
+}
+```
+
+With that one `?`, `order.coupon` has type `{ code: string } | undefined`, and under `strictNullChecks` every reader of `order.coupon.code` gets the same TS18048 error the opening example did, until it guards the missing case. The optional marker did not add a check to one function. It made the compiler enforce the check on every reader, present and future. That is what "making invalid states visible" means in practice: the type declares what can happen, and strict mode makes ignoring it a compile error rather than a latent crash.
+
+It helps to be clear about what you have and have not bought. Strict types are erased before the code runs, so they constrain the code you wrote, not the data the world sends you. A perfectly typed `Order` does not stop a server from responding with `coupon: {}`. Inside your program, strictness proves your handling is consistent; at the edges, it is the `unknown`-then-check discipline from earlier that stands guard.
+
+## Common mistakes
+
+These are the errors that show up most often in strict codebases and in interviews:
+
+- Silencing a `possibly 'undefined'` error with `!` instead of handling the case. The crash the compiler saw is still there, just unreported.
+- Typing a boundary value `any` "for now". The `any` spreads through everything computed from it, and wrong values travel silently, like the `12.505` string concatenation.
+- Reaching for `unknown` but then casting straight to the hoped-for shape. A cast proves nothing; only runtime checks narrow honestly.
+- Reading `.message` or `.stack` on a caught value without an `instanceof Error` check, forgetting that JavaScript can throw anything.
+- Checking `typeof value === 'object'` without also excluding `null`, which has typeof `'object'` and then explodes on the first property read.
+- Using `value || fallback` to default a possibly-missing number, which also replaces a legitimate `0`. Use `??`, which only replaces `null` and `undefined`.
+- Modeling "sometimes absent" data as always-present and hoping. Put the `?` or the `| undefined` in the type, and let the compiler chase down every unguarded reader.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+The exercises apply the flags in the order you met them:
+
+1. Fix a lookup whose `!` assertion hides the missing-value crash strictNullChecks warned about.
+2. Implement a config reader that takes `unknown` and earns every property access with runtime checks.
+3. Refactor an `any`-typed order summary into an honest contract with an optional coupon.
+4. Explain, in your own words, what strict mode buys and why `unknown` beats `any` at a boundary.
