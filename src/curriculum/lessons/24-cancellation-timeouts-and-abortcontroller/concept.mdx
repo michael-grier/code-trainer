@@ -177,7 +177,7 @@ async function fetchWithTimeout(url: string, ms: number) {
 }
 ```
 
-The `finally` block is the cleanup rule again: once the fetch settles either way, the timer must not stay armed. And when one operation should stop for either of two reasons, say the user pressed cancel or three seconds passed, `AbortSignal.any([userSignal, AbortSignal.timeout(3000)])` produces one signal that aborts when the first of its inputs does.
+The `finally` block is the cleanup rule again: once the fetch settles either way, the timer must not stay armed. And when one operation should stop for either of two reasons, say the user pressed cancel or three seconds passed, `AbortSignal.any([userSignal, AbortSignal.timeout(3000)])` produces one signal that aborts when the first of its inputs does. The two paths stay distinguishable at the catch: a user cancel rejects with `AbortError`, while the timeout rejects with `TimeoutError`. Code that recognizes only `AbortError` treats an expired deadline as a network failure, so a combined signal needs a catch that checks for both names.
 
 ## Keep the latest, cancel the rest
 
