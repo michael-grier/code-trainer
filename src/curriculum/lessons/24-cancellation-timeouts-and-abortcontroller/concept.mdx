@@ -1,14 +1,251 @@
 # Cancellation, Timeouts, and AbortController
 
-This placeholder concept page reserves the lesson slot for **Cancellation, Timeouts, and AbortController**. The content pass will replace it with the final interview-focused MDX lesson.
+Here is a bug that has shipped in almost every product with a search box. Each keystroke fires a request, and whatever comes back gets rendered:
 
-## What this lesson will cover
+```ts
+input.addEventListener('input', async () => {
+  const query = input.value
+  const response = await fetch(`/api/search?q=${query}`)
+  renderResults(query, await response.json())
+})
+```
 
-- Core interview signals for cancellation, timeouts, and abortcontroller.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+A user types `ca`, pauses just long enough for a request to leave, then finishes typing `cat`. Two requests are now in flight at once. The server answers them in whichever order it happens to finish, and this time the older query is the slow one.
+
+<TerminalTranscript
+  label="network and render log"
+  lines={[
+    { type: 'output', text: 'request sent   q=ca' },
+    { type: 'output', text: 'request sent   q=cat' },
+    { type: 'output', text: 'response ready q=cat' },
+    { type: 'output', text: 'rendered results for "cat"' },
+    { type: 'output', text: 'response ready q=ca' },
+    { type: 'error', text: 'rendered results for "ca"   (the box still says "cat")' },
+  ]}
+/>
+
+Every line of the handler did its job. The requests went out, the responses came back, the render function rendered. And the screen ends up showing results for `ca` under a search box that says `cat`, because the last response to arrive wins, and nothing guarantees the last to arrive is the newest. The fix is not a faster server. The fix is for the `ca` request to stop mattering the moment `cat` is typed. That is cancellation, and this lesson covers how JavaScript does it: what canceling can actually do, the `AbortController` handshake, the two ways running work notices it has been cancelled, timeouts, cleanup, and the pattern that fixes this search box.
+
+The examples assume a modern runtime, meaning any current browser or Node.js. `AbortSignal.timeout` and `AbortSignal.any` are newer additions worth checking availability for; everything else here has been universal for years.
+
+## You cannot kill a promise
+
+The first thing to accept is a hard limit of the language. Once an async operation has started, no outside code can force it to stop. There is no `promise.cancel()`. A promise is only a placeholder for a result; the work producing that result is somewhere else entirely, and holding the placeholder gives you no lever over it. If a loop is awaiting its way through ten thousand rows, nothing outside that loop can make it stop early.
+
+So cancellation in JavaScript is **cooperative**. It always takes two willing parties: the side that wants to cancel must say so, and the work itself must be written to check for that request and agree to stop. If the work never checks, cancellation silently does nothing. Most real-world cancellation bugs are exactly that: someone wired up the cancel side and assumed the work side would stop on its own.
+
+The two sides need a shared object to communicate through, and the standard one is `AbortController`.
+
+## The controller and its signal
+
+An `AbortController` is a pair. The **controller** belongs to whoever might want to cancel. Its **signal** is handed to the work, which watches it.
+
+```ts
+const controller = new AbortController()
+
+console.log(controller.signal.aborted)
+controller.abort()
+console.log(controller.signal.aborted)
+```
+
+<TerminalTranscript
+  label="console"
+  lines={[
+    { type: 'output', text: 'false' },
+    { type: 'output', text: 'true' },
+  ]}
+/>
+
+Calling `abort()` does very little: it flips `signal.aborted` from `false` to `true`, permanently, records a reason on `signal.reason` (an `AbortError` unless you pass one), and fires one `abort` event on the signal. Calling it again after that does nothing. That is the whole mechanism. Nothing stops, nothing is interrupted, no error is thrown anywhere. Whether anything actually halts depends entirely on some piece of work reading that signal.
+
+The built-in APIs that accept a signal do read it. Pass one to `fetch` and an abort makes the request reject with the signal's reason — the default `AbortError` here, since `abort()` gets no argument — and the browser stops processing the request:
+
+```ts
+const controller = new AbortController()
+const pending = fetch('/api/search?q=ca', { signal: controller.signal })
+
+controller.abort()
+
+pending.catch((error) => console.log(error.name))
+```
+
+<TerminalTranscript
+  label="console"
+  lines={[{ type: 'output', text: 'AbortError' }]}
+/>
+
+For your own async functions, though, nobody checks the signal unless you write the check. There are two ways to write it, and they suit different kinds of work.
+
+## Checkpoints: work that polls the flag
+
+Work that runs as a loop of steps can check `signal.aborted` between steps. Each check is a **checkpoint**: a moment where the work pauses to ask "has anyone cancelled me?" and stops cleanly if the answer is yes.
+
+```ts
+type ExportResult = {
+  written: string[]
+  aborted: boolean
+}
+
+async function exportRows(
+  rows: Array<{ id: string }>,
+  signal: AbortSignal,
+): Promise<ExportResult> {
+  const written: string[] = []
+
+  for (const row of rows) {
+    // Checkpoint: before starting the next row, check whether
+    // anyone has called abort() since the last check.
+    if (signal.aborted) {
+      return { written, aborted: true }
+    }
+
+    await writeRow(row)
+    written.push(row.id)
+  }
+
+  return { written, aborted: false }
+}
+```
+
+If the caller aborts while row 40 of 100 is being written, the checkpoint before row 41 sees `aborted === true` and the function returns with 40 rows written and `aborted: true`. The caller learns exactly how far the work got, which matters when it has to resume or roll back later.
+
+Checkpoints have a granularity limit worth saying out loud: the work only notices cancellation when it reaches the next check. If one `await writeRow(row)` takes thirty seconds, an abort during those thirty seconds is not seen until the row finishes. Polling stops work between steps; it cannot interrupt a step.
+
+## The abort event: rejecting early
+
+Some async work never reaches a checkpoint, because it is not a loop at all. The clearest case is a plain delay. `setTimeout` schedules one callback and there is nothing in between to poll, so a delay that should be cancellable has to be told about the abort instead of asking. That is what the `abort` event on the signal is for.
+
+```ts
+function delay(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    // The signal may have been aborted before this delay even started.
+    if (signal.aborted) {
+      reject(new Error('aborted'))
+      return
+    }
+
+    const timer = setTimeout(() => {
+      // The wait finished normally, so the abort listener is now
+      // dead weight; remove it instead of leaving it on the signal.
+      signal.removeEventListener('abort', onAbort)
+      resolve()
+    }, ms)
+
+    function onAbort() {
+      // Cancel the pending timer, then reject immediately rather
+      // than making the caller wait out the rest of the delay.
+      clearTimeout(timer)
+      reject(new Error('aborted'))
+    }
+
+    signal.addEventListener('abort', onAbort, { once: true })
+  })
+}
+```
+
+The promise now has two ways to settle. If the timer fires first, it resolves. If `abort()` is called first, the `abort` event fires, the listener clears the timer, and the promise rejects right away. Whoever awaits this delay gets released the instant cancellation happens instead of at the end of the wait.
+
+Notice how much of that function is cleanup. Each settling path tears down the other path's machinery: the timer path removes the abort listener, and the abort path clears the timer. This is not optional polish. A signal can outlive thousands of operations, and every listener left behind is a small leak that keeps its closure alive; a timer left running fires later into a context that no longer wants it. The `once: true` option removes the listener automatically after it fires, which covers the abort path, but only your own code can cover the success path. The rule: whichever side settles the promise cleans up after both.
+
+The initial `signal.aborted` check before any setup matters too. The `abort` event fires once, at the moment of the abort, so a listener added to a signal that is already aborted never runs. Skip that first check and an operation started after the abort hangs forever, waiting for an event that already happened. Handle "cancelled before it began" first, then wire up the race.
+
+## A timeout is just another aborter
+
+Timeouts feel like a separate feature, but they are the same handshake with a clock on the controller side. A timeout is somebody deciding to call `abort()` after a fixed time, and the platform ships that somebody ready-made:
+
+```ts
+// Reject the fetch with a TimeoutError if no response arrives in 3 seconds.
+const response = await fetch('/api/search?q=ca', {
+  signal: AbortSignal.timeout(3000),
+})
+```
+
+Where `AbortSignal.timeout` is not available, or when you also need a manual cancel path, build it from parts you already know:
+
+```ts
+async function fetchWithTimeout(url: string, ms: number) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), ms)
+
+  try {
+    const response = await fetch(url, { signal: controller.signal })
+    return await response.json()
+  } finally {
+    // The request settled, so the pending timeout has no job left.
+    clearTimeout(timer)
+  }
+}
+```
+
+The `finally` block is the cleanup rule again: once the fetch settles either way, the timer must not stay armed. And when one operation should stop for either of two reasons, say the user pressed cancel or three seconds passed, `AbortSignal.any([userSignal, AbortSignal.timeout(3000)])` produces one signal that aborts when the first of its inputs does. The two paths stay distinguishable at the catch: a user cancel rejects with `AbortError`, while the timeout rejects with `TimeoutError`. Code that recognizes only `AbortError` treats an expired deadline as a network failure, so a combined signal needs a catch that checks for both names.
+
+## Keep the latest, cancel the rest
+
+Back to the search box. The stale render happened because two requests raced and the app listened to both. The pattern that fixes it keeps a controller for the newest request only, and aborts the previous one the moment a new request starts:
+
+```ts
+let latestController: AbortController | null = null
+
+input.addEventListener('input', async () => {
+  // A new keystroke makes every in-flight request stale; cancel it.
+  latestController?.abort()
+
+  const controller = new AbortController()
+  latestController = controller
+
+  try {
+    const response = await fetch(`/api/search?q=${input.value}`, {
+      signal: controller.signal,
+    })
+    renderResults(input.value, await response.json())
+  } catch (error) {
+    // A cancelled request is the pattern working, not a failure.
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      return
+    }
+    throw error
+  }
+})
+```
+
+Run the same slow-`ca`, fast-`cat` sequence through this version:
+
+<TerminalTranscript
+  label="network and render log"
+  lines={[
+    { type: 'output', text: 'request sent   q=ca' },
+    { type: 'output', text: 'aborted        q=ca' },
+    { type: 'output', text: 'request sent   q=cat' },
+    { type: 'output', text: 'response ready q=cat' },
+    { type: 'output', text: 'rendered results for "cat"' },
+  ]}
+/>
+
+Typing `cat` aborts the `ca` request before its own request leaves. The `ca` fetch rejects with `AbortError`, the catch block recognizes that as expected and returns, and only `cat` ever reaches the screen. The last line of the pattern deserves attention too: the catch swallows `AbortError` by name and rethrows everything else. Swallowing every error there would hide real network failures behind the cancellation path.
+
+## What cancellation can and cannot prevent
+
+Cancellation earns its complexity in two ways. It stops your program from acting on results that no longer matter, which is the stale-render bug. And it stops wasted work on your side: loops that quit at a checkpoint free the thread, and an aborted fetch stops transferring bytes nobody will read.
+
+Be honest about the boundary, because interviewers probe it. Aborting a request does not reach into the server. By the time your abort travels anywhere, the server may have already run the query, written the row, or charged the card. For a read, that is harmless; some work was wasted and nobody cares. For a write, it means an aborted request is not an undone request. Cancelling a POST and retrying it can perform the write twice, which is why cancellable writes need server-side support such as idempotency keys, and why the patterns in this lesson are applied freely to reads and carefully to writes.
+
+## Common mistakes
+
+These are the errors that show up most often in interviews and code review:
+
+- Calling `abort()` and assuming the work stopped. Abort only raises a flag and fires an event; work that never reads the signal runs to completion.
+- Accepting a `signal` parameter and never reading it, which is the same bug wearing an honest-looking API.
+- Checking `signal.aborted` once at the top of a function and never again, so cancellation during any later `await` goes unnoticed.
+- Leaving abort listeners and timers behind after the work settles. On a long-lived signal those leak; a forgotten timer aborts something that already finished.
+- Forgetting that a signal can arrive already aborted, so the work must check before starting, not just during.
+- Swallowing all errors when only `AbortError` was expected, hiding real failures behind the cancellation path.
+- Treating an aborted request as an undone request. The server may have completed the write before the abort arrived.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+The exercises build the lesson's ideas in the order you met them:
+
+1. Debug an export whose cancel button aborts a controller that no work ever reads.
+2. Implement a checkpointed record sync that stops cleanly and reports what it skipped.
+3. Trace a latest-wins search flow and predict which results render and which are dropped.
+4. Explain the cooperative cancellation model, and its limits, in your own words.

@@ -1,14 +1,226 @@
 # Async Patterns with Promises
 
-This placeholder concept page reserves the lesson slot for **Async Patterns with Promises**. The content pass will replace it with the final interview-focused MDX lesson.
+The previous lesson explained *when* queued work runs. This one is about *how to structure* that work. Start with a function that is correct, readable, and three times slower than it needs to be.
 
-## What this lesson will cover
+```ts
+// A stand-in for a network call: resolves with value after ms milliseconds.
+function fetchAfter<T>(value: T, ms: number): Promise<T> {
+  return new Promise((resolve) => setTimeout(() => resolve(value), ms))
+}
 
-- Core interview signals for async patterns with promises.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+async function loadDashboard() {
+  const started = Date.now()
+
+  const user = await fetchAfter('Ada', 40)
+  const orders = await fetchAfter(['#1001', '#1002'], 40)
+  const alerts = await fetchAfter([], 40)
+
+  console.log(`loaded in about ${Date.now() - started} ms`)
+  return { user, orders, alerts }
+}
+
+loadDashboard()
+```
+
+<TerminalTranscript
+  label="console"
+  lines={[{ type: 'output', text: 'loaded in about 122 ms' }]}
+/>
+
+Each fake fetch takes 40 milliseconds, and none of the three depends on the others. Yet the function takes about 120 milliseconds, because each `await` waits for its line to finish before the next line even starts. The orders request does not begin until the user request has fully completed. Three independent requests ran single file.
+
+By the end of this lesson you will see that stall instantly, know the one-line fix, and know when the fix would be wrong. Getting there takes a small amount of vocabulary first.
+
+## A promise is a value with a timeline
+
+A **promise** is an object that stands in for a value that has not arrived yet. Think of it as a receipt: the moment you call `fetchAfter('Ada', 40)`, you get the receipt back immediately, and the actual string shows up later.
+
+Every promise is in exactly one of three states. It starts **pending**, meaning the value is not here yet. It then settles exactly once, either to **fulfilled**, holding a value, or to **rejected**, holding an error. A settled promise never changes again. Asking a fulfilled promise for its value a second time gives the same value, and a rejected promise stays rejected.
+
+You react to settling by attaching callbacks: `.then(onValue)` runs when the promise fulfills, and `.catch(onError)` runs when it rejects. The previous lesson covered exactly when those callbacks run, as microtasks after the current run of code finishes. This lesson takes that scheduling as given and focuses on how to arrange the promises themselves.
+
+## await suspends, it does not block
+
+`await` is the readable way to consume a promise, and it hides a real control-flow move. When an `async` function reaches `await somePromise`, the function does not sit there spinning. It *suspends*: it stops mid-line, remembers exactly where it was, and returns control to whoever called it. The rest of the program keeps running. Later, when the promise settles, the function resumes from the exact spot it left off.
+
+Watch the handoff happen. Predict the output before reading the transcript.
+
+```ts
+async function loadUser() {
+  console.log('loading user')
+  const name = await Promise.resolve('Ada')
+  console.log(`loaded ${name}`)
+  return name
+}
+
+console.log('start')
+loadUser().then((name) => console.log(`then saw ${name}`))
+console.log('end')
+```
+
+<TerminalTranscript
+  label="console"
+  lines={[
+    { type: 'output', text: 'start' },
+    { type: 'output', text: 'loading user' },
+    { type: 'output', text: 'end' },
+    { type: 'output', text: 'loaded Ada' },
+    { type: 'output', text: 'then saw Ada' },
+  ]}
+/>
+
+Trace it line by line. `'start'` prints, then the call to `loadUser()` runs the function body *synchronously* up to the first `await`, which is why `'loading user'` prints immediately. At the `await`, `loadUser` suspends and hands back a pending promise, so control returns to the top level and `'end'` prints. Only after the synchronous code finishes does the suspended function resume, print `'loaded Ada'`, and fulfill its promise, which finally runs the `.then` callback.
+
+Two facts from that trace are worth keeping. Calling an `async` function always returns a promise immediately, even if the body has not finished. And the code after an `await` is, in effect, a callback: it runs later, after everything currently on the call stack has completed. This is also why `await` in a server or browser never freezes the program the way a long loop would. Suspension frees the thread; blocking would hog it.
+
+## Independent work should not wait in line
+
+Now the opening stall has a diagnosis. Each `await` in `loadDashboard` suspends until its own promise settles, and the next fetch is not even *created* until the previous line finishes. The timeline looks like this:
+
+```
+sequential:  user ████████ then orders ████████ then alerts ████████   ~120 ms
+
+parallel:    user   ████████
+             orders ████████
+             alerts ████████                                           ~40 ms
+```
+
+The fix is to start all three fetches first, so their timers run at the same time, and only then wait. `Promise.all` takes an array of promises and returns one promise that fulfills when every input has fulfilled.
+
+```ts
+async function loadDashboard() {
+  const started = Date.now()
+
+  // All three calls run now. Three pending promises exist before any await.
+  const [user, orders, alerts] = await Promise.all([
+    fetchAfter('Ada', 40),
+    fetchAfter(['#1001', '#1002'], 40),
+    fetchAfter([], 40),
+  ])
+
+  console.log(`loaded in about ${Date.now() - started} ms`)
+  return { user, orders, alerts }
+}
+```
+
+<TerminalTranscript
+  label="console"
+  lines={[{ type: 'output', text: 'loaded in about 41 ms' }]}
+/>
+
+The total drops from the *sum* of the delays to the *longest single* delay, because the waits overlap. On a real page where each request takes hundreds of milliseconds, this is the difference between a snappy load and a visibly slow one.
+
+One guarantee makes `Promise.all` safe to destructure: **results come back in input order, not completion order**. Give it three promises that finish fast-first:
+
+```ts
+const results = await Promise.all([
+  fetchAfter('user', 30),
+  fetchAfter('orders', 10),
+  fetchAfter('alerts', 20),
+])
+
+console.log(results)
+```
+
+<TerminalTranscript
+  label="console"
+  lines={[{ type: 'output', text: "[ 'user', 'orders', 'alerts' ]" }]}
+/>
+
+`'orders'` finished first, but it still sits at index 1, because `Promise.all` matches each result to the position of the promise that produced it. You never have to guess which value is which.
+
+When would sequential `await`s be *right*? Exactly when one step needs the previous step's result. If you must fetch a user before you can fetch that user's orders, the second call cannot start until the first finishes, and writing them on separate `await` lines states that dependency honestly. The rule: independent work runs in parallel with `Promise.all`, dependent work waits in line with sequential `await`.
+
+## Where errors go, and where they escape
+
+A rejected promise carries an error, and `await` turns that rejection back into a throw at the `await` line. This means ordinary `try`/`catch` works, as long as the `await` actually happens inside the `try` block.
+
+```ts
+async function fetchNickname(): Promise<string> {
+  await new Promise((resolve) => setTimeout(resolve, 10)) // network latency
+  throw new Error('profile service down')
+}
+
+async function nicknameOrGuest(): Promise<string> {
+  try {
+    return await fetchNickname()
+  } catch {
+    return 'guest'
+  }
+}
+```
+
+`nicknameOrGuest()` fulfills with `'guest'`. The `await` surfaced the rejection inside the `try`, the `catch` handled it, done.
+
+Now delete one word and the safety net silently stops working:
+
+```ts
+async function nicknameOrGuest(): Promise<string> {
+  try {
+    // No await: this hands back a pending promise and leaves the try block.
+    return fetchNickname()
+  } catch {
+    return 'guest'
+  }
+}
+
+nicknameOrGuest().then((name) => console.log(`hello ${name}`))
+```
+
+<TerminalTranscript
+  label="console"
+  lines={[
+    { type: 'error', text: 'Uncaught (in promise) Error: profile service down' },
+  ]}
+/>
+
+Walk through why the `catch` never fires. `return fetchNickname()` creates a pending promise and returns it immediately. At that instant the function has *exited* the `try` block; there is nothing left to catch with. When the promise rejects a moment later, the code that could have handled it is long gone, so the rejection flows out to the caller instead. The caller here only attached a `.then`, so nothing handles it, and the runtime reports an unhandled rejection. The visible symptom of a forgotten `await` is almost always this: an error that should have been caught shows up somewhere far away, or nowhere at all.
+
+The same discipline applies to bare `.then` chains. A chain like `save().then(render)` with no `.catch` sends any rejection into the void. Either end every chain with `.catch`, or convert it to `await` inside a `try`. And note the asymmetry in `Promise.all`: if any input rejects, the combined promise rejects immediately with that first error. The other operations are not cancelled — they keep running and settle on their own — but their results are unreachable through the combined promise. A single `try` around `await Promise.all([...])` therefore catches a failure in any branch, but it cannot tell you what the surviving branches produced.
+
+## When you want every result, even the failures
+
+Sometimes one failure should not sink the batch. Loading a dashboard of independent widgets, you would rather render four widgets and one error tile than a blank page. `Promise.allSettled` never rejects; it waits for every input to settle and reports each outcome:
+
+```ts
+const outcomes = await Promise.allSettled([
+  fetchAfter('user', 10),
+  Promise.reject(new Error('orders down')),
+])
+
+console.log(outcomes[0])
+console.log(outcomes[1])
+```
+
+<TerminalTranscript
+  label="console"
+  lines={[
+    { type: 'output', text: "{ status: 'fulfilled', value: 'user' }" },
+    { type: 'output', text: "{ status: 'rejected', reason: Error: orders down }" },
+  ]}
+/>
+
+Each outcome is an object tagged with its status, in input order, exactly like `Promise.all` results. Reach for `allSettled` when the results are independent and partial success is useful. Stay with `all` when any failure makes the combined result meaningless, since failing fast is then a feature.
+
+All the examples in this lesson run as ordinary modules in Node.js or a browser; nothing depends on strict mode or environment-specific timers beyond `setTimeout`.
+
+## Common mistakes
+
+These are the failures interviewers probe for, because each one ships to production regularly:
+
+- Awaiting independent operations one at a time, paying the sum of the latencies instead of the maximum. Start the promises first, then `await Promise.all`.
+- Forgetting an `await` on a `return` inside a `try` block, so the rejection escapes the `catch` and surfaces as an unhandled rejection far from the bug.
+- Assuming `Promise.all` results arrive in completion order. They arrive in input order, always.
+- Ending a `.then` chain without a `.catch`, leaving rejections unhandled.
+- Using `Promise.all` when partial results matter, so one failed branch hides every successful result. That is `allSettled`'s job.
+- Believing `await` blocks the thread. It suspends the function and frees the thread, which is why other output can interleave between an `await` and the line after it.
+- Expecting an `async` function's body to run later. It runs synchronously up to the first `await`; only the remainder is deferred.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+The exercises retrace the lesson in order:
+
+1. Trace a program mixing `await` and `.then` and predict its exact output using the suspension model.
+2. Debug a lookup function whose forgotten `await` lets a rejection escape its `try`/`catch`.
+3. Implement `settleInOrder`, a combinator that runs tasks in parallel but reports every outcome in input order.
+4. Explain the sequential-versus-parallel decision rule and where rejections escape, in your own words.
