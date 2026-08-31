@@ -106,6 +106,7 @@ console.log(summarizeRequest({ loading: true }))
         "Define RequestState as a union of three members, each tagged with a literal status: 'loading', 'error', or 'success'.",
         'Give each member exactly the fields that exist in that state, with no optional fields left anywhere.',
         'Narrow with a switch on state.status so each branch reads its fields directly, without ?. or ?? fallbacks.',
+        "Update the sample call at the bottom to a value of the new union, such as { status: 'loading' }, since { loading: true } no longer type-checks.",
       ],
       staticChecks: [
         {
