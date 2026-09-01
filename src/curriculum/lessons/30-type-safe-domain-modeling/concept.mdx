@@ -1,14 +1,198 @@
 # Type-Safe Domain Modeling
 
-This placeholder concept page reserves the lesson slot for **Type-Safe Domain Modeling**. The content pass will replace it with the final interview-focused MDX lesson.
+Here is a bug the last four lessons cannot catch, sitting in the safest-looking code imaginable. `refundOrder` sends money back: its first parameter names the order being refunded, and its second names the customer who receives the money. Both are ids, and like most ids, both are strings. Everything in this lesson is checked by `tsc` in strict mode targeting ES2022, which is also how the practice problems are graded, and the transcripts show the real output.
 
-## What this lesson will cover
+```ts
+function refundOrder(orderId: string, customerId: string): string {
+  return `refund ${orderId} to customer ${customerId}`
+}
 
-- Core interview signals for type-safe domain modeling.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+const currentOrder = 'ord_741'
+const currentCustomer = 'cus_209'
+
+console.log(refundOrder(currentCustomer, currentOrder))
+```
+
+<TerminalTranscript
+  label="compiler and console"
+  lines={[
+    { type: 'command', text: 'tsc --noEmit' },
+    { type: 'info', text: 'exit code 0, no errors' },
+    { type: 'command', text: 'node refund.js' },
+    { type: 'output', text: 'refund cus_209 to customer ord_741' },
+  ]}
+/>
+
+Read the call against the parameter meanings. The order slot received the customer id, and the customer slot received the order id, so a real system behind this function would look up the wrong order and credit the wrong account. The compiler approved the swap because it never saw one. To TypeScript, both arguments are `string`, both parameters are `string`, and a string fits a string. The fact that `'ord_741'` identifies an order and `'cus_209'` identifies a customer lives entirely in variable names and prefixes, which is to say in the parts of the program the type checker does not read.
+
+This lesson is about closing that gap: teaching the compiler the distinctions your domain already makes, so that a value carries its meaning and not just its shape. The techniques are small — a branded type, a constructor function, a `readonly` marker — but together they change what a function signature can promise.
+
+## Two ids, one type
+
+The root problem is that `string` is one type wearing a hundred meanings. Order ids, customer ids, emails, country codes, file paths: structurally identical, semantically incompatible. TypeScript's assignability is structural, as every lesson since 25 has shown, so two aliases of `string` are interchangeable no matter how differently you name them. Writing `type OrderId = string` documents intent, but it builds no wall; an alias is just another name for the same type.
+
+To make the compiler tell two strings apart, their types have to differ structurally. That is done with a trick called a **branded type** (also "opaque type" or "nominal typing by hand"): intersect the primitive with a small object type carrying a marker property that exists nowhere at runtime.
+
+```ts
+type Brand<T, Name extends string> = T & { readonly __brand: Name }
+
+type OrderId = Brand<string, 'OrderId'>
+type CustomerId = Brand<string, 'CustomerId'>
+```
+
+`OrderId` is "a string that also has a `__brand` property of type `'OrderId'`". No actual string has such a property, and none ever will: the brand is a compile-time fiction, erased with the rest of the types. Its entire job is to make `OrderId`, `CustomerId`, and plain `string` structurally distinct from each other, so assignments between them stop type-checking. Watch the opening bug die:
+
+```ts
+function refundOrder(orderId: OrderId, customerId: CustomerId): string {
+  return `refund ${orderId} to customer ${customerId}`
+}
+
+declare const currentOrder: OrderId
+declare const currentCustomer: CustomerId
+
+console.log(refundOrder(currentCustomer, currentOrder))
+```
+
+<TerminalTranscript
+  label="tsc"
+  lines={[
+    {
+      type: 'error',
+      text: "refund.ts:13:25 - error TS2345: Argument of type 'CustomerId' is not assignable to parameter of type 'OrderId'.",
+    },
+    {
+      type: 'output',
+      text: "  Type 'CustomerId' is not assignable to type '{ readonly __brand: \"OrderId\"; }'.",
+    },
+    {
+      type: 'output',
+      text: "    Types of property '__brand' are incompatible.",
+    },
+    {
+      type: 'output',
+      text: "      Type '\"CustomerId\"' is not assignable to type '\"OrderId\"'.",
+    },
+  ]}
+/>
+
+The swap is now a compile error naming both types. And because an `OrderId` is still a string underneath, everything you do with strings keeps working: template literals, comparison, use as a `Map` key. The brand restricts who can *become* an `OrderId`, not what one can do.
+
+## Smart constructors: one door in
+
+The brand raises an immediate question: if no runtime value has a `__brand` property, how does an `OrderId` ever get made? The answer is a cast — `raw as OrderId` — and casts are exactly what lesson 26 warned against, because they assert without proving. The discipline that keeps the brand honest is to confine that cast to a single function, called a **smart constructor**, and let it be the only door into the type:
+
+```ts
+function orderId(raw: string): OrderId {
+  // The one place in the program where the claim is made.
+  return raw as OrderId
+}
+```
+
+One cast, wrapped once, used everywhere. Any code holding an `OrderId` got it from this function, so the meaning travels with the value from then on, checked at every boundary by the compiler.
+
+The pattern earns its name when the constructor does more than relabel. If a type has a validity rule, the constructor is where the rule lives, and the return type is where failure shows up. Here is a branded email whose constructor refuses malformed input:
+
+```ts
+type Email = Brand<string, 'Email'>
+
+function parseEmail(raw: string): Email | null {
+  const at = raw.indexOf('@')
+  if (at <= 0 || at !== raw.lastIndexOf('@')) {
+    return null
+  }
+  return raw as Email
+}
+
+function sendReceipt(to: Email): string {
+  return `receipt sent to ${to}`
+}
+
+const signupEmail = parseEmail('ada@example.com')
+
+console.log(sendReceipt(signupEmail))
+```
+
+<TerminalTranscript
+  label="tsc"
+  lines={[
+    {
+      type: 'error',
+      text: "email.ts:19:25 - error TS2345: Argument of type 'Email | null' is not assignable to parameter of type 'Email'.",
+    },
+    {
+      type: 'output',
+      text: "  Type 'null' is not assignable to type 'Email'.",
+    },
+    {
+      type: 'output',
+      text: "    Type 'null' is not assignable to type 'string'.",
+    },
+  ]}
+/>
+
+This error is the design working, not failing. `parseEmail` returns `Email | null`, so the compiler forces every caller through the narrowing you learned in lesson 26 — `if (signupEmail !== null)` — before an `Email` exists to pass along. Skipping validation is no longer a code-review catch; it does not compile. A raw string fares no better: passing `'ada@example.com'` directly to `sendReceipt` fails the same way the swapped ids did, because a plain `string` lacks the brand. Returning `null` does have a limit worth naming: it says the input was rejected but not why. Lesson 32 gives failures a channel that carries a reason; `null` is the right start while there is only one way to fail.
+
+## `readonly` keeps a valid value valid
+
+A smart constructor guarantees a value is valid at birth. That guarantee is worthless if any later line can reach in and break it. For object types, the `readonly` modifier closes that hole: a field marked `readonly` can be set when the object is created and never assigned again.
+
+```ts
+type LineItem = {
+  readonly sku: string
+  readonly quantity: number
+}
+
+const item: LineItem = { sku: 'sku_1', quantity: 2 }
+
+item.quantity = 5
+```
+
+<TerminalTranscript
+  label="tsc"
+  lines={[
+    {
+      type: 'error',
+      text: "cart.ts:8:6 - error TS2540: Cannot assign to 'quantity' because it is a read-only property.",
+    },
+  ]}
+/>
+
+Pair the two techniques and a small contract emerges: the constructor checks the rules once, `readonly` makes the result tamper-proof, and everything downstream can rely on the invariant without rechecking it. You met `readonly` mechanically in lesson 28, where `Readonly<T>` was one of the mapped utilities; this is the reason to reach for it. Like the brand, it is compile-time only — the emitted JavaScript object is an ordinary mutable object — so it guards against your own code's mistakes, not against a determined caller of the compiled output.
+
+## Signatures that carry proof
+
+Step back and look at what these pieces do together, because the sum is the actual lesson. Compare two signatures for the same operation:
+
+```ts
+function sendReceipt(to: string): string
+function sendReceipt(to: Email): string
+```
+
+The first accepts anything and inherits an obligation: validate inside, decide what to do with garbage, and repeat that dance in every function that touches an email. In a codebase full of such signatures, the same string gets re-validated at every layer, defensively, because no layer can trust the one before it. The second signature states a precondition the compiler enforces. An `Email` can only exist through `parseEmail`, so by the time `sendReceipt` runs, validity is settled; the body does its one job.
+
+The shape this creates in a program is worth naming: validate at the edge, where raw strings and numbers enter, and let the types carry the proof inward. The interior of the program stops being defensive because it never sees an unvalidated value. This is the same instinct lesson 26 applied to state — make the impossible unrepresentable — extended from "which fields exist" to "what the value means and what has been checked about it." One boundary remains outside its reach: data arriving at runtime from a server or a file, which no compile-time construct can vouch for. Crossing that boundary safely is the next lesson.
+
+## When a plain type is enough
+
+Branding has a price. Every branded type needs its constructor, call sites read one function call noisier, and teammates must learn which door makes which value. Pay that price where confusion is realistic and expensive: ids that travel together and swap silently, units that share a representation (cents and dollars, seconds and milliseconds), values whose validity was expensive to establish. Skip it where the type system already distinguishes values (`quantity: number` cannot be passed where a `string` sku goes), where a value is born and consumed within a few lines, or where no rule needs protecting. A domain model where everything is branded is as hard to read as one where nothing is; the brands should mark the places a mix-up would actually hurt.
+
+## Common mistakes
+
+These are the errors that show up most often in interviews and code review:
+
+- Modeling every id and unit as a bare `string` or `number`, so arguments of the same primitive type can swap silently, as the opening example showed.
+- Writing `type OrderId = string` and expecting safety from it. An alias is another name for the same type; only a structural difference, such as a brand, makes two string types distinct.
+- Scattering `as OrderId` casts through the codebase instead of confining the cast to one smart constructor, which leaves the brand meaning nothing.
+- Having a validating constructor return the branded type directly instead of `T | null`, so invalid input either throws unannounced or sails through unvalidated.
+- Validating a value and then storing it in a mutable structure, letting later code break the invariant the constructor checked. Mark the fields `readonly`.
+- Re-validating inside every function instead of demanding the validated type in the signature, which duplicates checks and hides which layer is actually responsible.
+- Expecting brands or `readonly` to exist at runtime. Both are erased; they constrain your code during compilation and do nothing against data arriving from outside.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+The exercises build the lesson's ideas in the order you met them:
+
+1. Build a branded email type with a validating smart constructor, and a consumer only validated emails can reach.
+2. Write a constructor that enforces a numeric invariant and returns a `readonly` object that keeps it.
+3. Refactor the swappable refund ids from the opening into branded types with constructors.
+4. Explain, in your own words, what a brand changes for the compiler and when branding is not worth its cost.
