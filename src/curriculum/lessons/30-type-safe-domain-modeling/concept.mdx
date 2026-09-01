@@ -1,6 +1,6 @@
 # Type-Safe Domain Modeling
 
-Here is a bug the last four lessons cannot catch, sitting in the safest-looking code imaginable. `refundOrder` sends money back: its first parameter names the order being refunded, and its second names the customer who receives the money. Both are ids, and like most ids, both are strings. Everything in this lesson is checked by `tsc` in strict mode targeting ES2022, which is also how the practice problems are graded, and the transcripts show the real output.
+The last four lessons armed the compiler against a lot, but the bug below slips past all of it, sitting in the safest-looking code imaginable. `refundOrder` sends money back: its first parameter names the order being refunded, and its second names the customer who receives the money. Both are ids, and like most ids, both are strings. Everything in this lesson is checked by `tsc` in strict mode targeting ES2022, which is also how the practice problems are graded, and the transcripts show the real output.
 
 ```ts
 function refundOrder(orderId: string, customerId: string): string {
