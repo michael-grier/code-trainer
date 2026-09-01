@@ -1,14 +1,221 @@
 # Conditional Types and Inference
 
-This placeholder concept page reserves the lesson slot for **Conditional Types and Inference**. The content pass will replace it with the final interview-focused MDX lesson.
+The last lesson ended with a promise: the utility types you were handed are ordinary aliases you could write yourself. This lesson keeps that promise. But first, here is the kind of bug that the machinery exists to prevent, one that lesson 28's tools cannot reach, because the two types involved never sit side by side. They are connected through a function.
 
-## What this lesson will cover
+`loadTags` fetches one page of tags from a server. Its payload carries two fields: `items` is the list of tags to show, and `cursor` is the token to request the next page with, so the field being absent means there are no more pages. Elsewhere in the app, someone described that payload by hand, back when the token field was called `nextCursor`. Everything below is checked by `tsc` in strict mode targeting ES2022, and the transcripts show the real output.
 
-- Core interview signals for conditional types and inference.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+```ts
+type TagPage = { items: string[]; nextCursor?: string }
+
+async function loadTags() {
+  const response = { items: ['ts', 'react'], cursor: 'page-2' }
+  return response
+}
+
+async function main() {
+  const page: TagPage = await loadTags()
+  console.log(page.nextCursor)
+}
+
+void main()
+```
+
+<TerminalTranscript
+  label="compiler and console"
+  lines={[
+    { type: 'command', text: 'tsc --noEmit' },
+    { type: 'info', text: 'exit code 0, no errors' },
+    { type: 'command', text: 'node tags.js' },
+    { type: 'output', text: 'undefined' },
+  ]}
+/>
+
+Read the value against the field meanings. The payload carries `cursor: 'page-2'`, which says another page exists. But the code reads `page.nextCursor`, gets `undefined`, and `undefined` means done. Every list in the app quietly shows page one and stops. And the compiler approved all of it, because the assignment is genuinely legal: the payload has the `items` that `TagPage` requires, `nextCursor` is optional so its absence is fine, and an extra `cursor` property on a value that arrives through a variable is allowed. This is lesson 28's drift bug wearing a new disguise. The hand-written type fell behind its source, and no single line contradicts another, so no line fails.
+
+Lesson 28's answer was to derive the copy from the source. The same answer works here, but the source is not an object type you can hand to `Partial` or `Pick`. It is the return value of an async function, so the derivation has to take a function type apart and then take a promise apart:
+
+```ts
+async function loadTags() {
+  const response = { items: ['ts', 'react'], cursor: 'page-2' }
+  return response
+}
+
+type TagPage = Awaited<ReturnType<typeof loadTags>>
+
+async function main() {
+  const page: TagPage = await loadTags()
+  console.log(page.nextCursor)
+}
+
+void main()
+```
+
+<TerminalTranscript
+  label="tsc"
+  lines={[
+    {
+      type: 'error',
+      text: "tags.ts:10:20 - error TS2339: Property 'nextCursor' does not exist on type '{ items: string[]; cursor: string; }'.",
+    },
+  ]}
+/>
+
+`TagPage` is now computed from `loadTags` itself, so it says `cursor`, and the one stale read in the app fails to compile with the exact location to fix. `ReturnType` extracts what a function returns, and `Awaited` unwraps the promise around it. Lesson 28 presented both as built-ins to memorize. They are not primitives, though. Each one is a **conditional type**, and by the end of this lesson you will be able to write both.
+
+## A type that asks a question
+
+A conditional type is an if/else written in the type language:
+
+```ts
+type Answer = SomeType extends OtherType ? TypeIfYes : TypeIfNo
+```
+
+`extends` here asks: is every value of `SomeType` also a valid value of `OtherType`? If so, the whole expression becomes the type after `?`; otherwise it becomes the type after `:`. Nothing about this runs at runtime. The compiler answers the question while checking your code, and the result is a type like any other.
+
+On its own that looks like a curiosity. It becomes a tool when the type being asked about is a type parameter, because then one alias can respond differently to different inputs:
+
+```ts
+type IsPage<T> = T extends { items: unknown[] } ? 'page' : 'single'
+
+type A = IsPage<{ items: string[]; cursor: string }> // 'page'
+type B = IsPage<number> // 'single'
+```
+
+The question `T extends { items: unknown[] }` is structural, like every TypeScript compatibility check: any type carrying an `items` array satisfies it, extra fields and all. So `A` resolves to `'page'` and `B` to `'single'`, decided entirely at compile time.
+
+## `infer`: naming the part you match
+
+Asking yes-or-no questions is half the story. The opener's utilities do something stronger: they reach into a type and pull a piece out. The keyword for that is `infer`, and it may only appear inside the `extends` clause of a conditional type. Where you write `infer U`, you are telling the compiler: if the overall shape matches, capture whatever type sits at this position and call it `U`.
+
+Here is promise-unwrapping, the essential move inside `Awaited`:
+
+```ts
+type UnwrapPromise<T> = T extends Promise<infer U> ? U : T
+
+type Tags = UnwrapPromise<Promise<string[]>> // string[]
+type Count = UnwrapPromise<number> // number
+```
+
+Walk the first one through. Is `Promise<string[]>` a `Promise<`something`>`? Yes, and the something is `string[]`, so `U` captures `string[]` and the conditional resolves to it. For `Count`, a plain `number` is not a promise, so the match fails and the `: T` branch hands the type back untouched. That fallback branch is a design decision worth noticing: it makes the alias safe to apply to anything, promise or not. The library's real `Awaited` adds handling for nested promises and for other then-ables, but this two-branch pattern is its core.
+
+`infer` can capture from any position in a matched shape, including a function's return. This is `ReturnType`, nearly as the standard library writes it:
+
+```ts
+type MyReturnType<T> = T extends (...args: never[]) => infer R ? R : never
+
+function formatCents(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`
+}
+
+type Formatted = MyReturnType<typeof formatCents> // string
+```
+
+The question is: is `T` a function? If so, capture what it returns as `R` and resolve to it. The library's own version reads `T extends (...args: any) => infer R ? R : any`, one of the few places `any` earns its keep, because the utility must accept functions of every parameter list without influencing them. Inside your own code the rule from lesson 25 stands: `any` is the enemy. Inside a library type that must match everything, it is the point.
+
+With those two aliases read, the opener's fix is no longer magic. `ReturnType<typeof loadTags>` matches the function shape and captures `Promise<{ items: string[]; cursor: string }>`. `Awaited` matches the promise shape and captures the payload. Two structural questions, two captures, and the hand-written copy is replaced by a computation that cannot fall behind.
+
+## Distribution: the question is asked once per union member
+
+Point a conditional type at a union and something surprising happens: the compiler does not ask the question once about the whole union. When the type before `extends` is a bare type parameter, the conditional **distributes**: it runs separately for each member of the union, and the results are joined back into a union.
+
+That behavior is exactly what makes conditional types useful as filters. The standard library's `Exclude`, which removes members from a union, is one line:
+
+```ts
+type Exclude<T, U> = T extends U ? never : T
+```
+
+To see the filtering happen, apply it to a union of notification channels. This is the subtlest step in the lesson, so walk it member by member:
+
+```ts
+type Channel = 'email' | 'sms' | 'webhook'
+
+type Without<T, U> = T extends U ? never : T
+
+type Reachable = Without<Channel, 'webhook'>
+```
+
+The compiler splits `Channel` and asks the question three times. Is `'email'` assignable to `'webhook'`? No, so this round resolves to the `: T` branch, and `T` in this round is just `'email'`. Is `'sms'` assignable to `'webhook'`? No, so `'sms'`. Is `'webhook'` assignable to `'webhook'`? Yes, so this round resolves to `never`. Joining the rounds gives `'email' | 'sms' | never`, and here the second half of the trick lands: `never` is the type with no values, from lesson 26, and a member with no values adds nothing to a union, so the compiler drops it. `Reachable` is `'email' | 'sms'`, and the filtered-out member is really gone:
+
+```ts
+const banned: Reachable = 'webhook'
+```
+
+<TerminalTranscript
+  label="tsc"
+  lines={[
+    {
+      type: 'error',
+      text: "channels.ts:7:7 - error TS2322: Type '\"webhook\"' is not assignable to type 'Reachable'.",
+    },
+  ]}
+/>
+
+Flip which branch keeps and which discards and you have `Extract`, the library's keep-only-these filter: `T extends U ? T : never`. Both utilities are just distribution plus the vanishing act of `never`.
+
+One consequence deserves a warning, because it reads like a bug the first time you meet it. Distribution happens only when the tested type is a bare parameter, and it happens whether or not you wanted it. If you mean to ask about a union as a single whole, wrap both sides in one-element tuples, `[T] extends [U]`, which blocks distribution because the parameter is no longer bare. The difference is easy to see with `boolean`: it is secretly the union `true | false`, so a distributive conditional splits it and answers twice.
+
+## Filtering keys with `as` and `never`
+
+Lesson 28 showed that a mapped type can rename keys with an `as` clause, and parked one sentence for later: an `as` clause that produces `never` drops the key entirely. A conditional type is how you produce that `never` on purpose, and together they filter an object type's keys by what you know about each one.
+
+The question a key filter asks is per-property: keep the key if its value type passes a test. Here is a filter that keeps only the string-valued properties of a type, then reads off their names:
+
+```ts
+type StringKeys<T> = keyof {
+  [K in keyof T as T[K] extends string ? K : never]: T[K]
+}
+```
+
+Read it from the inside. `[K in keyof T ...]` is lesson 28's loop over the keys. For each key, the `as` clause asks a conditional question about the value type: does `T[K]` extend `string`? If yes, the key maps to itself and survives. If no, it maps to `never`, and a key renamed to `never` is dropped from the result. What remains is a smaller object type holding only the string-valued properties, and `keyof` turns it into the union of their names.
+
+Applied to an order record, the derivation does what a hand-written union of key names cannot: it stays true as the record evolves.
+
+```ts
+type Order = {
+  id: string
+  customer: string
+  itemCount: number
+  totalCents: number
+}
+
+type SearchableKey = StringKeys<Order> // 'id' | 'customer'
+
+const sortKey: SearchableKey = 'itemCount'
+```
+
+<TerminalTranscript
+  label="tsc"
+  lines={[
+    {
+      type: 'error',
+      text: "keys.ts:14:7 - error TS2322: Type '\"itemCount\"' is not assignable to type '\"customer\" | \"id\"'.",
+    },
+  ]}
+/>
+
+The number-valued key is rejected, and notice what the error message prints: not the alias name but `'"customer" | "id"'`, the computed union itself. Add a `region: string` field to `Order` and it becomes searchable with no edit anywhere else. Rename `customer` and every stale `'customer'` argument in the codebase stops compiling. This is the same drift protection lesson 28 built for object shapes, now pointed at key sets that depend on value types.
+
+## When a hand-written type is still right
+
+The judgment call from lesson 28 carries over unchanged, so one paragraph is enough. Derive when the relationship is mechanical and has one source of truth: the awaited result of your own function, a union minus some members, the keys passing a test. Declare by hand when the resemblance is coincidental or crosses an ownership boundary, and be doubly careful with `ReturnType` pointed at a function you do not own, because it welds someone else's changes directly into your contracts. A conditional type is also a reading cost: the next person must replay the question, the capture, and the distribution in their head. When a two-member union will not grow, writing it out is not drift waiting to happen. It is just the simpler sentence.
+
+## Common mistakes
+
+These are the errors that show up most often in interviews and code review:
+
+- Hand-copying a function's result type when `Awaited<ReturnType<typeof fn>>` derives it, leaving a copy that drifts silently the way the opening example did.
+- Expecting a conditional to test a union as one whole. A bare type parameter distributes member by member; wrap both sides in tuples, `[T] extends [U]`, when you mean the union in one piece.
+- Forgetting that `never` vanishes from unions. A filter that removes every member leaves `never`, and the compile error surfaces where the value is used, far from the filter that caused it.
+- Reading `infer` as a runtime inspection. It matches type structure during compilation; it cannot look inside values, and it may only appear in the `extends` clause of a conditional type.
+- Writing `infer` positions the shape cannot fill, such as capturing an element type from a type that is not an array, and being surprised the fallback branch answered instead.
+- Stacking nested conditional types to route behavior that a discriminated union and a `switch` from lesson 26 would handle more clearly, with runtime narrowing the reader can step through.
+- Copying the standard library's `any`-typed utility signatures into application code. The library needs `any` to match every function; your code almost never does.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+The exercises build the lesson's ideas in the order you met them:
+
+1. Write a conditional type with `infer` that unwraps one array layer, and the function whose return type it computes.
+2. Build the `Exclude` filter yourself and watch distribution remove banned members from a channel union.
+3. Refactor a hand-written union of searchable keys into a derivation with `as` and `never` that tracks its source.
+4. Explain, in your own words, how a conditional type distributes and what deriving through a function buys over copying.
