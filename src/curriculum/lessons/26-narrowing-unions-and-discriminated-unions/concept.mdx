@@ -1,6 +1,6 @@
 # Narrowing, Unions, and Discriminated Unions
 
-Here is a state object you will meet, in some costume, in almost every codebase. It describes a network request using a boolean flag and two optional fields. Every example in this lesson is checked by `tsc` in strict mode, and the transcripts show the compiler's real output.
+Here is a state object you will meet, in some costume, in almost every codebase. It tracks a network request with three fields, one for each stage the request can be in: `loading` is true while the request is still out, `error` holds a message if it came back a failure, and `data` holds the results if it came back a success. Every example in this lesson is checked by `tsc` in strict mode, and the transcripts show the compiler's real output.
 
 ```ts
 type RequestState = {
@@ -21,7 +21,7 @@ const state: RequestState = {
   lines={[{ type: 'output', text: 'state.ts compiled with no errors' }]}
 />
 
-Read that value again. It claims to be loading, failed, and finished, all at once. No such request exists, yet the compiler is perfectly happy, because the type honestly permits it: `loading` can be anything, and each optional field can be present or absent independently. Three fields with two settings each gives eight combinations, and only three of them describe a real request. The other five are bugs waiting for a code path to reach them.
+Now read that value against those meanings. `loading: true` says the request is still out, the `error` string says it came back a failure, and the `data` array says it came back a success. One request cannot be all three at once, yet the compiler is perfectly happy, because the type honestly permits it: `loading` can be anything, and each optional field can be present or absent independently. Three fields with two settings each gives eight combinations, and only three of them describe a real request. The other five are bugs waiting for a code path to reach them.
 
 Code that consumes this shape has to guess. Should a renderer trust `loading` first, or check `error` first? If `data` is present while `loading` is true, is that stale data worth showing? Different call sites will guess differently, and the compiler cannot referee, because the type says every guess is fine. This lesson is about making the type say what is actually true, so the compiler can catch the nonsense for you. The tool for that is the union type, and the skill for consuming one is called narrowing.
 
