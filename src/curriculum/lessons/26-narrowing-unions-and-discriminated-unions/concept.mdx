@@ -1,14 +1,273 @@
 # Narrowing, Unions, and Discriminated Unions
 
-This placeholder concept page reserves the lesson slot for **Narrowing, Unions, and Discriminated Unions**. The content pass will replace it with the final interview-focused MDX lesson.
+Here is a state object you will meet, in some costume, in almost every codebase. It tracks a network request with three fields, one for each stage the request can be in: `loading` is true while the request is still out, `error` holds a message if it came back a failure, and `data` holds the results if it came back a success. Every example in this lesson is checked by `tsc` in strict mode, and the transcripts show the compiler's real output.
 
-## What this lesson will cover
+```ts
+type RequestState = {
+  loading: boolean
+  error?: string
+  data?: string[]
+}
 
-- Core interview signals for narrowing, unions, and discriminated unions.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+const state: RequestState = {
+  loading: true,
+  error: 'request timed out',
+  data: ['ada', 'grace'],
+}
+```
+
+<TerminalTranscript
+  label="tsc"
+  lines={[{ type: 'output', text: 'state.ts compiled with no errors' }]}
+/>
+
+Now read that value against those meanings. `loading: true` says the request is still out, the `error` string says it came back a failure, and the `data` array says it came back a success. One request cannot be all three at once, yet the compiler is perfectly happy, because the type honestly permits it: `loading` can be anything, and each optional field can be present or absent independently. Three fields with two settings each gives eight combinations, and only three of them describe a real request. The other five are bugs waiting for a code path to reach them.
+
+Code that consumes this shape has to guess. Should a renderer trust `loading` first, or check `error` first? If `data` is present while `loading` is true, is that stale data worth showing? Different call sites will guess differently, and the compiler cannot referee, because the type says every guess is fine. This lesson is about making the type say what is actually true, so the compiler can catch the nonsense for you. The tool for that is the union type, and the skill for consuming one is called narrowing.
+
+## A union is the honest list of possibilities
+
+A **union type** lists the alternatives a value might be, separated by `|`. The type `string | number` means "this is a string, or it is a number, and you do not yet know which." That last clause has teeth. Until your code finds out which alternative it holds, TypeScript only lets you do things that are safe for *every* member of the list.
+
+```ts
+export function shout(value: string | number): string {
+  return value.toUpperCase()
+}
+```
+
+<TerminalTranscript
+  label="tsc"
+  lines={[
+    {
+      type: 'error',
+      text: "shout.ts:2:16 - error TS2339: Property 'toUpperCase' does not exist on type 'string | number'.",
+    },
+    {
+      type: 'output',
+      text: "  Property 'toUpperCase' does not exist on type 'number'.",
+    },
+  ]}
+/>
+
+The second line of the message is the important one. The compiler is not saying strings lack `toUpperCase`. It is saying that if `value` happens to be the number member of the union, this line would crash, so the call is rejected for the whole union. To use a member-specific operation, you first have to rule the other members out.
+
+## Narrowing: the compiler reads your if statements
+
+Ruling members out is called **narrowing**, and the surprising part is that you do it with ordinary runtime checks. TypeScript reads your control flow and shrinks the type inside each branch.
+
+```ts
+export function shout(value: string | number): string {
+  if (typeof value === 'string') {
+    // Inside this branch, value has type string, so string
+    // methods are allowed again.
+    return value.toUpperCase()
+  }
+
+  // The string case returned above, so only number remains here.
+  return String(value)
+}
+
+console.log(shout('quiet please'))
+console.log(shout(404))
+```
+
+<TerminalTranscript
+  label="console"
+  lines={[
+    { type: 'output', text: 'QUIET PLEASE' },
+    { type: 'output', text: '404' },
+  ]}
+/>
+
+Notice that nothing new was invented. `typeof value === 'string'` is plain JavaScript that runs and returns a boolean. The compiler simply understands what that boolean proves: inside the `if`, `value` can only be `string`, and after the branch returns, only `number` is left. One check serves both the runtime and the type system, which is exactly what you want at a boundary.
+
+`typeof` is one of several checks the compiler understands, and each fits a different kind of union member:
+
+- `typeof value === 'string'` separates the primitive kinds: string, number, boolean.
+- `value === null` and `value === undefined` rule the empty values in or out. Comparing against any literal value works the same way.
+- `'data' in value` separates object shapes by asking which properties exist.
+- `value instanceof Error` separates class instances by their constructor.
+
+One check deserves a warning before you lean on it: plain truthiness. Writing `if (value)` does rule out `null` and `undefined`, but it also rules out every falsy value, including `''` and `0`, and the compiler will not stop you, because the narrowing is technically correct.
+
+```ts
+function labelComment(text: string | null): string {
+  if (text) {
+    return `comment: ${text}`
+  }
+  return 'no comment'
+}
+
+console.log(labelComment('nice work'))
+console.log(labelComment(null))
+console.log(labelComment(''))
+```
+
+<TerminalTranscript
+  label="console"
+  lines={[
+    { type: 'output', text: 'comment: nice work' },
+    { type: 'output', text: 'no comment' },
+    { type: 'output', text: 'no comment' },
+  ]}
+/>
+
+The empty string was a real comment, just an empty one, and it silently fell into the missing branch. This compiles, runs, and is wrong. When only `null` or `undefined` should be excluded, compare against them explicitly: `if (text !== null)`.
+
+## The discriminant: one field that names the case
+
+Now back to the request state from the opening. The honest description of a request is not one object with independent flags. It is three different shapes, exactly one of which exists at a time. A union can say precisely that, with one extra ingredient: every member carries the same property, here `status`, holding a different fixed string. A property like that is called the **discriminant**, and a union built around one is a **discriminated union** (you will also hear "tagged union").
+
+```ts
+type RequestState =
+  | { status: 'loading' }
+  | { status: 'error'; message: string }
+  | { status: 'success'; data: string[] }
+```
+
+Note what each member's `status` is: not `string`, but a **literal type** like `'loading'`, a type with exactly one allowed value. That is what lets each member be told apart from the others. And because each member declares exactly the fields that exist in that state, no member has room for a contradiction. Watch the compiler reject the impossible value that sailed through the opening example:
+
+```ts
+const state: RequestState = { status: 'loading', data: ['ada', 'grace'] }
+```
+
+<TerminalTranscript
+  label="tsc"
+  lines={[
+    {
+      type: 'error',
+      text: "state.ts:6:50 - error TS2353: Object literal may only specify known properties, and 'data' does not exist in type '{ status: \"loading\"; }'.",
+    },
+  ]}
+/>
+
+The guard works in the other direction too. An error state cannot quietly drop its message:
+
+```ts
+const state: RequestState = { status: 'error' }
+```
+
+<TerminalTranscript
+  label="tsc"
+  lines={[
+    {
+      type: 'error',
+      text: "state.ts:6:7 - error TS2322: Type '{ status: \"error\"; }' is not assignable to type 'RequestState'.",
+    },
+    {
+      type: 'output',
+      text: "  Property 'message' is missing in type '{ status: \"error\"; }' but required in type '{ status: \"error\"; message: string; }'.",
+    },
+  ]}
+/>
+
+Consuming the union is where the pattern pays off daily. Checking the discriminant narrows the whole object, so each branch sees exactly the fields that exist in that state, and a `switch` on the discriminant reads like a table of the possible cases:
+
+```ts
+export function summarizeRequest(state: RequestState): string {
+  switch (state.status) {
+    case 'loading':
+      // Narrowed to { status: 'loading' }: there is nothing else to read.
+      return 'still loading'
+    case 'error':
+      // Narrowed to the error member, so message is available and required.
+      return `failed: ${state.message}`
+    case 'success':
+      // Narrowed to the success member, so data is a plain string[],
+      // with no undefined to fend off.
+      return `loaded ${state.data.length} (${state.data.join(', ')})`
+  }
+}
+
+console.log(summarizeRequest({ status: 'error', message: 'request timed out' }))
+console.log(summarizeRequest({ status: 'success', data: ['ada', 'grace'] }))
+console.log(summarizeRequest({ status: 'loading' }))
+```
+
+<TerminalTranscript
+  label="console"
+  lines={[
+    { type: 'output', text: 'failed: request timed out' },
+    { type: 'output', text: 'loaded 2 (ada, grace)' },
+    { type: 'output', text: 'still loading' },
+  ]}
+/>
+
+Compare this with the flags version. There is no guessing about which field to trust first, no `state.data?.length ?? 0` to paper over a maybe-missing field, and no reachable path where the function sees a contradictory state, because no such value can be constructed.
+
+## Exhaustiveness: making the compiler read your switch
+
+One risk remains. Unions grow. Someone adds a fourth state next quarter, and every `switch` over the union is suddenly missing a case, failing silently at runtime. You can make the compiler catch that too, using the type `never`.
+
+`never` is the type with no values at all. Nothing can be assigned to it. Inside a `switch` over a discriminated union, the compiler subtracts each handled member from the union, so in a `default` branch after every case is handled, the subtraction has nothing left and the value's type is `never`. That fact becomes a tripwire:
+
+```ts
+export function summarizeRequest(state: RequestState): string {
+  switch (state.status) {
+    case 'loading':
+      return 'still loading'
+    case 'error':
+      return `failed: ${state.message}`
+    case 'success':
+      return `loaded ${state.data.length} (${state.data.join(', ')})`
+    default: {
+      // Every member is handled, so state has type never here and
+      // this assignment compiles. It exists purely as a tripwire.
+      const unhandled: never = state
+      return unhandled
+    }
+  }
+}
+```
+
+<TerminalTranscript
+  label="tsc"
+  lines={[{ type: 'output', text: 'state.ts compiled with no errors' }]}
+/>
+
+Walk through the subtraction on a concrete change to see the tripwire fire. Suppose the union gains an `idle` member:
+
+```ts
+type RequestState =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'error'; message: string }
+  | { status: 'success'; data: string[] }
+```
+
+Now follow an `{ status: 'idle' }` value through the unchanged `switch`. It fails the `'loading'` test, the `'error'` test, and the `'success'` test, so it lands in `default`. The compiler performs the same elimination: it started with four members, the three `case` lines subtracted three, and one member is left over. So in `default`, `state` is not `never` anymore. It is `{ status: 'idle' }`, and the assignment that used to be fine now refuses to compile:
+
+<TerminalTranscript
+  label="tsc"
+  lines={[
+    {
+      type: 'error',
+      text: "state.ts:16:13 - error TS2322: Type '{ status: \"idle\"; }' is not assignable to type 'never'.",
+    },
+  ]}
+/>
+
+That error message is the whole point of the pattern. Adding a union member instantly turns every unhandled `switch` into a compile error that names the missed case and its exact location. The person growing the union gets a to-do list from the compiler instead of a bug report from production. This check is called **exhaustiveness checking**, and the `default` branch that performs it costs two lines.
+
+One boundary is worth restating before you rely on any of this: types are erased before the code runs. A discriminated union constrains the values *your program* constructs. Data arriving from outside, such as a JSON response, gets whatever type you claim for it, checked against nothing at runtime. Validating external data is its own lesson later in this track; within your own code, the union is the guarantee.
+
+## Common mistakes
+
+These are the errors that show up most often in interviews and code review:
+
+- Modeling alternatives as one object of boolean flags and optional fields, so impossible combinations compile and every consumer guesses about precedence.
+- Narrowing with plain truthiness when only `null` or `undefined` should be excluded, silently misrouting `''`, `0`, and `false`.
+- Giving the discriminant type `string` instead of a literal type per member, which makes the members indistinguishable and disables narrowing.
+- Reaching for a type assertion (`value as SomeShape`) instead of a narrowing check. An assertion silences the compiler without proving anything, and it keeps compiling after the shape changes.
+- Ending a `switch` over a union with a catch-all `default` that returns a fallback value. It swallows new members silently; a `never`-typed tripwire turns them into compile errors instead.
+- Handling union members in `if`/`else` chains that mix discriminant checks with unrelated conditions, so the compiler cannot subtract members cleanly.
+- Trusting a discriminated union to validate external data. Types are erased at runtime, so a parsed JSON payload can violate the union it was labeled with.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+The exercises build the lesson's ideas in the order you met them:
+
+1. Narrow a union of primitives with explicit checks, keeping falsy values honest.
+2. Refactor the flags-and-optionals request state into a discriminated union with a `switch`.
+3. Replace an assertion-riddled `if`/`else` chain with an exhaustive `switch` that a growing union cannot silently outdate.
+4. Explain, in your own words, why the tagged union removes impossible states and what the `never` tripwire buys.

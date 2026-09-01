@@ -1,14 +1,180 @@
 # Generics and Reusable Abstractions
 
-This placeholder concept page reserves the lesson slot for **Generics and Reusable Abstractions**. The content pass will replace it with the final interview-focused MDX lesson.
+A helper that returns the first item of any array should be the least dangerous code in the repository. This one ships a crash, because its author reached for `any` to make it work for arrays of anything.
 
-## What this lesson will cover
+```ts
+function firstItem(items: any[]): any {
+  return items[0]
+}
 
-- Core interview signals for generics and reusable abstractions.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+const label = firstItem(['draft', 'sent'])
+const rounded = label.toPrecision(2)
+```
+
+Ask the compiler what it thinks of that last line, which calls a number method on what is clearly a string.
+
+<TerminalTranscript
+  label="compiler"
+  lines={[{ type: 'info', text: 'No errors found.' }]}
+/>
+
+Nothing. The code compiles, ships, and then fails the first time it runs.
+
+<TerminalTranscript
+  label="console"
+  lines={[{ type: 'error', text: 'TypeError: label.toPrecision is not a function' }]}
+/>
+
+The problem is what `any` does to information. The caller handed `firstItem` an array of strings, so the answer to "what comes back?" was sitting right there at the call site. The `any` in the signature threw that answer away. From the compiler's point of view, `label` could be anything at all, so every operation on it is allowed, including the ones that crash. All examples in this lesson are checked under strict mode with ES2022 and no DOM types, and remember what strict mode cannot change: after compilation the types are erased, so the JavaScript that runs is identical either way. The only difference is whether mistakes are caught before that JavaScript runs or after.
+
+This lesson is about the tool that fixes this: the type parameter. A helper with a type parameter works for arrays of anything, exactly like the `any` version, but it keeps each caller's types instead of erasing them.
+
+## A type parameter keeps what the caller gave
+
+A **type parameter** is a named placeholder for a type the caller will supply. You declare it in angle brackets before the parameter list, then use it wherever the placeholder type should appear. A function with at least one type parameter is called a **generic** function.
+
+```ts
+function firstItem<T>(items: T[]): T {
+  // The body is unchanged. Only the signature learned something.
+  return items[0]
+}
+
+const label = firstItem(['draft', 'sent'])
+const rounded = label.toPrecision(2)
+```
+
+<TerminalTranscript
+  label="compiler"
+  lines={[
+    {
+      type: 'error',
+      text: "error TS2339: Property 'toPrecision' does not exist on type 'string'.",
+    },
+  ]}
+/>
+
+Read the signature as a sentence: "give me an array of some type `T`, and I will give you back one `T`." The caller never wrote `T` anywhere. TypeScript looked at the argument `['draft', 'sent']`, saw an array of strings, and filled in `T = string` for that one call. This filling-in is called **inference**, and it happens fresh at every call site, so `firstItem([1, 2, 3])` gets `T = number` in the same program. That is the whole trade: one extra letter in the signature, and every caller keeps its own types from argument to result.
+
+It is worth being precise about what `T` is not. It is not a runtime value; nothing named `T` exists in the compiled JavaScript. And a generic is not the same as a wide type. `firstItem(items: unknown[]): unknown` also accepts every array, but it answers every caller with `unknown`, forcing them to narrow the result they already knew the type of. The type parameter is the only tool that links what goes in to what comes out.
+
+There is one honest caveat: `items[0]` on an empty array is `undefined` at runtime, and the return type `T` does not say so. A more truthful signature is `firstItem<T>(items: T[]): T | undefined`, or a version that takes a fallback of type `T`, which is exactly the first practice problem.
+
+## Constraints say what the function needs
+
+An unconstrained `T` can be filled by any type, which means the function body may not assume anything about it. Try to compare lengths and the compiler objects, because `T` might be filled with something that has no `length`. The fix is a **constraint**: `extends` after the type parameter restricts which types are allowed to fill it, and in exchange the body may use what the constraint promises.
+
+Say a prompt asks: given two values, return whichever is longer, and it should work for strings and arrays alike. Both have a numeric `length`, and that is all the function needs.
+
+```ts
+function longest<T extends { length: number }>(first: T, second: T): T {
+  // The constraint guarantees .length exists on both values.
+  return first.length >= second.length ? first : second
+}
+
+const winner = longest([1, 2, 3], [4, 5])
+const word = longest('typescript', 'types')
+const bad = longest(10, 20)
+```
+
+<TerminalTranscript
+  label="compiler"
+  lines={[
+    {
+      type: 'error',
+      text: "error TS2345: Argument of type 'number' is not assignable to parameter of type '{ length: number; }'.",
+    },
+  ]}
+/>
+
+`winner` is inferred as `number[]` and `word` as `string`, each call keeping its own type. The call with two numbers is rejected, because numbers have no `length`. Notice that the constraint runs in both directions. It is a floor for the caller, naming the least a type must provide to get in, and a ceiling for the body, naming the most it may assume about `T`. Constrain to exactly what the body uses, no more.
+
+## keyof ties one argument to another
+
+The examples so far linked an input to an output. The most useful generic pattern in day-to-day code links two inputs to each other: an object and the name of one of its properties. This takes two type parameters working together, and it is the subtlest step in this lesson, so walk through it slowly on a concrete value.
+
+The operator **`keyof`** turns an object type into the union of its property names. For the type `{ name: string; wins: number }`, the type `keyof` produces is `'name' | 'wins'`, a type whose only values are those two exact strings. That gives us the vocabulary to say "the second argument must name a real property of the first":
+
+```ts
+function getProperty<T, K extends keyof T>(record: T, key: K): T[K] {
+  // K can only be filled with a real property name of T,
+  // so this lookup can never miss at the type level.
+  return record[key]
+}
+
+const trainer = { name: 'Ada', wins: 3 }
+const wins = getProperty(trainer, 'wins')
+const oops = getProperty(trainer, 'winz')
+```
+
+<TerminalTranscript
+  label="compiler"
+  lines={[
+    {
+      type: 'error',
+      text: `error TS2345: Argument of type '"winz"' is not assignable to parameter of type '"name" | "wins"'.`,
+    },
+  ]}
+/>
+
+Now trace the good call, `getProperty(trainer, 'wins')`, one inference at a time. From the first argument, TypeScript fills `T = { name: string; wins: number }`. That makes `keyof T` the union `'name' | 'wins'`, so the constraint on `K` says the second argument must be one of those two strings. The literal `'wins'` qualifies, and `K` is filled with the exact string type `'wins'`, not the general type `string`. Finally the return type `T[K]` means "the type of the property named `K` on `T`," so `T['wins']` resolves to `number`, and `wins` is a `number` with no cast and no check. The typo call fails because `'winz'` is not in the union.
+
+Every piece did a job: `T` captured the caller's object shape, `keyof T` listed its legal keys, the constraint held `K` inside that list, and `T[K]` read the answer back out. Misspell a key anywhere in the codebase and the compiler points at it. The `pluck` practice problem applies this same pattern across an array of records.
+
+## Defaults for the parameter nobody filled
+
+A type parameter can declare a fallback with `=`, just as a function parameter can. The default applies when the caller neither passes the type explicitly nor gives the compiler anything to infer it from. This appears most often on generic type aliases that describe results whose payload type varies.
+
+```ts
+type FetchResult<TData = unknown> =
+  | { ok: true; data: TData }
+  | { ok: false; error: string }
+
+function parseCount(raw: string): FetchResult<number> {
+  const parsed = Number(raw)
+  return Number.isNaN(parsed)
+    ? { ok: false, error: `not a number: ${raw}` }
+    : { ok: true, data: parsed }
+}
+
+// No type argument, so TData falls back to unknown.
+const unclassified: FetchResult = { ok: false, error: 'timeout' }
+```
+
+`parseCount` names its payload precisely, so a caller who checks `ok` gets a `number` out. Code that only routes errors around can say plain `FetchResult` and stay honest, because the defaulted `unknown` payload cannot be used without narrowing first. Choose defaults that keep the unspecified case safe. Defaulting to `any` would quietly reopen the hole this lesson started with.
+
+## When a generic earns its complexity
+
+Generics are a cost. Every type parameter is another name the next reader must track, so it has to buy something. The test is simple to state: a type parameter earns its place when it appears in at least two positions of the signature, linking them, or when a constraint like `K extends keyof T` ties it to another parameter. Every example above passes that test. `firstItem` links input to output, `longest` links its two inputs, and `getProperty` links `K` to `T` and both to the result.
+
+Here is one that fails the test:
+
+```ts
+function describeLength<T extends { length: number }>(value: T): string {
+  return `length is ${value.length}`
+}
+```
+
+`T` appears in one position. Nothing is linked to anything, so the parameter buys nothing, and `function describeLength(value: { length: number }): string` says exactly the same thing with one less name to track. When a single-use type parameter shows up in a review, replace it with its constraint.
+
+A closed set of types deserves the same honesty. If a function accepts exactly a `string` or a `number` and nothing else will ever qualify, the union `string | number` states that outright, where `<T extends string | number>` implies a link that may not exist. Reach for an **overload**, a function with several declared signatures over one implementation, only when a small fixed set of input types each produce a genuinely different output type and no single generic signature can express the pairing. Overloads are checked less strictly than a single signature, so they are the last resort, not the first. The practical order when designing a reusable signature: plain types, then a union, then a generic once something in the output truly depends on something in the input.
+
+## Common mistakes
+
+These are the errors that show up most often in interviews and code review:
+
+- Reaching for `any` to make a helper reusable. It accepts everything by telling every caller nothing, and the crash surfaces at runtime instead of in the editor.
+- Using `unknown` where a type parameter belongs, which forces every caller to re-narrow a result whose type they had in hand at the call site.
+- Splitting one relationship across two type parameters, such as `<T, F>(items: T[], fallback: F)`, so a mismatched fallback slips through where a shared `T` would have caught it.
+- Typing keys as `string` when `K extends keyof T` would catch typos, or typing a lookup's result wider than `T[K]` and casting it back at every call.
+- Constraining more than the body uses, which shuts out callers the function would have served correctly.
+- Declaring a type parameter that appears only once in the signature, then wondering why it never catches anything.
+- Expecting a type parameter to exist at runtime. `T` is erased during compilation, so it cannot be checked with `typeof` or used to validate external data.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+The exercises build the lesson's ideas in the order you met them:
+
+1. Refactor an `any`-typed helper so one shared type parameter links its inputs to its output.
+2. Implement a keyof-constrained `pluck` that keeps each caller's property types.
+3. Design the signature of an indexing helper whose constraint ties the key's value type to how it is used.
+4. Explain, in your own words, when a generic earns its complexity and when a union or overload is the honest choice.
