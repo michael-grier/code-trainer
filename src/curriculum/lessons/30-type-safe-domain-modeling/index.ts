@@ -224,6 +224,12 @@ console.log(refundOrder(customer, order, 1500))
             "refundOrder must demand the branded OrderId, not a raw string.",
         },
         {
+          kind: 'forbid-text',
+          text: 'customerId: string',
+          message:
+            'refundOrder must demand the branded CustomerId, not a raw string.',
+        },
+        {
           kind: 'no-any',
           message:
             'Keep the ids precise. An any would let any value into either slot.',
@@ -238,6 +244,9 @@ void receipt
 
 // @ts-expect-error raw strings cannot be passed where branded ids are required
 refundOrder('ord_1', 'cus_9', 500)
+
+// @ts-expect-error the customer slot rejects a raw string too
+refundOrder(fixtureOrder, 'cus_9', 500)
 
 // @ts-expect-error the two id types cannot be swapped
 refundOrder(fixtureCustomer, fixtureOrder, 500)
