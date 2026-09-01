@@ -1,14 +1,142 @@
 # Runtime Validation and Parsing External Data
 
-This placeholder concept page reserves the lesson slot for **Runtime Validation and Parsing External Data**. The content pass will replace it with the final interview-focused MDX lesson.
+Three lessons in a row have ended on the same warning: types are erased before the code runs, so data arriving from outside gets whatever type you claim for it, checked against nothing. This is the lesson where that bill comes due, and where you learn to pay it properly.
 
-## What this lesson will cover
+Here is the boundary at its most ordinary. A profile was saved as JSON, in `localStorage` or a server response or a file, and the app reads it back. In the profile, `name` is the display name and `savedArticles` is a list of article ids, so the code sums ids to report a count. But the stored text was written by an older version of the app, which kept `savedArticles` as a string. Everything below is checked by `tsc` in strict mode targeting ES2022, which is also how this lesson's practice problems are graded.
 
-- Core interview signals for runtime validation and parsing external data.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+```ts
+type Profile = {
+  name: string
+  savedArticles: number[]
+}
+
+const stored = '{"name":"Ada","savedArticles":"none"}'
+
+const profile = JSON.parse(stored) as Profile
+
+const total = profile.savedArticles.reduce((sum, id) => sum + id, 0)
+console.log(`${profile.name} saved ${total} articles`)
+```
+
+<TerminalTranscript
+  label="compiler and console"
+  lines={[
+    { type: 'command', text: 'tsc --noEmit' },
+    { type: 'info', text: 'exit code 0, no errors' },
+    { type: 'command', text: 'node profile.js' },
+    {
+      type: 'error',
+      text: 'TypeError: profile.savedArticles.reduce is not a function',
+    },
+  ]}
+/>
+
+Match the value against the type it was given. The type says `savedArticles` is an array of numbers; the value carries the string `'none'`. The program crashes at the `reduce` call, which may sit many files away from the parse, and the stack trace will point there, not at the boundary where the lie was told. The lie is the `as Profile`. Lesson 26 called assertions "silencing the compiler without proving anything," and this is the worst place to do it, because at a runtime boundary there is nothing the compiler *could* prove. `JSON.parse` returns `any` — the type that turns off checking entirely — and the cast just relabels it. No compile-time construct, however precise, can vouch for text that arrives while the program runs. What the boundary needs is not a better type but a check that runs.
+
+## `unknown`: the honest type for unchecked data
+
+The first repair costs one annotation. Instead of letting `JSON.parse`'s `any` flow freely or casting it into a shape, type the parsed value as **`unknown`**: the type that says "this could be anything, and until you find out what, you may do nothing with it."
+
+```ts
+const parsed: unknown = JSON.parse(stored)
+
+console.log(parsed.name)
+```
+
+<TerminalTranscript
+  label="tsc"
+  lines={[
+    {
+      type: 'error',
+      text: "profile.ts:5:13 - error TS18046: 'parsed' is of type 'unknown'.",
+    },
+  ]}
+/>
+
+Compare the two extremes. `any` lets every operation through and every one of them might explode; `unknown` lets nothing through, so the explosion is impossible but so is all use. The compiler is now demanding exactly what the situation requires: prove something about this value before touching it. And proving things about values at runtime is a skill you already have — it is the narrowing from lesson 26, with `typeof`, `in`, `Array.isArray`, and comparisons, pointed at data instead of at your own unions.
+
+## A type predicate teaches your check to the compiler
+
+Narrowing an `unknown` object takes several checks in sequence, and you will want to reuse them, so the natural move is to wrap them in a function. A plain boolean-returning function loses the narrowing, though: the compiler sees `true` come back and learns nothing about the value. The fix is a **type predicate**, a return type of the form `value is Profile`, which tells the compiler that a `true` result proves the parameter's shape.
+
+This walkthrough is the heart of the lesson. Each line of the predicate rules out one way the data could fail to be a `Profile`, and the order matters:
+
+```ts
+function isProfile(value: unknown): value is Profile {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'name' in value &&
+    typeof value.name === 'string' &&
+    'savedArticles' in value &&
+    Array.isArray(value.savedArticles) &&
+    value.savedArticles.every((entry) => typeof entry === 'number')
+  )
+}
+```
+
+Read it as a ladder, where every rung stands on the one below. `typeof value === 'object'` rules out strings, numbers, and the rest of the primitives — but not `null`, because a historical quirk of JavaScript makes `typeof null` also `'object'`, so the explicit `value !== null` must follow. Only now is it safe to ask about properties: `'name' in value` proves the key exists, which lets the compiler permit `value.name`, whose type is still `unknown` until `typeof value.name === 'string'` pins it down. The same two-step handles the list, with `Array.isArray` in place of `typeof` because arrays report `'object'` too. And the final rung is the one the opening bug would have died on, and the one hand-rolled checks most often skip: being an array says nothing about the elements, so `every` walks them. Checking `savedArticles: []` is fine; an empty list has no bad elements.
+
+One warning before you lean on the pattern: the compiler trusts the signature, not the body. Write `value is Profile` over checks that only test `name` and every caller inherits a false guarantee; the guard becomes a politer spelling of the cast. The predicate is where the responsibility lives, which is exactly why it should exist once, not be re-improvised at each call site.
+
+Using the guard reads like any narrowing check, and the compiler treats the branch accordingly:
+
+```ts
+const parsed: unknown = JSON.parse(stored)
+
+if (isProfile(parsed)) {
+  // Narrowed: parsed is a Profile here, fields and all.
+  console.log(parsed.savedArticles.length)
+} else {
+  console.log('stored profile is not usable')
+}
+```
+
+The bad payload from the opening now takes the `else` branch — a handled case instead of a `TypeError` — because `Array.isArray('none')` is `false` and the ladder stops there.
+
+## Parse, don't validate
+
+There is a subtle upgrade left. A guard answers "is this a `Profile`?", but the code that asked usually wants the profile itself, and keeping the boolean answer separate from the value invites the old mistake back in: check over here, cast over there. The stronger shape returns the typed value from the same function that checked it, so possession of a `Profile` is proof that parsing succeeded. This principle is usually called **parse, don't validate**, and it should feel familiar: it is lesson 30's smart constructor standing at the program's outermost door.
+
+```ts
+function parseProfile(raw: string): Profile | null {
+  // JSON.parse throws on malformed text; the boundary absorbs that too.
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return null
+  }
+
+  // The predicate narrows parsed, so the typed value is returned, not a claim.
+  return isProfile(parsed) ? parsed : null
+}
+```
+
+Two details carry the design. First, the `try`/`catch`: `JSON.parse` throws a `SyntaxError` on text that is not JSON at all, and a boundary function that only checks structure while letting the parse itself throw has just moved the crash, not removed it. Second, the return of `parsed` rather than a rebuilt object: inside the true branch of the predicate, `parsed` *is* a `Profile` to the compiler, so no cast appears anywhere in the function. The caller receives `Profile | null` and must narrow, exactly like the smart constructors of last lesson, and everything past the boundary handles a `Profile` that some running code actually examined.
+
+Be precise about what was and was not checked, because the guarantee has edges. The predicate proves the fields it tested; it does not strip fields it never asked about, so a payload with extra keys passes through, extras and all — lesson 28's `Omit` section showed why removing data takes runtime code. This hand-rolled pattern is also the whole idea behind validation libraries such as Zod: they generate the ladder and its error messages from a schema, industrializing exactly what you built here by hand.
+
+Where should the boundary sit? Once, at the edge. Data should be parsed where it enters — the fetch wrapper, the storage reader, the message handler — and flow inward as `Profile`, never as `unknown`. Sprinkling guards through the interior means every layer re-suspects data a previous layer already proved, which is the defensive re-checking lesson 30 retired. One parse at the door; types carry the proof the rest of the way.
+
+## Common mistakes
+
+These are the errors that show up most often in interviews and code review:
+
+- Casting parsed JSON — `JSON.parse(raw) as Profile` — which claims a shape without running a single check, as the opening example showed.
+- Leaving boundary data as `any`, so every later property access compiles and none is checked. Type it `unknown` and let the compiler demand proof.
+- Checking with a plain boolean function and then casting anyway. Only a type predicate (`value is Profile`) carries the proof into the type system.
+- Writing a predicate whose checks do not cover what its signature claims. The compiler trusts `value is Profile` unconditionally; an incomplete body is a hidden cast.
+- Testing `typeof value === 'object'` without `value !== null`, because `typeof null` is `'object'`.
+- Confirming a value is an array but not checking its elements, which is precisely how `savedArticles: [1, '2']` slips through.
+- Forgetting that `JSON.parse` itself throws on malformed text, so the validator crashes before validating. Wrap the parse in `try`/`catch` at the boundary.
+- Validating the same data repeatedly through the interior instead of parsing once at the edge and letting the returned type carry the guarantee.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+The exercises build the lesson's ideas in the order you met them:
+
+1. Write the `isProfile` type predicate, proving each field of an unknown value before the compiler lets it through.
+2. Build `parseProfile`, a boundary function that absorbs malformed JSON and mismatched shapes into a `Profile | null`.
+3. Refactor a cast-trusting cart loader into a parser that constructs its result from checked pieces.
+4. Explain, in your own words, why a cast cannot secure a runtime boundary and where the one parse belongs.
