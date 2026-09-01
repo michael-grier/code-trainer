@@ -1,14 +1,201 @@
 # Error Handling with Result-Style Types
 
-This placeholder concept page reserves the lesson slot for **Error Handling with Result-Style Types**. The content pass will replace it with the final interview-focused MDX lesson.
+After seven lessons of making TypeScript signatures more honest, one dishonesty is still standing, and it hides in code that looks finished. `centsFromPrice` converts a price tag like `'$4.50'` into cents for arithmetic. Its signature says: give me a string, I give you a number. Everything in this lesson is checked by `tsc` in strict mode targeting ES2022, which is also how the practice problems are graded.
 
-## What this lesson will cover
+```ts
+function centsFromPrice(price: string): number {
+  const match = /^\$(\d+)\.(\d{2})$/.exec(price)
+  if (match === null) {
+    throw new Error(`unparseable price: ${price}`)
+  }
+  return Number(match[1]) * 100 + Number(match[2])
+}
 
-- Core interview signals for error handling with result-style types.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+const prices = ['$4.50', '4.99', '$12.00']
+
+const totalCents = prices.map(centsFromPrice).reduce((sum, cents) => sum + cents, 0)
+console.log(totalCents)
+```
+
+<TerminalTranscript
+  label="compiler and console"
+  lines={[
+    { type: 'command', text: 'tsc --noEmit' },
+    { type: 'info', text: 'exit code 0, no errors' },
+    { type: 'command', text: 'node prices.js' },
+    { type: 'error', text: 'Error: unparseable price: 4.99' },
+  ]}
+/>
+
+Read the signature the way a caller does: `(price: string) => number`. That is everything the compiler will ever tell anyone about this function, and it is a lie by omission. For a malformed price — here `'4.99'`, missing its dollar sign — the function does not return a number. It throws, the `map` dies mid-list, and the whole total is gone. Nothing marked the call site as dangerous; TypeScript has no `throws` annotation, so a function that always returns and a function that explodes on one input in three share the same type. The compiler that has been catching every dishonest shape since lesson 25 cannot see this one, because the failure channel runs entirely outside the type system.
+
+## What `catch` knows, which is nothing
+
+The traditional answer is to wrap the call in `try`/`catch`, and doing so shows the second half of the problem:
+
+```ts
+try {
+  console.log(centsFromPrice('4.99'))
+} catch (error) {
+  console.log(error.message)
+}
+```
+
+<TerminalTranscript
+  label="tsc"
+  lines={[
+    {
+      type: 'error',
+      text: "prices.ts:6:15 - error TS18046: 'error' is of type 'unknown'.",
+    },
+  ]}
+/>
+
+Strict mode types the caught value as `unknown` — last lesson's honest type for data the compiler cannot vouch for — and it is right to, because JavaScript lets code throw anything: an `Error`, a string, `undefined`. So the `catch` block must narrow (`error instanceof Error`) before reading anything, and even then it knows only that *something* threw, somewhere in the `try`. Was it the parse failure you meant to handle, or a typo three calls deeper that should have crashed loudly? Both arrive in the same block wearing the same type. Exceptions are invisible on the way out and anonymous on the way in.
+
+For failures a caller is supposed to handle, there is a better channel: the return value, which is the one place the compiler checks everything. The whole trick of this lesson is moving failure into it.
+
+## Failure as a value: the Result union
+
+You already own the tool. A function that can succeed or fail has two outcomes, one of which exists at a time, each with its own data — and "one of several shapes, exactly one at a time" is precisely what lesson 26's discriminated unions model. Point one at failure and you get the **Result** pattern:
+
+```ts
+type Result<T, E> =
+  | { ok: true; value: T }
+  | { ok: false; error: E }
+```
+
+`T` is the success payload and `E` the failure payload; `ok` is the discriminant that says which one you are holding. Rewriting the parser to return a Result makes the signature finally tell the whole story:
+
+```ts
+function parsePrice(price: string): Result<number, string> {
+  const match = /^\$(\d+)\.(\d{2})$/.exec(price)
+
+  // Failure is a value now: same information the old Error carried,
+  // but visible in the signature and impossible to overlook.
+  if (match === null) {
+    return { ok: false, error: `unparseable price: ${price}` }
+  }
+
+  return { ok: true, value: Number(match[1]) * 100 + Number(match[2]) }
+}
+```
+
+`Result<number, string>` reads as a contract: you will get cents or a reason, and you must check which. That "must" is enforced, not requested. Reach for the value directly and the compiler blocks you with the union rules you know from lesson 26:
+
+```ts
+const parsed = parsePrice('$4.50')
+
+const cents: number = parsed.value
+```
+
+<TerminalTranscript
+  label="tsc"
+  lines={[
+    {
+      type: 'error',
+      text: "prices.ts:11:30 - error TS2339: Property 'value' does not exist on type 'Result<number, string>'.",
+    },
+    {
+      type: 'output',
+      text: "  Property 'value' does not exist on type '{ ok: false; error: string; }'.",
+    },
+  ]}
+/>
+
+The message spells out the reasoning: as long as the result might be the failure member, there is no `value` to read. Narrowing on the discriminant unlocks each branch, and the code that falls out is a fully handled call site — no invisible channel, no anonymous catch:
+
+```ts
+const parsed = parsePrice('4.99')
+
+if (parsed.ok) {
+  console.log(`total so far: ${parsed.value}`)
+} else {
+  console.log(`skipping bad price: ${parsed.error}`)
+}
+```
+
+Compare this against the opening crash. The malformed price still fails, but the failure arrives as data at the call site that knows what to do with it, and forgetting to consider it is a compile error rather than a production incident.
+
+## Give errors a shape worth branching on
+
+With `E` as a plain string, callers can display the failure but not respond to it; deciding behavior by matching message text is a bug generator. When a function can fail in more than one way and callers should react differently, make `E` itself a discriminated union — the same modeling you would give any domain data, applied to what goes wrong. Here is a settings importer's error type:
+
+```ts
+type ImportError =
+  | { kind: 'invalid-json' }
+  | { kind: 'not-an-object' }
+  | { kind: 'invalid-theme' }
+  | { kind: 'invalid-font-size' }
+```
+
+Each failure is tagged, and a failure that has data carries it in its member — an insufficient-funds error can hold the exact shortfall, which is what the caller needs to render "add $4.00 more." Consuming the union brings back lesson 26's `switch` with its `never` tripwire, and here the tripwire earns real money:
+
+```ts
+function describeImportError(error: ImportError): string {
+  switch (error.kind) {
+    case 'invalid-json':
+      return 'the file is not valid JSON'
+    case 'not-an-object':
+      return 'the file does not hold a settings object'
+    case 'invalid-theme':
+      return "theme must be 'light' or 'dark'"
+    case 'invalid-font-size':
+      return 'fontSize must be a number'
+    default: {
+      // Every kind is handled, so error is never here. A new failure kind
+      // turns this assignment into a compile error.
+      const unhandled: never = error
+      return unhandled
+    }
+  }
+}
+```
+
+Grow the importer next quarter — a new `'unsupported-version'` failure — and every place that handles import errors stops compiling until it says what to do. Exceptions offer nothing comparable: a new `throw` deep in a call tree changes no type anywhere, and the first anyone hears of it is a log line.
+
+## Wrap the throwing world once
+
+Your code does not get to pretend exceptions are gone, because the platform throws — `JSON.parse` on bad text, and lesson 24's `AbortError` from cancellation, among many. The pattern that keeps the interior clean is the one lesson 31 used for validation: convert at the boundary, once.
+
+```ts
+function parseJson(raw: string): Result<unknown, string> {
+  try {
+    return { ok: true, value: JSON.parse(raw) }
+  } catch (error) {
+    // The caught value is unknown; prove it is an Error before reading it.
+    const message = error instanceof Error ? error.message : 'unknown failure'
+    return { ok: false, error: message }
+  }
+}
+```
+
+One `try`/`catch`, at the edge, doing the narrowing dance exactly once — and everything inward receives an honest `Result` instead of inheriting an invisible throw. Notice the value type: `unknown`, because parsing JSON proves nothing about shape. This function slots directly in front of last lesson's validators, and the practice problems combine the two.
+
+## When throwing is still right
+
+Result types are for failures that are part of a function's job description: the malformed input, the insufficient balance, the missing record. Some failures are not that, and forcing them into a Result makes code worse, not safer. A bug — an impossible state, a violated invariant, an index that cannot be out of range but is — has no caller that can meaningfully "handle" it; propagating it as a value just launders a defect into control flow. Let those throw, loudly, and let something near the top of the program log and crash or recover coarsely. The `never` tripwire's `return unhandled` line is exactly this philosophy in miniature: reachable only by a bug, so the right response is not an error branch but a compile-time refusal.
+
+The judgment, then: could a competent caller do something specific with this failure? Yes — put it in the signature as a Result. No — throw, and mean it. And expect both worlds in real codebases: exceptions are the platform's channel and many libraries' channel, so the boundary-wrapping pattern above is not a transition cost but a permanent part of the style.
+
+## Common mistakes
+
+These are the errors that show up most often in interviews and code review:
+
+- Throwing for expected, handleable failures, so the signature promises a value it does not always produce, as the opening example showed.
+- Reading fields off a caught value without narrowing. Strict mode types it `unknown` because anything can be thrown; check `instanceof Error` first.
+- Accessing `result.value` without narrowing on `ok` — the compiler stops it, but reaching for a cast to "fix" the error defeats the entire pattern.
+- Using a bare string for `E` when callers need to branch on the failure, which pushes them into matching message text. Tag error kinds in a union.
+- Returning a Result from a function that also still throws, giving callers two failure channels and certainty about neither.
+- Handling a tagged error union with a catch-all `default` message instead of a `never` tripwire, so new failure kinds are silently mislabeled instead of flagged at compile time.
+- Wrapping every call site in its own `try`/`catch` instead of converting the throwing boundary once and passing Results inward.
+- Modeling bugs as Results. An invariant violation has no handler; let it throw.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+The exercises build the lesson's ideas in the order you met them:
+
+1. Convert the throwing price parser into one that returns a Result the compiler makes callers check.
+2. Build a withdrawal with a tagged error union whose members carry the data a caller needs to respond.
+3. Refactor a throwing settings importer into a Result pipeline with no `throw` left anywhere.
+4. Explain, in your own words, what the Result channel makes visible and which failures should still throw.
