@@ -1,14 +1,172 @@
 # React Performance and Memoization
 
-This placeholder concept page reserves the lesson slot for **React Performance and Memoization**. The content pass will replace it with the final interview-focused MDX lesson.
+Lesson 34 told you recomputation is cheap and to stop worrying — and for six lessons that advice held. This dashboard is where the bill finally arrives. The note input is ordinary controlled state. The `Report` is the expensive part of the page: imagine it crunching thousands of rows, and to make its work visible, it counts its own renders with a ref that survives between them. The transcripts show what React puts on screen, and this lesson's practice problems render your components for real and count their renders the same way. One honesty note about that counter: mutating a ref during render is instrumentation, not a pattern — React's rules reserve render for pure computation, and under StrictMode's deliberate double-rendering such a counter would count discarded renders too. It works as a teaching device here because this course's runner renders once, without StrictMode; in a real app, measure with the React DevTools Profiler instead.
 
-## What this lesson will cover
+```tsx
+import { useRef, useState } from 'react'
 
-- Core interview signals for react performance and memoization.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+function Report({ region }: { region: string }) {
+  const renders = useRef(0)
+  renders.current += 1
+
+  return (
+    <p>
+      {region} report computed {renders.current} times
+    </p>
+  )
+}
+
+function Dashboard({ region }: { region: string }) {
+  const [note, setNote] = useState('')
+
+  return (
+    <div>
+      <input
+        aria-label="note"
+        value={note}
+        onChange={(event) => setNote(event.target.value)}
+      />
+      <p>note length: {note.length}</p>
+      <Report region={region} />
+    </div>
+  )
+}
+```
+
+Type `abc` into the note, one letter at a time:
+
+<TerminalTranscript
+  label="screen after each keystroke"
+  lines={[
+    { type: 'output', text: 'note length: 0 · west report computed 1 times' },
+    { type: 'output', text: 'note length: 1 · west report computed 2 times' },
+    { type: 'output', text: 'note length: 2 · west report computed 3 times' },
+    { type: 'output', text: 'note length: 3 · west report computed 4 times' },
+  ]}
+/>
+
+Read the counter against what changed. The report's one prop, `region`, never moved — and the report recomputed on every keystroke anyway. The mechanism is nothing new: when state changes, React re-renders the component that owns it, and rendering a component renders its children. That default is *correct* — it is what keeps every screen in this track consistent — and for cheap children it is also fast. It becomes a problem only when volume meets cost: an expensive subtree multiplied by every keystroke of an unrelated input. If the report takes 50ms of real work, this dashboard now drops frames while the user types a note that has nothing to do with it.
+
+Before the tools, the discipline: this lesson's opener made the cost visible with a counter, and in a real app you do the same with the React DevTools Profiler — record, interact, and look at which components rendered and how long they took. Everything below is for the hot spots you *measured*, not the re-renders you imagined.
+
+## `memo`: skip the render when the props match
+
+React's targeted fix for exactly this shape is `memo`. Wrapping a component in it changes one thing: when a re-render arrives from the parent, React compares the new props to the previous props, and if every prop is equal, it can skip the child's render and reuse the last output. Two honest qualifiers before you lean on it: the skip applies to parent-triggered renders — the child's own state or a context it reads still re-render it — and React's documentation frames memo as a performance optimization, not a guarantee; correctness must never depend on a render being skipped.
+
+```tsx
+import { memo } from 'react'
+
+const Report = memo(function Report({ region }: { region: string }) {
+  const renders = useRef(0)
+  renders.current += 1
+
+  return (
+    <p>
+      {region} report computed {renders.current} times
+    </p>
+  )
+})
+```
+
+<TerminalTranscript
+  label="screen after typing 'abc', memoized version"
+  lines={[
+    { type: 'output', text: 'note length: 3 · west report computed 1 times' },
+  ]}
+/>
+
+Three keystrokes, three parent renders, one report computation. The report still re-renders whenever `region` actually changes — `memo` is a skip-when-same, not a freeze.
+
+## Why `memo` breaks the moment you pass an object
+
+The comparison `memo` performs is **shallow**: each prop is checked with `Object.is`, which asks "is this the *same value*?" For strings and numbers, same-looking means same. For objects, arrays, and functions, it does not — two objects built from identical code are two different objects. This is the fact the whole rest of the lesson turns on, and it fits in a dozen lines of plain TypeScript:
+
+```ts
+function shallowEqual(
+  a: Record<string, unknown>,
+  b: Record<string, unknown>,
+): boolean {
+  const keys = Object.keys(a)
+  if (keys.length !== Object.keys(b).length) {
+    return false
+  }
+  return keys.every((key) => Object.is(a[key], b[key]))
+}
+
+function buildProps() {
+  return {
+    label: 'Report',
+    filters: { region: 'west' },
+    onExport: () => 'exported',
+  }
+}
+
+const firstRender = buildProps()
+const secondRender = buildProps()
+
+console.log(`same object: ${shallowEqual(firstRender, firstRender)}`)
+console.log(`rebuilt props: ${shallowEqual(firstRender, secondRender)}`)
+console.log(`rebuilt filters alone: ${firstRender.filters === secondRender.filters}`)
+console.log(`primitive label alone: ${firstRender.label === secondRender.label}`)
+```
+
+<TerminalTranscript
+  label="console"
+  lines={[
+    { type: 'output', text: 'same object: true' },
+    { type: 'output', text: 'rebuilt props: false' },
+    { type: 'output', text: 'rebuilt filters alone: false' },
+    { type: 'output', text: 'primitive label alone: true' },
+  ]}
+/>
+
+`buildProps` is a stand-in for a component body: it runs once per render and rebuilds everything inside it. The two `filters` objects hold identical contents and are still not the same object, and the two arrow functions likewise — so the shallow comparison fails even though nothing meaningfully changed. Now map it back to JSX: a parent that renders `<Report filters={{ region }} onExport={() => save()} />` hands its memoized child a brand-new object and a brand-new function on every render. The `memo` compares, finds two props unequal every time, and skips nothing. Memoized-but-still-re-rendering is the single most common form of this bug, and it is invisible unless something counts renders.
+
+## Stabilizing identities: `useCallback` and `useMemo`
+
+The repair is to keep *one* identity alive across renders instead of rebuilding it. For functions, that is `useCallback`:
+
+```tsx
+// useCallback keeps one function identity across renders; the functional
+// update means it needs nothing from any particular render, so the empty
+// dependency list is honest.
+const handleSave = useCallback(() => {
+  setSavedCount((current) => current + 1)
+}, [])
+```
+
+For values, it is `useMemo`, which runs the computation once and replays the cached result until a dependency changes:
+
+```tsx
+const visibleRows = useMemo(
+  () => rows.filter((row) => row.region === region),
+  [rows, region],
+)
+```
+
+`useMemo` also pays off lesson 34's one outstanding IOU. That lesson said derive in render, and flagged the honest exception — a derivation that is genuinely expensive — for this lesson. This is it: derive in render *through* `useMemo`, so the value is still recomputed from its sources (no stored copy, no sync bugs), just not more often than its dependencies change. The dependency list plays the same role it played for effects in lesson 36 — a factual statement of what the computation reads — and lying to it produces lesson 34's stale bug wearing a cache's clothing: a memoized value that ignores one of its inputs is a stored copy that some update path forgets.
+
+## Caching has a price; measure before paying it
+
+It is tempting to leave this lesson wrapping everything in `memo`, `useCallback`, and `useMemo`. Resist. Every memoization adds a comparison on every render, a dependency list that must stay honest through every future edit, and a layer of indirection for every reader. Applied to cheap components — which is most components — it spends all of that to save microseconds nobody can perceive. The economics only work at hot spots: an expensive subtree, a huge list, a derivation you have profiled. So the order of operations is fixed: **measure, find the hot spot, memoize that, and stop.** A `memo` on a component that renders in a tenth of a millisecond is not an optimization; it is a maintenance cost with a performance-themed name. And when a re-render is expensive because a component simply does too much, the better fix is often lesson 33's: split it, so the expensive part and the chatty state no longer share a parent.
+
+## Common mistakes
+
+These are the errors that show up most often in interviews and code review:
+
+- Optimizing without measuring, wrapping cheap components in memoization that costs comparisons and readability to save time nobody can perceive.
+- Memoizing a child and then defeating it with an inline object, array, or arrow-function prop rebuilt on every parent render, as the shallow-comparison walkthrough showed.
+- Treating `useMemo`'s dependency list as a refresh dial. It declares what the computation reads; omitting a dependency creates a stale cached value, lesson 34's bug at the cache layer.
+- Reaching for `memo` when the real problem is component structure — an input and an expensive subtree sharing one owner that lesson 33 would have split.
+- Using `useMemo` for correctness (expecting it to guarantee a single computation). It is a performance hint; code must stay correct if the cache is dropped.
+- Stabilizing a callback with `useCallback` but reading state directly inside it with a stale-prone dependency list, instead of using functional updates that need no dependencies.
+- Counting renders as the goal. The goal is user-perceived time; a component may re-render fifty times harmlessly if each render is trivially cheap.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+The exercises build the lesson's ideas in the order you met them:
+
+1. Trace the shallow-comparison miniature and predict which rebuilt values pass and fail identity checks.
+2. Memoize the dashboard's report so unrelated typing stops recomputing it.
+3. Fix the memoized save button that still re-renders, by giving its callback one stable identity.
+4. Explain, in your own words, when memoization earns its cost and how it gets silently defeated.

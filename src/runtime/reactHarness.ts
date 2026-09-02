@@ -195,7 +195,7 @@ function applyStep(container: Element, step: ReactTestStep, dom: HarnessDom) {
 
   if (!input) {
     throw new Error(
-      `No input with placeholder or aria-label "${step.into}" to type into.`,
+      `No input with accessible name "${step.into}" (aria-label, associated label, or placeholder) to type into.`,
     )
   }
 
@@ -246,16 +246,37 @@ function findByText(container: Element, text: string): Element | undefined {
   return matches[matches.length - 1]
 }
 
+// Resolve inputs the way assistive tech resolves accessible names: an
+// aria-label, an associated label (wrapping or via htmlFor), or, as the
+// weakest fallback, a placeholder.
 function findInput(
   container: Element,
   descriptor: string,
 ): (Element & { value: string }) | undefined {
   const candidates = [...container.querySelectorAll('input, textarea')]
-  const match = candidates.find(
-    (element) =>
-      element.getAttribute('placeholder') === descriptor ||
-      element.getAttribute('aria-label') === descriptor,
-  )
+  const match = candidates.find((element) => {
+    if (
+      element.getAttribute('aria-label') === descriptor ||
+      element.getAttribute('placeholder') === descriptor
+    ) {
+      return true
+    }
+
+    const wrappingLabel = element.closest('label')
+    if (wrappingLabel && wrappingLabel.textContent?.trim() === descriptor) {
+      return true
+    }
+
+    const id = element.getAttribute('id')
+    if (id !== null && id !== '') {
+      const associatedLabel = container.querySelector(`label[for="${id}"]`)
+      if (associatedLabel?.textContent?.trim() === descriptor) {
+        return true
+      }
+    }
+
+    return false
+  })
 
   return match as (Element & { value: string }) | undefined
 }

@@ -1,14 +1,108 @@
 # Accessibility and Keyboard UX
 
-This placeholder concept page reserves the lesson slot for **Accessibility and Keyboard UX**. The content pass will replace it with the final interview-focused MDX lesson.
+This newsletter form shipped, passed review, and works — for everyone who uses a mouse and reads the screen with their eyes. The word `Email` above the input tells a sighted user what to type, and the styled `div` below is, visually, a perfectly good button. This lesson's transcripts come from driving a real browser with only the keyboard, and its practice problems interact with your components the way assistive technology does.
 
-## What this lesson will cover
+```tsx
+function NewsletterSignup() {
+  return (
+    <div>
+      <p>Email</p>
+      <input />
+      <div className="button" onClick={subscribe}>
+        Subscribe
+      </div>
+    </div>
+  )
+}
+```
 
-- Core interview signals for accessibility and keyboard ux.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+Now put the mouse away — because a blind user, a user with a motor impairment, and a power user on a text-heavy workflow all will — and try to subscribe with the keyboard:
+
+<TerminalTranscript
+  label="keyboard session, real browser"
+  lines={[
+    { type: 'command', text: 'Tab' },
+    { type: 'output', text: 'focus: the email input' },
+    { type: 'command', text: 'Tab' },
+    { type: 'output', text: 'focus: nothing — the Subscribe control was skipped' },
+    { type: 'command', text: 'Enter' },
+    { type: 'error', text: 'nothing happens; the form cannot be submitted' },
+  ]}
+/>
+
+Read that session against what the component promised. The input was reachable, because `<input>` is a real form control and the browser puts it in the tab order automatically. The `div` styled as a button received none of that: it is not focusable, so Tab skips it; it has no keyboard activation, so Enter and Space do nothing even if focus were forced onto it; and it has no role, so a screen reader announces it as plain text — not as something that can be pressed at all. The label has the same disease in a milder form: a `<p>` next to an input is a visual arrangement, not a relationship. Clicking the word `Email` focuses nothing, and a screen reader entering the input announces an unnamed "edit text", because nothing machine-readable connects the word to the field. For a whole class of users this component is not degraded — it is *absent*. And no one on the team noticed, because for mouse users it misbehaves in no visible way.
+
+## The browser gives you all of this for free
+
+The fix is not to add accessibility to the `div`. It is to stop rebuilding, badly, what the platform already provides:
+
+```tsx
+function NewsletterSignup() {
+  return (
+    <div>
+      <label htmlFor="email">Email</label>
+      <input id="email" />
+      <button onClick={subscribe}>Subscribe</button>
+    </div>
+  )
+}
+```
+
+<TerminalTranscript
+  label="keyboard session, real browser, fixed version"
+  lines={[
+    { type: 'command', text: 'Tab' },
+    { type: 'output', text: 'focus: the email input — announced as "Email, edit text"' },
+    { type: 'command', text: 'Tab' },
+    { type: 'output', text: 'focus: the Subscribe button' },
+    { type: 'command', text: 'Enter' },
+    { type: 'output', text: 'subscribed' },
+  ]}
+/>
+
+Two element swaps, and every behavior in that transcript came along without another line of code. A `<button>` is focusable, activates on both Enter and Space, and announces itself with the button role. A `<label>` tied to its input by `htmlFor` and `id` gives the field an **accessible name** — the machine-readable answer to "what is this control?" — so screen readers announce "Email" on entry, and clicking the word focuses the field (a bigger tap target for everyone, not just AT users). This is the deal semantic HTML offers: the element that means what your UI does carries the keyboard behavior, the focusability, and the announcement, tested across every browser and assistive technology, free. The rule that falls out is blunt: **if it acts like a button, it is a `<button>`; if text names a field, it is a `<label>`.** Reaching for a `div` and rebuilding the behavior by hand is how the opener happens.
+
+## Accessible names are part of the API
+
+Lesson 33 said a component's rendered HTML is part of its API. The accessible name is the sharpest instance: it is what a control *is called* to any consumer that is not human eyes — screen readers, voice control ("click Subscribe"), and test tooling. Every interactive element needs one. Visible text usually provides it: a button's text content is its name, a label names its input. The gaps are the controls without visible text — the icon button, the search field whose design has no room for a label — and for those, `aria-label` supplies the name directly:
+
+```tsx
+<button aria-label="close dialog">×</button>
+<input aria-label="search products" placeholder="Search…" />
+```
+
+A placeholder is not a substitute — it vanishes the moment the user types and is inconsistently announced — though it is better than nothing, which is why tooling often falls back to it. This lesson's graded problems make the stakes concrete: the harness resolves inputs by accessible name — an `aria-label`, an associated label (wrapping or `htmlFor`), or a placeholder as the weak fallback — exactly the way assistive tech does, so an unnamed input is not merely un-ideal: the grader cannot type into it at all, and neither can a screen-reader user. One rule when a control has both visible text and an `aria-label`: the aria-label must contain the visible text, because voice-control users say what they see.
+
+## Focus is where the keyboard user is standing
+
+A keyboard user has no cursor hovering over the page; they have exactly one position — the focused element — and two facts about it matter constantly. First, **focus order is DOM order**. The browser tabs through interactive elements in the order they appear in the markup, so a layout that visually reorders controls away from their DOM order sends the keyboard user ricocheting around the screen. Order your markup the way the interaction reads. Second, **focus must be visible**. The outline browsers draw on the focused element is the keyboard user's entire sense of place; styling it away (`outline: none`, with nothing replacing it) blindfolds them. Restyle it to fit the design if you must — never remove it.
+
+Sometimes your code must move focus itself, because an event changed what the user is standing in front of: a rejected form submit should move focus to the first invalid field (lesson 37's fix-list, delivered); opening a modal must move focus into it and closing must return focus to the trigger; deleting a list item should land focus somewhere sensible, not on `<body>`.
+
+Composite widgets — menus, tab lists, toolbar groups — add one refinement. Making every option a tab stop would turn a ten-item menu into ten Tab presses to get past. The convention is **one tab stop for the whole widget, arrow keys inside it** — and the two standard implementations differ in who owns that stop. With a **roving tabindex**, the currently active item owns it: that item has `tabIndex` 0 and real focus, every other item has `tabIndex` -1, and Arrow, Home, and End move both the index and the focus. With `aria-activedescendant`, the container owns the stop and an attribute points at the highlighted item instead. Either way, the widget costs one Tab press — never one per item, and never both container and items at once. The movement logic is a pure function — from the active index, a key, and the item count to the next index, with wrapping — and it is one of this lesson's practice problems, because interviewers love it and every menu you ever build will reuse it.
+
+## ARIA is a spice, not a substitute
+
+You have now seen `aria-label` and, in lesson 37, `role="alert"` for announcing errors. ARIA attributes annotate elements with roles, names, and states that assistive tech reads, and there are moments they are the only tool: naming an icon button, announcing dynamic content, exposing an `aria-expanded` state on a disclosure trigger. But the first rule of ARIA, straight from its spec, is to not use it when a native element already carries the meaning. `<div role="button" tabIndex={0}>` with hand-written Enter *and* Space handlers can be made equivalent to `<button>` — after five attributes and two handlers reimplement what one tag ships with, and the next editor breaks it. ARIA describes; it never implements. Adding `role="button"` to the opener's `div` would change the announcement and not one behavior. Reach for native elements first, ARIA for the gaps, and treat any `role` on a `div` in review as a question: which real element was avoided, and why?
+
+## Common mistakes
+
+These are the errors that show up most often in interviews and code review:
+
+- Building interactive controls out of `div`s with `onClick`, which drops them from the tab order, keyboard activation, and screen-reader announcements at once, as the opening form showed.
+- Putting label text *near* an input instead of *on* it. Without `htmlFor`/`id` association, a wrapping `<label>`, or `aria-label`, the field has no accessible name and the text is decoration.
+- Treating `placeholder` as the label. It disappears on input and is not reliably announced; use it for format hints, not names.
+- Removing focus outlines for visual polish without providing a replacement, leaving keyboard users with no sense of position.
+- Ignoring focus after UI transitions — modals that open behind the user's focus, deleted items that dump focus to the top of the page, error summaries nobody is moved to.
+- Making every item of a menu or tab list its own tab stop instead of one roving tab stop with arrow-key movement inside.
+- Adding ARIA roles to fix non-semantic markup instead of using the semantic element, annotating a `div` into something it still does not do.
+- Communicating state only visually — a red border with no message, an icon swap with no announced text — so the information exists for exactly one kind of user.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+The exercises build the lesson's ideas in the order you met them:
+
+1. Give an unnamed form its accessible names, and watch the grader go from unable-to-interact to passing.
+2. Implement the roving-focus helper that powers arrow-key navigation in menus and toolbars.
+3. Design the full accessibility contract — semantics, keyboard map, focus behavior — for a custom dropdown menu.
+4. Explain, in your own words, what semantic elements buy, what breaks without them, and where ARIA fits.

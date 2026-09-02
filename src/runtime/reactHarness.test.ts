@@ -134,6 +134,42 @@ describe('react harness', () => {
     expect(results[0].status).toBe('passed')
   })
 
+  it('resolves inputs by wrapping and associated labels', async () => {
+    const labelledCode = `import { useState } from 'react'
+
+export function Profile() {
+  const [name, setName] = useState('')
+  const [city, setCity] = useState('')
+
+  return (
+    <div>
+      <label>
+        display name
+        <input onChange={(event) => setName(event.target.value)} value={name} />
+      </label>
+      <label htmlFor="city">home city</label>
+      <input id="city" onChange={(event) => setCity(event.target.value)} value={city} />
+      <p>
+        {name} in {city}
+      </p>
+    </div>
+  )
+}
+`
+    const results = await run(labelledCode, 'Profile', [
+      {
+        name: 'finds both label-named inputs',
+        steps: [
+          { action: 'type', into: 'display name', value: 'Ada' },
+          { action: 'type', into: 'home city', value: 'London' },
+        ],
+        expect: [{ type: 'text-present', text: 'Ada in London' }],
+      },
+    ])
+
+    expect(results[0].status).toBe('passed')
+  })
+
   it('types into a controlled input', async () => {
     const results = await run(inputCode, 'Search', [
       {
