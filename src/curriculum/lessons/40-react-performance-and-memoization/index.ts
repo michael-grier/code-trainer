@@ -110,8 +110,9 @@ console.log(\`primitive label alone: \${firstRender.label === secondRender.label
       starter: `import { useRef, useState } from 'react'
 
 function Report({ region }: { region: string }) {
-  // A render counter per mounted instance: the ref survives re-renders and
-  // increments once per render of this component.
+  // Render-count instrumentation, not a pattern: mutating a ref during
+  // render breaks React's purity rules and would double-count under
+  // StrictMode. This course's runner renders once, so the count is exact.
   const renders = useRef(0)
   renders.current += 1
 
@@ -323,8 +324,9 @@ export function NoteEditor() {
 
 // memo: skip the re-render entirely when the props shallow-compare equal.
 const Report = memo(function Report({ region }: { region: string }) {
-  // A render counter per mounted instance: the ref survives re-renders and
-  // increments once per render of this component.
+  // Render-count instrumentation, not a pattern: mutating a ref during
+  // render breaks React's purity rules and would double-count under
+  // StrictMode. This course's runner renders once, so the count is exact.
   const renders = useRef(0)
   renders.current += 1
 
@@ -352,9 +354,9 @@ export function Dashboard({ region }: { region: string }) {
 }
 `,
         explanation:
-          "One wrapper, no other changes — and that is the point of the exercise. The dashboard's re-renders are correct behavior: the note is controlled state, so every keystroke renders the owner, and React's default walks into the children. memo installs a checkpoint at the one boundary where that walk is expensive: before re-rendering Report, React shallow-compares the new props to the old, and region is a string, so the comparison is by value and passes while the user types. The render counter proves the skip — it can only advance inside Report's body, and it stays at 1 through any amount of typing. Two things make this memo trustworthy where blanket ones are not: the props are primitives, so no inline object can silently defeat the comparison, and the component was demonstrably the expensive one, which is what earns the wrapper under the lesson's measure-first rule. When region does change, the comparison fails and the report recomputes, exactly as it should — memo is skip-when-same, never freeze.",
+          "One wrapper, no other changes — and that is the point of the exercise. The dashboard's re-renders are correct behavior: the note is controlled state, so every keystroke renders the owner, and React's default walks into the children. memo installs a checkpoint at the one boundary where that walk is expensive: before re-rendering Report, React shallow-compares the new props to the old, and region is a string, so the comparison is by value and passes while the user types. The render counter proves the skip — it can only advance inside Report's body, and it stays at 1 through any amount of typing. Two things make this memo trustworthy where blanket ones are not: the props are primitives, so no inline object can silently defeat the comparison, and the component was demonstrably the expensive one, which is what earns the wrapper under the lesson's measure-first rule. When region does change, the comparison fails and the report recomputes, exactly as it should — memo is skip-when-same, never freeze. Two caveats keep the claim honest: memo only skips parent-triggered renders (state or context inside Report would still render it), and React documents the skip as an optimization it may not always apply, so nothing correct may depend on it.",
         complexity:
-          'O(1) additional comparison per parent render, in exchange for skipping the entire child render when props are unchanged. The guarantee that matters is the contract: the report recomputes exactly when its inputs change.',
+          'O(1) additional comparison per parent render, in exchange for skipping the child render when props are unchanged. The contract that matters: the report re-renders when its inputs change, and the skip is an optimization React applies, not a guarantee correctness may lean on.',
       },
     ],
     'stabilize-the-callback': [

@@ -1,6 +1,6 @@
 # React Performance and Memoization
 
-Lesson 34 told you recomputation is cheap and to stop worrying — and for six lessons that advice held. This dashboard is where the bill finally arrives. The note input is ordinary controlled state. The `Report` is the expensive part of the page: imagine it crunching thousands of rows, and to make its work visible, it counts its own renders with a ref that survives between them. The transcripts show what React puts on screen, and this lesson's practice problems render your components for real and count their renders the same way.
+Lesson 34 told you recomputation is cheap and to stop worrying — and for six lessons that advice held. This dashboard is where the bill finally arrives. The note input is ordinary controlled state. The `Report` is the expensive part of the page: imagine it crunching thousands of rows, and to make its work visible, it counts its own renders with a ref that survives between them. The transcripts show what React puts on screen, and this lesson's practice problems render your components for real and count their renders the same way. One honesty note about that counter: mutating a ref during render is instrumentation, not a pattern — React's rules reserve render for pure computation, and under StrictMode's deliberate double-rendering such a counter would count discarded renders too. It works as a teaching device here because this course's runner renders once, without StrictMode; in a real app, measure with the React DevTools Profiler instead.
 
 ```tsx
 import { useRef, useState } from 'react'
@@ -51,7 +51,7 @@ Before the tools, the discipline: this lesson's opener made the cost visible wit
 
 ## `memo`: skip the render when the props match
 
-React's targeted fix for exactly this shape is `memo`. Wrapping a component in it changes one thing: before re-rendering the child, React compares the new props to the previous props, and if every prop is equal, it skips the child's render entirely and reuses the last output.
+React's targeted fix for exactly this shape is `memo`. Wrapping a component in it changes one thing: when a re-render arrives from the parent, React compares the new props to the previous props, and if every prop is equal, it can skip the child's render and reuse the last output. Two honest qualifiers before you lean on it: the skip applies to parent-triggered renders — the child's own state or a context it reads still re-render it — and React's documentation frames memo as a performance optimization, not a guarantee; correctness must never depend on a render being skipped.
 
 ```tsx
 import { memo } from 'react'

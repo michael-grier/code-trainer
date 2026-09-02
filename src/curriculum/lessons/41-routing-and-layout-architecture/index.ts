@@ -17,7 +17,7 @@ export const lesson: Lesson = {
       completionMode: 'all-tests-pass',
       title: 'Implement the route matcher',
       prompt:
-        "Implement matchRoute, the kernel of every router. Given a pattern like `/projects/:projectId/tasks/:taskId` and a concrete path, return the captured params when the pattern describes the path, or null when it does not. The rules: split both strings on `/` and ignore the empty pieces that leading or trailing slashes leave behind, so `/users/` and `/users` are the same segments; the segment counts must be equal; a pattern segment starting with `:` captures the path segment under its name; any other segment must match exactly. A pattern with no params that matches returns `{}`. Example: `matchRoute('/users/:id', '/users/42')` returns `{ id: '42' }`, and `matchRoute('/users/:id', '/users')` returns `null`.",
+        "Implement matchRoute, the kernel of every router. Given a pattern like `/projects/:projectId/tasks/:taskId` and a concrete path, return the captured params when the pattern describes the path, or null when it does not. The rules: split both strings on `/` and trim only the empty pieces that a leading or trailing slash creates, so `/users/` and `/users` are the same segments — but an empty segment *inside* either string (a doubled slash, as in `/users//42`) makes it malformed and matches nothing; the segment counts must be equal; a pattern segment starting with `:` captures the path segment under its name; any other segment must match exactly. A pattern with no params that matches returns `{}`. Example: `matchRoute('/users/:id', '/users/42')` returns `{ id: '42' }`, and `matchRoute('/users/:id', '/users')` returns `null`.",
       estimatedMinutes: 15,
       functionName: 'matchRoute',
       starter: `export function matchRoute(
@@ -64,6 +64,11 @@ console.log(matchRoute('/users/:id', '/users/42'))
           name: 'ignores a trailing slash',
           args: ['/users/', '/users'],
           expected: {},
+        },
+        {
+          name: 'rejects a doubled slash inside the path',
+          args: ['/users/:id', '/users//42'],
+          expected: null,
         },
         {
           name: 'rejects a different resource entirely',
@@ -242,7 +247,7 @@ export function MailApp() {
           id: 'ordered-table',
           label: 'A safe, ordered route table',
           description:
-            'Patterns cover every screen with params where entities vary (/projects/:projectId, nested docs/:docId), specific routes precede parameterized ones where they could collide, and a catch-all not-found route closes the table.',
+            'Patterns cover every screen with params where entities vary (/projects/:projectId, nested docs/:docId), specific routes precede parameterized ones where they could collide, and not-found is handled as the fallback once every pattern has failed (or an explicit wildcard, if the answer defines one).',
         },
         {
           id: 'nested-layouts',
@@ -270,7 +275,7 @@ export function MailApp() {
         },
       ],
       referenceAnswer:
-        "Route table, in matching order: `/login` → login screen, no params. `/` → dashboard. `/projects/:projectId/board` → board tab. `/projects/:projectId/docs` → docs list tab. `/projects/:projectId/docs/:docId` → single document. `/projects/:projectId/settings` → settings tab. `*` (catch-all, last) → not-found. Ordering is safe because every static segment that could collide with a param sits in a different position here — but the discipline still applies: if a `/projects/new` screen appears later, it must be listed before `/projects/:projectId`, or 'new' becomes a project id. The catch-all goes last so it only claims what nothing else matched.\n\nLayout nesting. Three layers. The app shell — sidebar with its collapsed toggle — wraps every authenticated route: dashboard and all project routes render in its slot, so the toggle's state lives in the shell and survives every navigation in the app. The project layout — header with name and members, fetched once per project from :projectId — wraps the three tab routes; switching board to docs to settings swaps content inside it, so the header neither refetches nor flickers. The document view nests inside the docs tab's slot. Login renders outside the app shell entirely, which is what 'no chrome' means structurally: it is a sibling of the shell, not a child with pieces hidden. Each decision is the same test: the sidebar toggle must survive project switches, so it lives above them; the project header must survive tab switches but not project switches, so it lives between them.\n\nThe assignee filter: in the URL as a query parameter. The deciding requirement is support's 'send me the link to exactly what you're seeing' — a filter in component state produces links that lie, showing the sender's filtered board and the receiver's unfiltered one. The URL also makes refresh and back/forward preserve the view for free. Component state fails the share test outright; app-level persistence is worse — it makes the filter follow the user across projects invisibly, so the same link renders differently depending on session history, which is exactly what shared links must never do. The sidebar toggle is the counterexample that keeps the policy honest: nobody needs it back from a link, so it stays out of the URL, in the shell's local state.\n\nEdges. An unknown project id is not a routing failure — `/projects/xyz/board` matches the pattern perfectly — it is a server-state miss: the project query returns not-found, and the project layout renders a 'project not found' state inside the app shell, keeping the sidebar usable. The routing 404 (catch-all) is reserved for URLs no pattern claims. Login preserves deep links: hitting `/projects/p1/docs/d4` while signed out redirects to `/login` carrying the intended destination, and completing login navigates there, not to the dashboard — support's links must work even for users who get logged out on the way.",
+        "Route table, in matching order: `/login` → login screen, no params. `/` → dashboard. `/projects/:projectId/board` → board tab. `/projects/:projectId/docs` → docs list tab. `/projects/:projectId/docs/:docId` → single document. `/projects/:projectId/settings` → settings tab. And when every pattern has returned null, the dispatcher falls back to the not-found screen — the 404 is the fallback after the table, not a pattern in it (real routers offer wildcard syntax for this; the lesson's matcher does not need it). Ordering is safe because every static segment that could collide with a param sits in a different position here — but the discipline still applies: if a `/projects/new` screen appears later, it must be listed before `/projects/:projectId`, or 'new' becomes a project id.\n\nLayout nesting. Three layers. The app shell — sidebar with its collapsed toggle — wraps every authenticated route: dashboard and all project routes render in its slot, so the toggle's state lives in the shell and survives every navigation in the app. The project layout — header with name and members, fetched once per project from :projectId — wraps the three tab routes; switching board to docs to settings swaps content inside it, so the header neither refetches nor flickers. The document view nests inside the docs tab's slot. Login renders outside the app shell entirely, which is what 'no chrome' means structurally: it is a sibling of the shell, not a child with pieces hidden. Each decision is the same test: the sidebar toggle must survive project switches, so it lives above them; the project header must survive tab switches but not project switches, so it lives between them.\n\nThe assignee filter: in the URL as a query parameter. The deciding requirement is support's 'send me the link to exactly what you're seeing' — a filter in component state produces links that lie, showing the sender's filtered board and the receiver's unfiltered one. The URL also makes refresh and back/forward preserve the view for free. Component state fails the share test outright; app-level persistence is worse — it makes the filter follow the user across projects invisibly, so the same link renders differently depending on session history, which is exactly what shared links must never do. The sidebar toggle is the counterexample that keeps the policy honest: nobody needs it back from a link, so it stays out of the URL, in the shell's local state.\n\nEdges. An unknown project id is not a routing failure — `/projects/xyz/board` matches the pattern perfectly — it is a server-state miss: the project query returns not-found, and the project layout renders a 'project not found' state inside the app shell, keeping the sidebar usable. The routing 404 (catch-all) is reserved for URLs no pattern claims. Login preserves deep links: hitting `/projects/p1/docs/d4` while signed out redirects to `/login` carrying the intended destination, and completing login navigates there, not to the dashboard — support's links must work even for users who get logged out on the way.",
     },
     {
       id: 'routing-review',
@@ -281,7 +286,7 @@ export function MailApp() {
         "A teammate's app keeps the current screen in a top-level useState, renders a copy of the sidebar-and-header chrome inside every page component, and routes with a chain of if statements checking exact strings. It works in the demo. In your own words, review the architecture. Explain: what breaks when the location lives only in component state and what makes the URL a different kind of state, why per-page chrome resets its own state on every navigation and the inversion that fixes it, what pattern matching with params adds over exact-string comparison and why route order matters once patterns exist, and one piece of state you would deliberately keep out of the URL. Use a short example of your own.",
       estimatedMinutes: 12,
       referenceAnswer:
-        "The useState location fails the moment anyone uses a browser like a browser. Refresh: the state is gone and the app resets to its default screen. Share: the link carries none of the location, so the recipient lands somewhere else — 'send me the link to what you're seeing' becomes impossible. Back button: the browser leaves the site instead of leaving the screen. The URL is state the browser co-owns — bookmarkable, restorable, wired into history — and keeping the location anywhere else means fighting every feature the address bar provides. Structurally it is lesson 36's situation: the browser's location is an external system, and the app synchronizes with it rather than replacing it.\n\nThe per-page chrome is a tree-position bug, not a reuse bug. A component is a recipe; state lives in instances; and an instance survives only while its position in the tree keeps the same component type. When navigation swaps PageA for PageB, everything inside the old page unmounts — including its copy of the chrome — and PageB mounts a brand-new chrome whose useState calls run fresh. My example: a search box in a header that each page rendered separately; every navigation blanked the search, and the 'fix' someone shipped moved the text into a global store, treating an architecture problem as a state problem. The real fix is the inversion: one layout instance owns the chrome and exposes a children slot, navigation swaps only the slot's content, and the chrome's state survives because its instance does. The rule generalizes into nested layouts: whatever must survive a navigation lives at or above the layout that persists across it.\n\nExact-string routing cannot express entities. The if-chain needs a line per project, per document — which is to say it cannot be written. Patterns with params ('/projects/:projectId') match by shape and capture the varying segment, turning one declaration into every project's route and handing the screen its data as params, which then serve as the single source for what to load — no separate selectedProject state to drift out of sync with the address bar. Order arrives as a cost the moment patterns exist: patterns overlap, so the table is tried top to bottom and first match wins, meaning '/projects/new' must precede '/projects/:projectId' or 'new' is captured as an id, and the catch-all not-found sits last to claim only what nothing else did.\n\nDeliberately out of the URL: the sidebar's collapsed state — and its whole category, session-local UI posture. The test is who needs it back later: a shared link must reproduce which screen, which entity, which view-defining filters, because the recipient needs those; nobody needs the sender's collapsed sidebar, half-typed draft, or open dropdown, and encoding them makes links brittle and history noisy. State the browser should restore goes in the URL; state only this session cares about stays in components.",
+        "The useState location fails the moment anyone uses a browser like a browser. Refresh: the state is gone and the app resets to its default screen. Share: the link carries none of the location, so the recipient lands somewhere else — 'send me the link to what you're seeing' becomes impossible. Back button: the browser leaves the site instead of leaving the screen. The URL is state the browser co-owns — bookmarkable, restorable, wired into history — and keeping the location anywhere else means fighting every feature the address bar provides. Structurally it is lesson 36's situation: the browser's location is an external system, and the app synchronizes with it rather than replacing it.\n\nThe per-page chrome is a tree-position bug, not a reuse bug. A component is a recipe; state lives in instances; and an instance survives only while its position in the tree keeps the same component type. When navigation swaps PageA for PageB, everything inside the old page unmounts — including its copy of the chrome — and PageB mounts a brand-new chrome whose useState calls run fresh. My example: a search box in a header that each page rendered separately; every navigation blanked the search, and the 'fix' someone shipped moved the text into a global store, treating an architecture problem as a state problem. The real fix is the inversion: one layout instance owns the chrome and exposes a children slot, navigation swaps only the slot's content, and the chrome's state survives because its instance does. The rule generalizes into nested layouts: whatever must survive a navigation lives at or above the layout that persists across it.\n\nExact-string routing cannot express entities. The if-chain needs a line per project, per document — which is to say it cannot be written. Patterns with params ('/projects/:projectId') match by shape and capture the varying segment, turning one declaration into every project's route and handing the screen its data as params, which then serve as the single source for what to load — no separate selectedProject state to drift out of sync with the address bar. Order arrives as a cost the moment patterns exist: patterns overlap, so the table is tried top to bottom and first match wins, meaning '/projects/new' must precede '/projects/:projectId' or 'new' is captured as an id, and the not-found screen is the dispatcher's fallback once every pattern has returned null.\n\nDeliberately out of the URL: the sidebar's collapsed state — and its whole category, session-local UI posture. The test is who needs it back later: a shared link must reproduce which screen, which entity, which view-defining filters, because the recipient needs those; nobody needs the sender's collapsed sidebar, half-typed draft, or open dropdown, and encoding them makes links brittle and history noisy. State the browser should restore goes in the URL; state only this session cares about stays in components.",
       rubric: [
         {
           id: 'url-as-state',
@@ -314,16 +319,34 @@ export function MailApp() {
     'route-matcher': [
       {
         name: 'Segment walk with param capture',
-        code: `export function matchRoute(
+        code: `// Trim the empties a leading or trailing slash creates, but keep interior
+// ones: '/users//42' is not the same path as '/users/42'. A null means the
+// value is malformed (an empty segment survived the trim).
+function toSegments(value: string): string[] | null {
+  const segments = value.split('/')
+
+  if (segments[0] === '') {
+    segments.shift()
+  }
+  if (segments.length > 0 && segments[segments.length - 1] === '') {
+    segments.pop()
+  }
+
+  return segments.includes('') ? null : segments
+}
+
+export function matchRoute(
   pattern: string,
   path: string,
 ): Record<string, string> | null {
-  // Split on '/' and drop the empty pieces a leading or trailing slash
-  // leaves behind, so '/users/' and '/users' describe the same segments.
-  const patternSegments = pattern.split('/').filter((segment) => segment !== '')
-  const pathSegments = path.split('/').filter((segment) => segment !== '')
+  const patternSegments = toSegments(pattern)
+  const pathSegments = toSegments(path)
 
-  if (patternSegments.length !== pathSegments.length) {
+  if (
+    patternSegments === null ||
+    pathSegments === null ||
+    patternSegments.length !== pathSegments.length
+  ) {
     return null
   }
 
@@ -343,9 +366,9 @@ export function MailApp() {
   return params
 }`,
         explanation:
-          "Filtering out empty segments after the split does three jobs in one line: it absorbs the leading slash both strings carry, normalizes trailing slashes so '/users/' and '/users' agree, and makes the root path '/' an empty segment list that matches itself with zero comparisons. The length check then rejects too-long and too-short paths before any walking, which is what makes the loop body simple: at each position, a segment is either a capture or a constraint. Captures never fail — whatever sits in a :param position becomes the value, dashes and all — while static segments are exact-equality constraints whose first failure ends the match. Returning the params object even when empty keeps the contract clean for callers: null means 'not this route', an object means 'this route, with this data', and a route table is just this function tried down an ordered list until something non-null comes back.",
+          "toSegments trims exactly the two empties a leading and a trailing slash create — never interior ones — so '/users/' and '/users' agree, the root path '/' becomes an empty list that matches itself with zero comparisons, and a doubled slash like '/users//42' is reported as malformed rather than silently collapsed into a match. The length check then rejects too-long and too-short paths before any walking, which is what makes the loop body simple: at each position, a segment is either a capture or a constraint. Captures never fail — whatever sits in a :param position becomes the value, dashes and all — while static segments are exact-equality constraints whose first failure ends the match. Returning the params object even when empty keeps the contract clean for callers: null means 'not this route', an object means 'this route, with this data', and a route table is just this function tried down an ordered list until something non-null comes back.",
         complexity:
-          'O(n) time in the path length for the split and walk, O(p) space for p captured params. The guarantee that matters is the contract: a non-null result means every static segment matched and every param is filled.',
+          'O(n) time and O(n) space in the path length, for the segment arrays the split allocates, plus the captured params. The guarantee that matters is the contract: a non-null result means every static segment matched and every param is filled.',
       },
     ],
     'lift-the-shell': [

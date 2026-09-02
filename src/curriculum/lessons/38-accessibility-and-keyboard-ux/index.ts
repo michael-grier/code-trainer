@@ -17,7 +17,7 @@ export const lesson: Lesson = {
       completionMode: 'all-tests-pass',
       title: 'Give the waitlist form its accessible names',
       prompt:
-        "WaitlistForm works perfectly with a mouse: two inputs with text sitting near them, a join button, and sensible messages. But nothing connects the visible words to the fields, so neither input has an accessible name — and this problem's grader interacts with your component the way assistive technology does: it locates each input by its accessible name and cannot type into a field it cannot identify. Give the email input the accessible name `email address` and the referral input `referral code`, using `aria-label` (which is how the harness, like AT automation, resolves names). Keep the behavior exactly as it is: joining with a blank or whitespace email shows `enter your email`, otherwise `joined as EMAIL`; a nonempty referral shows `referral: CODE`. Example: typing into the field named `email address` and clicking `join waitlist` must put `joined as ada@example.com` on screen.",
+        "WaitlistForm works perfectly with a mouse: two inputs with text sitting near them, a join button, and sensible messages. But nothing connects the visible words to the fields, so neither input has an accessible name — and this problem's grader interacts with your component the way assistive technology does: it locates each input by its accessible name and cannot type into a field it cannot identify. Give the email input the accessible name `email address` and the referral input `referral code`. Any real naming mechanism works — the harness resolves a wrapping `<label>`, an `htmlFor`/`id` association, or an `aria-label`, the way assistive tech does — and since both names have visible text sitting right there, the native-first move is to turn those paragraphs into labels. Keep the behavior exactly as it is: joining with a blank or whitespace email shows `enter your email`, otherwise `joined as EMAIL`; a nonempty referral shows `referral: CODE`. Example: typing into the field named `email address` and clicking `join waitlist` must put `joined as ada@example.com` on screen.",
       estimatedMinutes: 12,
       componentName: 'WaitlistForm',
       starter: `import { useState } from 'react'
@@ -222,7 +222,7 @@ console.log(nextFocusIndex(3, 'ArrowDown', 4))
           id: 'focus-lifecycle',
           label: 'Focus never dangles',
           description:
-            'Opening moves focus to the first item (or the trigger retains it with activedescendant), choosing an action and Escape both return focus to the trigger, and dismissal never strands focus on <body>.',
+            'Opening moves focus to the first item (or the trigger retains it with activedescendant), choosing an action and Escape both return focus to the trigger, and the destructive case is covered: when delete removes the row and its trigger, focus moves to a surviving neighbor (next or previous row, or the list) rather than falling to <body>.',
         },
         {
           id: 'announced-state',
@@ -232,7 +232,7 @@ console.log(nextFocusIndex(3, 'ArrowDown', 4))
         },
       ],
       referenceAnswer:
-        'Elements and names. The trigger is a real <button> with aria-label="document actions" — the ellipsis glyph is decoration, and voice-control and screen-reader users need a name — plus aria-expanded toggling "false"/"true" so the state is announced, and aria-haspopup="menu" to set expectations. The menu container takes role="menu"; each action is a <button role="menuitem">. Buttons rather than divs because every behavior this widget needs — focusability, activation, announcement — ships with the element, and rebuilding it on divs is how keyboard users get locked out. Buttons rather than links because rename, duplicate, and delete are actions, not navigation; a link promises a destination.\n\nKeyboard map. On the closed trigger: Enter or Space opens the menu and moves focus to the first item; ArrowDown does the same (a common convenience). Inside the open menu: ArrowDown/ArrowUp move to the next and previous item, wrapping at the ends; Home and End jump to the first and last item; Enter (and Space) activates the focused item, performs the action, and closes the menu; Escape closes without acting; Tab closes the menu and moves focus onward in the page, because a popup should not trap the tab order. Every key has a defined outcome, which is the difference between a keyboard map and keyboard luck.\n\nFocus strategy. Roving tabindex, with the lesson\'s nextFocusIndex as the movement logic: the active item has tabIndex 0 and holds real DOM focus, the rest are tabIndex -1, and arrow handlers move both the index and the focus. Real focus buys real browser behavior — the active item scrolls into view in a long menu, :focus styling works, and screen readers announce each item as focus lands on it — at the cost of managing tabIndex values, which the helper makes mechanical. aria-activedescendant is a legitimate alternative that keeps DOM focus on the container, but it trades away scroll-into-view and native announcements for bookkeeping of the same complexity. Natural tab order is wrong outright: fifty menus of three items would put up to 150 stops in the page tab order, and this lesson\'s one-tab-stop rule for composite widgets exists precisely to prevent that.\n\nFocus lifecycle. Opening moves focus to the first menu item. Activating an action closes the menu and returns focus to the trigger button, so the user is standing exactly where they were, next to the row they were operating on — with fifty rows, dumping focus to <body> would force a blind user to Tab back through dozens of controls to regain their place. Escape also returns focus to the trigger. A click elsewhere closes the menu without stealing focus from wherever the click landed. The invariant: the menu borrows focus and always gives it back.',
+        'Elements and names. The trigger is a real <button> with aria-label="document actions" — the ellipsis glyph is decoration, and voice-control and screen-reader users need a name — plus aria-expanded toggling "false"/"true" so the state is announced, and aria-haspopup="menu" to set expectations. The menu container takes role="menu"; each action is a <button role="menuitem">. Buttons rather than divs because every behavior this widget needs — focusability, activation, announcement — ships with the element, and rebuilding it on divs is how keyboard users get locked out. Buttons rather than links because rename, duplicate, and delete are actions, not navigation; a link promises a destination.\n\nKeyboard map. On the closed trigger: Enter or Space opens the menu and moves focus to the first item; ArrowDown does the same (a common convenience). Inside the open menu: ArrowDown/ArrowUp move to the next and previous item, wrapping at the ends; Home and End jump to the first and last item; Enter (and Space) activates the focused item, performs the action, and closes the menu; Escape closes without acting; Tab closes the menu and moves focus onward in the page, because a popup should not trap the tab order. Every key has a defined outcome, which is the difference between a keyboard map and keyboard luck.\n\nFocus strategy. Roving tabindex, with the lesson\'s nextFocusIndex as the movement logic: the active item has tabIndex 0 and holds real DOM focus, the rest are tabIndex -1, and arrow handlers move both the index and the focus. Real focus buys real browser behavior — the active item scrolls into view in a long menu, :focus styling works, and screen readers announce each item as focus lands on it — at the cost of managing tabIndex values, which the helper makes mechanical. aria-activedescendant is a legitimate alternative that keeps DOM focus on the container, but it trades away scroll-into-view and native announcements for bookkeeping of the same complexity. Natural tab order is wrong outright: fifty menus of three items would put up to 150 stops in the page tab order, and this lesson\'s one-tab-stop rule for composite widgets exists precisely to prevent that.\n\nFocus lifecycle. Opening moves focus to the first menu item. Activating rename or duplicate closes the menu and returns focus to the trigger button, so the user is standing exactly where they were, next to the row they were operating on — with fifty rows, dumping focus to <body> would force a blind user to Tab back through dozens of controls to regain their place. Delete is the exception that proves the rule: it destroys the row and the trigger with it, so returning to the trigger has no target, and focus must move to the next row\'s trigger instead (or the previous row\'s when the last row died, or the list container when the list is now empty). Escape returns focus to the trigger. A click elsewhere closes the menu without stealing focus from wherever the click landed. The invariant: the menu borrows focus and always hands it to something that still exists.',
     },
     {
       id: 'semantics-review',
@@ -275,7 +275,7 @@ console.log(nextFocusIndex(3, 'ArrowDown', 4))
   approaches: {
     'name-the-waitlist-form': [
       {
-        name: 'Names via aria-label, labels for the eyes too',
+        name: 'Real labels: the visible text becomes the name',
         code: `import { useState } from 'react'
 
 export function WaitlistForm() {
@@ -292,7 +292,6 @@ export function WaitlistForm() {
       <label>
         email address
         <input
-          aria-label="email address"
           value={email}
           onChange={(event) => setEmail(event.target.value)}
         />
@@ -300,7 +299,6 @@ export function WaitlistForm() {
       <label>
         referral code
         <input
-          aria-label="referral code"
           value={referral}
           onChange={(event) => setReferral(event.target.value)}
         />
@@ -312,7 +310,7 @@ export function WaitlistForm() {
   )
 }`,
         explanation:
-          "The behavior is untouched; every change is naming. The loose paragraphs become real <label> elements wrapping their inputs, which is the visible half of the fix — clicking the words now focuses the field. The aria-label on each input carries the same text, which is what this harness (like much AT tooling) resolves as the accessible name, and it follows the label-in-name rule: when a control has both visible text and an aria-label, the aria-label must contain the visible text, because voice-control users say what they see. In production, association via htmlFor and id (or the wrapping label alone) is the preferred first tool, with aria-label reserved for controls that have no visible text; here the duplicate is deliberate and identical, so no user hears a name that disagrees with the screen. The starter's failure mode is worth remembering: the grader did not fail assertions, it could not find the inputs at all — which is precisely the experience of a screen-reader user handed a form of unnamed fields.",
+          "The behavior is untouched; every change is naming, and the fix is the native-first one: the loose paragraphs become real <label> elements wrapping their inputs, so the visible text is the accessible name with no ARIA involved. That one association does three jobs — screen readers announce 'email address' on entering the field, clicking the words focuses the input (a bigger target for everyone), and the harness can now resolve the field the same way AT does. An aria-label carrying the same text would also pass, and it is the right tool when a control has no visible text; with the text sitting right there, the label association is simpler and keeps one source of truth for the name. The starter's failure mode is worth remembering: the grader did not fail assertions, it could not find the inputs at all — which is precisely the experience of a screen-reader user handed a form of unnamed fields.",
         complexity:
           'O(1) render work. The guarantee that matters is the contract: every interactive control exposes a machine-readable name that matches its visible purpose.',
       },

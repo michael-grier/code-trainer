@@ -102,6 +102,16 @@ console.log(
           expected: { kind: 'stale', data: ['a', 'b'] },
         },
         {
+          name: 'an inherited name is not an entry',
+          args: [
+            { tasks: { data: ['a', 'b'], fetchedAtMs: 1000 } },
+            'toString',
+            1500,
+            30000,
+          ],
+          expected: { kind: 'miss' },
+        },
+        {
           name: 'an empty cache always misses',
           args: [{}, 'tasks', 1000, 30000],
           expected: { kind: 'miss' },
@@ -154,7 +164,13 @@ export function ProductSearch() {
       <input
         aria-label="search"
         value={query}
-        onChange={(event) => setQuery(event.target.value)}
+        onChange={(event) => {
+          // A new question invalidates the old answer immediately: clear the
+          // results in the handler so the screen never pairs them with the
+          // new query while its request is in flight.
+          setQuery(event.target.value)
+          setResults(null)
+        }}
       />
       {query === '' && <p>type to search</p>}
       {query !== '' && results === null && <p>searching…</p>}
@@ -209,6 +225,19 @@ export function ProductSearch() {
           expect: [
             { type: 'text-present', text: 'found: apple, apricot' },
             { type: 'text-absent', text: 'banana' },
+          ],
+        },
+        {
+          name: 'a new query clears the old answer while it waits',
+          props: {},
+          steps: [
+            { action: 'type', into: 'search', value: 'ap' },
+            { action: 'click', text: 'deliver oldest' },
+            { action: 'type', into: 'search', value: 'ban' },
+          ],
+          expect: [
+            { type: 'text-present', text: 'searching…' },
+            { type: 'text-absent', text: 'found:' },
           ],
         },
         {
@@ -363,11 +392,13 @@ export function readFromCache(
   nowMs: number,
   staleTimeMs: number,
 ): CacheDecision {
-  const entry = cache[key]
-
-  if (entry === undefined) {
+  // An own-property check, so inherited names like 'toString' cannot pose
+  // as cache entries.
+  if (!Object.hasOwn(cache, key)) {
     return { kind: 'miss' }
   }
+
+  const entry = cache[key]
 
   // Age equal to the stale time is already stale: fresh means strictly
   // younger than the threshold.
@@ -379,7 +410,7 @@ export function readFromCache(
   return { kind: 'stale', data: entry.data }
 }`,
         explanation:
-          "Three outcomes, three returns, in the order that keeps each check simple: the miss is handled before any arithmetic can run against a missing entry, and what remains is one age comparison. The strict less-than is the deliberate detail — the boundary tests pin it from both sides, with an entry exactly at the threshold going stale and one millisecond younger staying fresh — and it makes a zero stale time mean 'trust nothing', which is the honest degenerate case. Stale still carries the data because the whole point of the third state is stale-while-revalidate: the caller shows the aged copy immediately and refetches behind it, so the user sees content now and truth shortly. Returning a discriminated union rather than a boolean-plus-maybe-data means every caller must say what it does in all three cases, which is lesson 26 keeping this cache honest.",
+          "Three outcomes, three returns, in the order that keeps each check simple: the miss is handled before any arithmetic can run against a missing entry, and what remains is one age comparison. The miss check uses Object.hasOwn rather than an undefined comparison, because a plain object inherits names like toString from its prototype — a lookup by that key would find a function, sail past an undefined check, and hand back a non-miss result with no data. The strict less-than is the deliberate detail — the boundary tests pin it from both sides, with an entry exactly at the threshold going stale and one millisecond younger staying fresh — and it makes a zero stale time mean 'trust nothing', which is the honest degenerate case. Stale still carries the data because the whole point of the third state is stale-while-revalidate: the caller shows the aged copy immediately and refetches behind it, so the user sees content now and truth shortly. Returning a discriminated union rather than a boolean-plus-maybe-data means every caller must say what it does in all three cases, which is lesson 26 keeping this cache honest.",
         complexity:
           'O(1) time and space per read. The guarantee that matters is the contract: every read yields exactly one of miss, fresh, or stale, with data present whenever an entry exists.',
       },
@@ -435,7 +466,13 @@ export function ProductSearch() {
       <input
         aria-label="search"
         value={query}
-        onChange={(event) => setQuery(event.target.value)}
+        onChange={(event) => {
+          // A new question invalidates the old answer immediately: clear the
+          // results in the handler so the screen never pairs them with the
+          // new query while its request is in flight.
+          setQuery(event.target.value)
+          setResults(null)
+        }}
       />
       {query === '' && <p>type to search</p>}
       {query !== '' && results === null && <p>searching…</p>}

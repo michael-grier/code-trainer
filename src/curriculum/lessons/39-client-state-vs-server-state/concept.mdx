@@ -48,7 +48,7 @@ Read the final screen against the input. The box says `ap`; the results include 
 
 ## Two kinds of state, one test
 
-**Client state** is what the component (or app) owns outright: `query`, an open dialog, a selected row, lesson 37's `touched` flags. It is created by your code, changed only by your code, synchronous, and always correct by definition — the rules of lessons 33 through 37 govern it fully.
+**Client state** is what the component (or app) owns outright: `query`, an open dialog, a selected row, lesson 37's `touched` flags. It is created by your code, changed only through your code, and — the defining property — your application is its sole authority: there is no truer copy elsewhere that yours could drift from. (Your code can still mishandle it, and setters still wait for the next render; ownership, not infallibility, is the claim.) The rules of lessons 33 through 37 govern it fully.
 
 **Server state** is different in every one of those ways. `results` is not owned; it is a **snapshot of someone else's truth**. The truth lives on the server, other clients may change it, getting a copy is asynchronous and can fail, and the copy starts aging the moment it arrives. The test for which kind you are holding: *if this value is wrong, whose job is it to know the right one?* If the answer is "the server's," then what your component holds is a cache entry, whether or not you meant to build a cache — and cache entries need three things ordinary state does not: a status, a defense against reordering, and a freshness policy.
 
@@ -91,7 +91,7 @@ useEffect(() => {
 }, [query])
 ```
 
-Walk the race through the fixed version. Typing `ap` changes the dependency, so React runs the cleanup of the `a` effect first — `superseded` becomes `true` for that request — then starts the `ap` effect with its own fresh flag. When the slow `a` response finally lands, its `.then` finds `superseded` set and drops it. The rule this enforces is worth stating as policy: **a response may only be applied by the request that is still current**. The flag is the lightweight version; a real fetch would pass an `AbortController` signal from the same cleanup, stopping the network work too, exactly as lesson 24 built. Either way, the component stops trusting arrival order — because networks reorder, and the practice problems will reorder yours deliberately.
+One companion line belongs in the change handler rather than the effect: when the query changes, set the results back to `null`, so the old answer leaves the screen the moment the question does and the loading message covers the gap — otherwise the screen pairs the previous query's results with the new query while its request is in flight, a smaller cousin of the same lie. Then walk the race through the fixed version. Typing `ap` changes the dependency, so React runs the cleanup of the `a` effect first — `superseded` becomes `true` for that request — then starts the `ap` effect with its own fresh flag. When the slow `a` response finally lands, its `.then` finds `superseded` set and drops it. The rule this enforces is worth stating as policy: **a response may only be applied by the request that is still current**. The flag is the lightweight version; a real fetch would pass an `AbortController` signal from the same cleanup, stopping the network work too, exactly as lesson 24 built. Either way, the component stops trusting arrival order — because networks reorder, and the practice problems will reorder yours deliberately.
 
 ## Snapshots age: freshness and invalidation
 
