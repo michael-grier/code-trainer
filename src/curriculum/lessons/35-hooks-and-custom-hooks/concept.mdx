@@ -1,14 +1,186 @@
 # Hooks and Custom Hooks
 
-This placeholder concept page reserves the lesson slot for **Hooks and Custom Hooks**. The content pass will replace it with the final interview-focused MDX lesson.
+Every `useState` call you have written so far sat at the top of its component, and nothing so far explains why it had to. This poll component finds out. It keeps two pieces of state — `voted`, whether this user has cast a vote, and `choice`, which option is selected — and it returns early once the vote is in, because there is nothing left to choose. The transcripts show what React puts on screen, and this lesson's practice problems render your components for real.
 
-## What this lesson will cover
+```tsx
+import { useState } from 'react'
 
-- Core interview signals for hooks and custom hooks.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+function Poll() {
+  const [voted, setVoted] = useState(false)
+
+  if (voted) {
+    return <p>thanks for voting</p>
+  }
+
+  const [choice, setChoice] = useState('tabs')
+
+  return (
+    <div>
+      <p>choice: {choice}</p>
+      <button onClick={() => setChoice('tabs')}>tabs</button>
+      <button onClick={() => setChoice('spaces')}>spaces</button>
+      <button onClick={() => setVoted(true)}>vote</button>
+    </div>
+  )
+}
+```
+
+Pick `spaces`, then click `vote`:
+
+<TerminalTranscript
+  label="screen, then the click on vote"
+  lines={[
+    { type: 'output', text: 'choice: spaces [tabs] [spaces] [vote]' },
+    {
+      type: 'error',
+      text: 'Error: Rendered fewer hooks than expected. This may be caused by an accidental early return statement.',
+    },
+  ]}
+/>
+
+The component worked perfectly right up to the moment its main feature was used, and then it did not misrender — it crashed. The error message is oddly specific: React was *counting* the hooks, noticed this render had fewer than the last one, and refused to continue. That count is the key to how hooks work at all, and understanding it is what separates following the rules of hooks from reciting them.
+
+## React keeps your state by call order
+
+Here is the puzzle hooks have to solve. `useState` is a plain function call, and the component calls it with an *initial* value every render. Yet after the first render, React hands back the stored value, not the initial one. How does React know that *this* `useState(false)` call is the one whose stored value is `voted`, and *that* `useState('tabs')` is `choice`? The calls carry no name and no key. The answer: React remembers nothing about the calls except **the order they happen in**. Each component instance gets a list of slots, and each render walks that list from the top — first hook call reads slot 0, second reads slot 1.
+
+The mechanism is small enough to build a working miniature of, and the miniature makes the crash reproducible in plain TypeScript. One array of slots, one cursor that resets each render:
+
+```ts
+const hookValues: unknown[] = []
+let cursor = 0
+
+function useValue<T>(initial: T): T {
+  if (cursor >= hookValues.length) {
+    hookValues.push(initial)
+  }
+  const value = hookValues[cursor] as T
+  cursor += 1
+  return value
+}
+
+function render(skipFirst: boolean) {
+  cursor = 0
+  const lines: string[] = []
+
+  if (!skipFirst) {
+    const name = useValue('ada')
+    lines.push(`name=${name}`)
+  }
+
+  const theme = useValue('dark')
+  lines.push(`theme=${theme}`)
+
+  console.log(lines.join(' '))
+}
+
+render(false)
+hookValues[1] = 'light'
+render(false)
+render(true)
+```
+
+<TerminalTranscript
+  label="console"
+  lines={[
+    { type: 'output', text: 'name=ada theme=dark' },
+    { type: 'output', text: 'name=ada theme=light' },
+    { type: 'output', text: 'theme=ada' },
+  ]}
+/>
+
+The first two renders behave like React: the calls happen in the same order, so slot 0 is always the name and slot 1 is always the theme, and the simulated update to slot 1 shows up as a new theme. The third render skips the first hook, and look closely at what prints: `theme=ada`. Not a crash in the miniature — worse. The cursor started at 0, the theme call was the *first* call this render, so it read slot 0 and received the *name's* value. Skipping one hook shifted every hook after it into the wrong slot, silently handing each one another hook's state. Real React detects the count mismatch and throws the error from the opener precisely because this silent mispairing is the alternative.
+
+That is the entire justification for the **rules of hooks**: call hooks only at the top level of a component or another hook — never inside conditions, loops, or early-returned-past code — and only from components or hooks, so React can match this render's calls to its slots. In the poll, `voted` becoming true made the early return skip the `choice` hook, and the render after the vote click called one hook where the previous render had called two. The fix is mechanical: hooks first, decisions after.
+
+```tsx
+function Poll() {
+  // Every hook runs on every render, in the same order, before any return.
+  const [voted, setVoted] = useState(false)
+  const [choice, setChoice] = useState('tabs')
+
+  // The conditional moves below the hooks: render less, but never call less.
+  if (voted) {
+    return <p>thanks for voting</p>
+  }
+  // ... unchanged JSX ...
+}
+```
+
+<TerminalTranscript
+  label="screen after clicking vote, fixed version"
+  lines={[{ type: 'output', text: 'thanks for voting' }]}
+/>
+
+Rendering less is always fine — JSX can be as conditional as it likes. Calling less is what breaks the pairing.
+
+## A custom hook is a function that calls hooks
+
+The call-order model has a generous consequence: since a hook is identified only by its position in the render's call sequence, a hook call does not have to sit textually inside the component. It can live in a function the component calls, and React cannot tell the difference. A function that calls hooks is a **custom hook**, and it is React's unit of reusable stateful logic.
+
+The extraction looks like any other refactor. Toggling something open and closed — a boolean, a flip function — shows up in disclosure panels, mute buttons, and setting switches, and each copy is the same three lines. Name the pattern once:
+
+```tsx
+// One reusable piece of stateful logic. Every component that calls it gets
+// its own independent state slot.
+function useToggle(initial: boolean): [boolean, () => void] {
+  const [on, setOn] = useState(initial)
+  const toggle = () => setOn((current) => !current)
+  return [on, toggle]
+}
+```
+
+The `use` prefix is not decoration: it is the convention that tells both readers and the hooks lint rule that this function contains hook calls, so the rules of hooks apply to its call sites too. Notice also what the hook returns — not `setOn`, but `toggle`. This is lesson 33's narrow-callback rule applied to hooks: expose the actions the logic supports, not the raw setter, and callers cannot put the state somewhere the logic never intended.
+
+## Hooks share logic, not state
+
+The most common misreading of custom hooks is that two components calling `useToggle` are somehow connected. They are not, and the slot model says why: each *call* advances the calling component's own cursor and claims a slot in that component's own list. A custom hook packages the logic; the state belongs to whoever calls it. Two calls in the same component are just as independent:
+
+```tsx
+function Preferences() {
+  const [emailOn, toggleEmail] = useToggle(true)
+  const [smsOn, toggleSms] = useToggle(false)
+
+  return (
+    <div>
+      <p>email: {emailOn ? 'on' : 'off'}</p>
+      <p>sms: {smsOn ? 'on' : 'off'}</p>
+      <button onClick={toggleEmail}>toggle email</button>
+      <button onClick={toggleSms}>toggle sms</button>
+    </div>
+  )
+}
+```
+
+<TerminalTranscript
+  label="screen, then screen after clicking toggle sms"
+  lines={[
+    { type: 'output', text: 'email: on / sms: off' },
+    { type: 'output', text: 'email: on / sms: on' },
+  ]}
+/>
+
+Each call took its own slots, so the sms toggle moved and the email toggle did not. When you actually want several components to see *the same* state, a custom hook alone is the wrong tool — that is lesson 33's ownership rule again: lift the state to a common owner and pass it down (and lesson 39 covers the tools for sharing state at a distance).
+
+The slot model also settles a design question the practice problems will pose. Rendering a list where every item needs its own toggle tempts you to call `useToggle` inside the `.map` callback — a hook in a loop, which the rules forbid, because a list that changes length changes the call count exactly the way the poll's early return did. The design that falls out is the one from lesson 33: give each item its own small component, and let each component call the hook once. The rules of hooks, followed honestly, keep pushing your code toward better component boundaries.
+
+## Common mistakes
+
+These are the errors that show up most often in interviews and code review:
+
+- Calling a hook after a conditional early return, so a state change skips it and React counts fewer hooks than the previous render, as the opening poll showed.
+- Calling hooks inside loops or `.map` callbacks. A changing list length changes the call order; give each item a component that calls the hook once.
+- Expecting two components that call the same custom hook to share state. A custom hook shares the logic; every call claims fresh slots in its own component.
+- Naming a hook without the `use` prefix, which hides it from the lint rule and from readers, so rule violations at its call sites go unflagged.
+- Returning the raw setter from a custom hook when the logic supports specific actions. Expose `toggle`, `increment`, or `dismiss`, so callers cannot write states the logic never meant to allow.
+- Extracting a custom hook that returns JSX. A function that renders is a component; a hook packages behavior and returns values and actions.
+- Fixing a rules-of-hooks lint error by suppressing the lint rule. The rule is enforcing React's slot pairing; silencing it converts a build-time complaint into the opener's runtime crash.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+The exercises build the lesson's ideas in the order you met them:
+
+1. Trace the miniature slot-based hook store and predict where a skipped call hands one hook another hook's state.
+2. Fix the poll that crashes after voting by moving its hooks above the early return.
+3. Build a FAQ list where a `useToggle` custom hook gives every item its own independent open state.
+4. Explain, in your own words, what a custom hook shares and what it does not, and why the call-order rules exist.

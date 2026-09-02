@@ -1,14 +1,162 @@
 # Effects and Synchronization
 
-This placeholder concept page reserves the lesson slot for **Effects and Synchronization**. The content pass will replace it with the final interview-focused MDX lesson.
+`useEffect` is the most misused hook in React, and the misuse usually looks responsible. Here is a name badge with two inputs. `first` and `last` hold what the user typed, and `fullName` holds the text the badge shows — kept up to date, the author reasoned, by an effect that runs whenever the name changes. The transcripts show what React puts on screen, and this lesson's practice problems render your components for real.
 
-## What this lesson will cover
+```tsx
+import { useEffect, useState } from 'react'
 
-- Core interview signals for effects and synchronization.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+function NameBadge() {
+  const [first, setFirst] = useState('Ada')
+  const [last, setLast] = useState('Lovelace')
+  const [fullName, setFullName] = useState('Ada Lovelace')
+
+  useEffect(() => {
+    setFullName(`${first} ${last}`)
+  }, [first])
+
+  return (
+    <div>
+      <input aria-label="first name" value={first} onChange={(e) => setFirst(e.target.value)} />
+      <input aria-label="last name" value={last} onChange={(e) => setLast(e.target.value)} />
+      <p>badge: {fullName}</p>
+    </div>
+  )
+}
+```
+
+Change the last name to `Hopper`, then the first name to `Grace`:
+
+<TerminalTranscript
+  label="screen after each edit"
+  lines={[
+    { type: 'output', text: 'badge: Ada Lovelace' },
+    { type: 'output', text: 'badge: Ada Lovelace' },
+    { type: 'output', text: 'badge: Grace Hopper' },
+  ]}
+/>
+
+The middle line is the bug: the last name changed and the badge did not move. Then the first-name edit "fixed" it, because the effect finally ran and read the current `last`. If that heal-on-the-next-unrelated-edit shape feels familiar, it should — this is lesson 34's stale derived state, rebuilt with new machinery. The effect's dependency list says `[first]`, so editing `last` re-renders the inputs but never re-runs the effect, and `fullName` keeps describing a person who no longer exists. Before fixing it, be precise about what an effect actually is, because the deepest problem here is not the missing dependency.
+
+## What an effect is
+
+A component function must be a pure description: props and state in, JSX out. But real features have to touch things that live outside that world — a server, a subscription, a timer, the document title. An **effect** is React's escape hatch for exactly that: a function React runs *after* a render has been committed to the screen, when it is safe to talk to the outside.
+
+The dependency array controls *which* renders are followed by the effect. React compares each entry to its value from the previous render: `[channel]` re-runs the effect only in renders where `channel` changed, `[]` runs it after the first render only, and no array at all re-runs it after every render. And an effect can hand back a **cleanup function**; React calls it before running the effect again and when the component unmounts, so whatever the effect started can be shut down by the code that started it.
+
+The word that should govern when you reach for all this is **synchronization**. An effect's job is to keep some external thing lined up with your props and state. If nothing external is involved, an effect is the wrong tool — which is precisely the badge's situation.
+
+## The badge did not need an effect
+
+There are two fixes for the badge, and the difference between them is the lesson. The shallow fix adds the missing dependency, `[first, last]`. It works: every edit re-runs the effect, the badge updates. But walk through what each keystroke now costs. React renders with the new `last`, commits a screen showing the *old* badge, runs the effect, sets `fullName`, and renders again — two renders, with a momentarily wrong screen between them, to compute a string concatenation. And `fullName` is still a stored copy of a derivable fact, waiting for the next author to add a dependency wrong.
+
+The real fix is lesson 34's rule wearing effect clothing: `fullName` is computed from state the component already has, so it is not state and not synchronization — it is a derived value.
+
+```tsx
+function NameBadge() {
+  const [first, setFirst] = useState('Ada')
+  const [last, setLast] = useState('Lovelace')
+
+  // Derived during render: recomputed from the current values every time,
+  // with no effect, no third state, and no dependency list to forget.
+  const fullName = `${first} ${last}`
+  // ... unchanged JSX ...
+}
+```
+
+<TerminalTranscript
+  label="screen after changing the last name, fixed version"
+  lines={[{ type: 'output', text: 'badge: Ada Hopper' }]}
+/>
+
+The effect, the third `useState`, and the dependency list all vanish, and with them every way this badge could go stale. The test to run before writing any effect: **is anything outside React involved?** Computing values from props and state — no effect, derive in render. Responding to a click or a submit — no effect, that logic belongs in the event handler that heard it. Only synchronizing with an external system earns the hook.
+
+## What synchronization actually looks like
+
+So what belongs in an effect? Here is the honest case: a component that shows live messages from a channel, where the channel connection is a real external thing — it exists outside React, it keeps running whether or not you render, and someone has to disconnect it. The effect's shape is worth reading closely:
+
+```tsx
+function ChannelViewer() {
+  const [channel, setChannel] = useState('news')
+  const [lastMessage, setLastMessage] = useState('none yet')
+
+  // Synchronize the subscription with the chosen channel: connect after
+  // render, disconnect before the next connect and on unmount.
+  useEffect(() => {
+    return hub.subscribe(channel, (message) => setLastMessage(message))
+  }, [channel])
+  // ... buttons to switch channel ...
+}
+```
+
+`hub.subscribe` returns its own undo — an unsubscribe function — and the effect returns it straight to React as the cleanup. That symmetry is the pattern: whatever an effect starts, its cleanup stops, and the pair travels together.
+
+To see exactly *when* React runs each piece, here is the schedule as a plain TypeScript miniature — one connection, re-rendered with the same channel, then a different one, then unmounted:
+
+```ts
+function connect(channel: string) {
+  console.log(`connect ${channel}`)
+  return () => console.log(`disconnect ${channel}`)
+}
+
+let renderCount = 0
+let activeChannel: string | null = null
+let activeCleanup: (() => void) | null = null
+
+function renderWithEffect(channel: string) {
+  renderCount += 1
+  console.log(`render ${renderCount}: ${channel}`)
+
+  // After a render commits, React compares the deps to last time and only
+  // then re-runs the effect, cleaning up the previous one first.
+  if (activeChannel !== channel) {
+    if (activeCleanup !== null) {
+      activeCleanup()
+    }
+    activeCleanup = connect(channel)
+    activeChannel = channel
+  }
+}
+
+renderWithEffect('news')
+renderWithEffect('news')
+renderWithEffect('sports')
+activeCleanup?.()
+```
+
+<TerminalTranscript
+  label="console"
+  lines={[
+    { type: 'output', text: 'render 1: news' },
+    { type: 'output', text: 'connect news' },
+    { type: 'output', text: 'render 2: news' },
+    { type: 'output', text: 'render 3: sports' },
+    { type: 'output', text: 'disconnect news' },
+    { type: 'output', text: 'connect sports' },
+    { type: 'output', text: 'disconnect sports' },
+  ]}
+/>
+
+Three facts of the schedule, all visible in the output. The render always comes first — effects run after the screen is committed, never during. The second render logs no connect at all, because its dependency was unchanged and React skips the effect entirely. And when the channel does change, the order is disconnect-then-connect: the old effect's cleanup runs before the new effect, so there is never a moment with two live connections. The final line is unmount doing its half.
+
+Now delete the cleanup from the channel effect and replay the sequence in your head. Switching to sports connects a second subscription while the news one keeps listening, and every later switch adds another. The screen then flickers between channels as zombie listeners fire, and the leak grows for as long as the user keeps clicking — the practice problems make you watch exactly this failure. A missing dependency has the opposite symptom: with `[]`, switching channels re-renders the label but never re-runs the effect, and the component confidently displays a channel it is not listening to. The dependency list is not a performance dial to minimize; it is a factual statement about which values the effect reads, and the linter that wants every read value listed is enforcing honesty, not pedantry.
+
+## Common mistakes
+
+These are the errors that show up most often in interviews and code review:
+
+- Using an effect to compute one state from another, as the opening badge did. Derived values belong in render; an effect version is a stored copy plus an extra render, going stale whenever the dependency list is wrong.
+- Putting event logic in an effect — watching a `submitted` flag instead of doing the work in the submit handler. The handler knows *why* things changed; an effect only knows *that* something did.
+- Omitting a dependency the effect reads, so the effect keeps synchronizing against values from an old render. List what the effect uses, or restructure until the list is honest.
+- Starting something without returning its stop: subscriptions, intervals, and listeners pile up one per effect run, and the symptom — duplicate updates, flicker, ghost callbacks — appears far from the leak.
+- Treating the dependency array as a way to make an effect run less often. It is a statement of what the effect reads; lying to it trades a lint warning for a stale bug.
+- Chaining effects — one effect sets state that triggers another effect — to model a workflow. Each link adds a render and a place to go stale; compute what you can in render and do the rest where the event happened.
+- Reaching for an effect to fetch on mount without cleanup, so a component unmounted mid-request still tries to set its state. Cancellation is lesson 24's `AbortController`, and the cleanup function is where it belongs.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+The exercises build the lesson's ideas in the order you met them:
+
+1. Trace the render, connect, and disconnect schedule of the miniature effect model, including the render that skips the effect.
+2. Fix the stale name badge by deleting its effect and deriving the badge text in render.
+3. Build the channel viewer whose effect subscribes with a cleanup, so switching channels never leaks a listener.
+4. Explain, in your own words, what earns a piece of logic an effect and what the dependency list really declares.

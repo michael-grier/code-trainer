@@ -1,14 +1,164 @@
 # Forms and Validation
 
-This placeholder concept page reserves the lesson slot for **Forms and Validation**. The content pass will replace it with the final interview-focused MDX lesson.
+Forms are where every rule from the last four lessons meets an impatient human. This signup form has correct validation logic — genuinely correct, we will reuse it unchanged all lesson — and it still manages to be wrong twice in its first five seconds. `values` holds what the user typed, `validateSignup` computes an error message per broken field, and the JSX shows each error next to its input. The transcripts show what React puts on screen, and this lesson's practice problems render your forms for real and type into them.
 
-## What this lesson will cover
+```tsx
+import { useState } from 'react'
 
-- Core interview signals for forms and validation.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+function SignupForm() {
+  const [values, setValues] = useState({ name: '', email: '' })
+  const [welcomeName, setWelcomeName] = useState<string | null>(null)
+
+  const errors = validateSignup(values)
+
+  if (welcomeName !== null) {
+    return <p>welcome, {welcomeName}</p>
+  }
+
+  return (
+    <div>
+      <label>
+        name
+        <input
+          aria-label="name"
+          value={values.name}
+          onChange={(event) => setValues({ ...values, name: event.target.value })}
+        />
+      </label>
+      {errors.name && <p role="alert">{errors.name}</p>}
+      <label>
+        email
+        <input
+          aria-label="email"
+          value={values.email}
+          onChange={(event) => setValues({ ...values, email: event.target.value })}
+        />
+      </label>
+      {errors.email && <p role="alert">{errors.email}</p>}
+      <button onClick={() => setWelcomeName(values.name)}>sign up</button>
+    </div>
+  )
+}
+```
+
+Render it and do nothing at all. Then click `sign up`, still having typed nothing:
+
+<TerminalTranscript
+  label="screen on first paint, then after clicking sign up"
+  lines={[
+    { type: 'output', text: 'name — name is required' },
+    { type: 'output', text: 'email — enter a valid email' },
+    { type: 'output', text: '[sign up]' },
+    { type: 'output', text: '——————————' },
+    { type: 'output', text: 'welcome, ' },
+  ]}
+/>
+
+Read both screens against what the user actually did. On first paint they are being scolded for two fields they have not had a chance to touch. And the click proves the scolding was decorative: the submit handler never consulted the errors, so the form welcomed a user with no name and no email. The validation was computed, displayed, and ignored. Fixing this form is not about better rules — it is about the three decisions every form must make separately: what the truth is, what you know about it, and what you show and accept, when.
+
+## The truth: controlled inputs
+
+Start with where the form's data lives. Each input in this form is a **controlled input**: its `value` comes from React state, and its `onChange` writes back to that state. The DOM's own input buffer never holds anything the state does not, so `values` is the single source of truth for what the user typed — the same one-owner rule as lessons 33 and 34, applied to text fields. Everything else the form does becomes possible because of this: validation can read `values`, the submit handler can read `values`, and none of them need to ask the DOM.
+
+The `onChange` handler builds a new object with spread rather than mutating, for lesson 34's reason: React compares old and new state to decide whether to re-render, and a mutated object compares as unchanged. One handler shape per field, writing one field, keeps a two-field form boring — and a form with many fields can generalize with a computed key, `{ ...values, [field]: value }`.
+
+## What you know: validation is derived
+
+Now the validation. `validateSignup` is a pure function from values to errors, and notice everything it is not: not a hook, not an effect, not React at all.
+
+```ts
+type SignupValues = { name: string; email: string }
+type SignupErrors = { name?: string; email?: string }
+
+// Framework-free: the same function a unit test or a server could call.
+function validateSignup(values: SignupValues): SignupErrors {
+  const errors: SignupErrors = {}
+
+  if (values.name.trim() === '') {
+    errors.name = 'name is required'
+  }
+
+  const at = values.email.indexOf('@')
+  const domain = values.email.slice(at + 1)
+  const dot = domain.indexOf('.')
+  if (
+    at <= 0 ||
+    at !== values.email.lastIndexOf('@') ||
+    dot <= 0 ||
+    domain.endsWith('.')
+  ) {
+    errors.email = 'enter a valid email'
+  }
+
+  return errors
+}
+```
+
+The email rules are lesson 30's parser rules, and the shape of the whole function is lesson 31's: a validator is a plain function over data, testable with plain assertions, reusable outside React entirely. The component calls it in render — `const errors = validateSignup(values)` — which makes the errors a **derived value** in lesson 34's exact sense: recomputed from the current values on every keystroke, never stored, never stale. The tempting alternative, an `isEmailValid` state updated inside `onChange`, is the stale-copy bug of lessons 34 and 36 arriving through the form door; the moment any code path changes `values` without re-running the check, the form lies.
+
+So the opener's `errors` object was already right. On the empty form, both fields genuinely are invalid. The bug is what the component did with that knowledge.
+
+## What you show: knowing is not showing
+
+An empty required field is invalid from the first render — but *showing* that error before the user has interacted is a different claim: it says *you did something wrong*, when they have done nothing at all. Showing is a UX decision layered on top of the validation, and it needs its own state, because "has the user engaged with this field yet" is a genuine fact the component learns from events, not something derivable from the values.
+
+The standard policy takes two small pieces of state. A `touched` flag per field, set when the user first edits it, lets a field's error appear live while they are working on it — typing a half-finished email shows `enter a valid email` and fixing it clears the message on the next keystroke, because the error is derived. And a `submitted` flag, set on the first submit attempt, reveals everything at once, covering the user who touches nothing and heads straight for the button:
+
+```tsx
+const [touched, setTouched] = useState<{ name?: boolean; email?: boolean }>({})
+const [submitted, setSubmitted] = useState(false)
+
+// Showing is a separate decision from knowing: only fields the user has
+// touched, or a submit attempt, earn an error message.
+const visibleError = (field: keyof SignupErrors) =>
+  touched[field] || submitted ? errors[field] : undefined
+```
+
+<TerminalTranscript
+  label="screen on first paint, then after typing 'ada@' into email"
+  lines={[
+    { type: 'output', text: 'name / email / [sign up]' },
+    { type: 'output', text: 'name / email — enter a valid email / [sign up]' },
+  ]}
+/>
+
+Same validator, same errors object — the empty form just no longer scolds, and the field being edited gets live feedback the moment it has been touched.
+
+## What you accept: the submit is a gate
+
+The second opener bug was the submit handler ignoring the errors. The fix is one guard: mark the attempt, and only accept when the derived errors are empty.
+
+```tsx
+const handleSubmit = () => {
+  setSubmitted(true)
+  if (errors.name === undefined && errors.email === undefined) {
+    setWelcomeName(values.name)
+  }
+}
+```
+
+An invalid attempt now has a useful consequence — `submitted` flips, every error becomes visible, and the user gets a list of what to fix — while a valid one proceeds. Resist the popular alternative of disabling the button until the form is valid. A disabled button is a dead end with no feedback: clicking it does nothing, announces nothing, and leaves the user hunting for the reason the form will not go. A live button whose rejected click reveals the errors *is* the feedback path.
+
+Two notes to carry into production forms. In a real page, put this handler on the form element — `<form onSubmit={handleSubmit}>` — so pressing Enter in a field submits too; that version takes the submit event as a parameter, `(event) => { event.preventDefault(); ... }`, to stop the browser's own page-reloading submission. This lesson's graded problems wire the handler to the button's click, which is what their harness exercises, so no event is involved there. And keep the accessibility wiring the opener already had: every input labeled (a `<label>` wrapping it, or `aria-label`), and error messages in elements with `role="alert"` so screen readers announce them when they appear. Lesson 38 goes deep on this; a form is the worst place to skip it, because errors you can only perceive by sight are errors half your users never receive.
+
+## Common mistakes
+
+These are the errors that show up most often in interviews and code review:
+
+- Showing every validation error on first paint, scolding fields the user never touched, as the opening form did. Gate visibility on touched-or-submitted.
+- Submitting without consulting the validation, so the form computes errors it does not enforce — the opener's second bug. The submit handler gates on the derived errors.
+- Storing validity in state and updating it in change handlers instead of deriving errors from values in render. That is lesson 34's stale copy; some path will change the values and forget the check.
+- Validating inside an effect that sets an errors state. Nothing external is involved — lesson 36's test — so this buys an extra render and a staleness window for zero benefit.
+- Disabling the submit button until the form is valid, which removes the one interaction that could tell the user what is wrong.
+- Writing validation rules inline in JSX conditions, unreusable and untestable, instead of one pure validator function the component derives from.
+- Leaving inputs unlabeled or errors visually adjacent but programmatically unattached, so assistive technology reads a form full of mystery fields and silent failures.
+- Forgetting `preventDefault` on a real form's submit handler, so the browser reloads the page and throws away the state mid-interaction.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+The exercises build the lesson's ideas in the order you met them:
+
+1. Implement the pure signup validator, framework-free and tested like any function.
+2. Fix the scolding form: gate error visibility on touched-or-submitted and make the submit consult the errors.
+3. Design the validation and error-display architecture for a longer settings form.
+4. Explain, in your own words, the three separate decisions a form makes and where each belongs.

@@ -1,14 +1,205 @@
 # React Component Design
 
-This placeholder concept page reserves the lesson slot for **React Component Design**. The content pass will replace it with the final interview-focused MDX lesson.
+An alert component seems like the easiest thing in a codebase to get right: a box, a label, a message. This one has three boolean props, one per severity — `success` claims the alert reports something that worked, `error` claims something failed, `warning` claims something needs attention. Any real alert has exactly one severity. The JSX in this lesson is meant to be read on the page; the transcripts show what React puts on screen, and this lesson's practice problems render your components for real and check the screen the same way.
 
-## What this lesson will cover
+```tsx
+type AlertProps = {
+  success?: boolean
+  error?: boolean
+  warning?: boolean
+  message: string
+}
 
-- Core interview signals for react component design.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+function Alert({ success, error, warning, message }: AlertProps) {
+  const label = success ? 'Success' : error ? 'Error' : warning ? 'Warning' : 'Notice'
+
+  return (
+    <p>
+      {label}: {message}
+    </p>
+  )
+}
+```
+
+Now a caller — under deadline, or just a typo away from correct — renders an alert that claims two severities at once:
+
+```tsx
+<Alert success error message="disk is full" />
+```
+
+<TerminalTranscript
+  label="compiler and screen"
+  lines={[
+    { type: 'command', text: 'tsc --noEmit' },
+    { type: 'info', text: 'exit code 0, no errors' },
+    { type: 'output', text: 'Success: disk is full' },
+  ]}
+/>
+
+Read the screen against the props' meanings. The caller said this alert is both a success and an error, which no alert can be, and the component quietly resolved the contradiction with the priority order buried in its ternary chain: `success` wins, so a full disk is announced as a success. The compiler had no objection, because each prop is independently optional and independently boolean — the API said every combination is fine.
+
+If that argument sounds familiar, it should. This is lesson 26's impossible-states bug, and the fix is the same discriminated-union thinking — but notice where the bug lives now. Not in a data model deep in the program: in a component's **props**, the public API other people call. Component design is API design, and the type system, ownership rules, and composition habits from the last eight lessons are exactly the tools that make a component good. This lesson is about applying them at the component boundary.
+
+## A props API is a type contract
+
+Three independent booleans give eight combinations, and only three describe a real alert. The honest API says "one severity, chosen from a list" the same way lesson 26 said one request state:
+
+```tsx
+type AlertProps = {
+  kind: 'success' | 'error' | 'warning'
+  message: string
+}
+
+const labels = {
+  success: 'Success',
+  error: 'Error',
+  warning: 'Warning',
+} as const
+
+function Alert({ kind, message }: AlertProps) {
+  return (
+    <p>
+      {labels[kind]}: {message}
+    </p>
+  )
+}
+```
+
+Two severities can no longer be claimed, because there is only one slot to claim one in, and the priority-order ternary disappears along with the ambiguity it existed to paper over — the label becomes a lookup. A caller who invents a severity is stopped in the editor:
+
+```tsx
+<Alert kind="info" message="saved" />
+```
+
+<TerminalTranscript
+  label="tsc"
+  lines={[
+    {
+      type: 'error',
+      text: "status.tsx:4:17 - error TS2322: Type '\"info\"' is not assignable to type '\"success\" | \"error\" | \"warning\"'.",
+    },
+  ]}
+/>
+
+And the buggy call from the opening cannot be written at all — there is no pair of props left to contradict each other. The same screen now requires an honest claim:
+
+<TerminalTranscript
+  label="screen"
+  lines={[{ type: 'output', text: 'Error: disk is full' }]}
+/>
+
+The general rule: when several props are only meaningful in certain combinations, the API is hiding a union. One `kind`, `variant`, or `status` prop with a literal union type replaces a pile of booleans, scales by adding a member instead of another flag, and turns every invalid usage into a compile error at the call site that wrote it.
+
+## Props flow down, events flow up
+
+A props contract answers what a component receives. The second design question is what it may do with it, and the answer is React's one-way rule: props come down from the parent, and the only thing that travels up is an event, through a callback the parent handed in. The component never writes to its props, and it does not own decisions the parent needs to participate in.
+
+Dismissal is the classic test case. Should `Alert` keep its own `dismissed` state? Consider who needs to know: the parent showed the alert because something happened, and the parent is the one who might need to show it again on the next save, or show a different one. If `Alert` hides itself privately, the parent's picture of the screen is wrong — a second source of truth, this time split across two components. So the alert stays stateless and reports the click:
+
+```tsx
+type AlertProps = {
+  kind: 'success' | 'error' | 'warning'
+  message: string
+  onDismiss: () => void
+}
+
+function Alert({ kind, message, onDismiss }: AlertProps) {
+  return (
+    <p role="status">
+      {labels[kind]}: {message} <button onClick={onDismiss}>dismiss</button>
+    </p>
+  )
+}
+
+function SavePanel() {
+  const [notice, setNotice] = useState<string | null>('profile saved')
+
+  return (
+    <div>
+      {notice !== null && (
+        <Alert kind="success" message={notice} onDismiss={() => setNotice(null)} />
+      )}
+      <p>profile form</p>
+    </div>
+  )
+}
+```
+
+<TerminalTranscript
+  label="screen"
+  lines={[
+    { type: 'output', text: 'Success: profile saved [dismiss]' },
+    { type: 'output', text: 'profile form' },
+  ]}
+/>
+
+<TerminalTranscript
+  label="screen after clicking dismiss"
+  lines={[{ type: 'output', text: 'profile form' }]}
+/>
+
+Walk the click through the boundary. The button fires `onDismiss`, which is the parent's own function; the parent sets `notice` to `null`; the parent re-renders and no longer renders the alert at all. `Alert` decided nothing — it announced. That division is the design rule to carry out of this section: **state lives in the closest component that needs to read it**, and everything below that owner receives values as props and sends facts up as callbacks. Lesson 34 taught you to keep one source of truth inside a component; this is the same rule stretched across a component tree.
+
+## Composition over configuration
+
+The third failure mode is slower than a bug: an API that grows a prop for every new caller. A confirmation dialog starts with `title` and `body`. The next feature needs a custom confirm label, so `confirmLabel` appears, then `cancelLabel`, then `showIcon`, and the component's props list becomes a remote control for its internals:
+
+```tsx
+type ConfirmDialogProps = {
+  title: string
+  body: string
+  confirmLabel: string
+  cancelLabel: string
+  showIcon: boolean
+  onConfirm: () => void
+  onCancel: () => void
+}
+```
+
+Every one of those props restates something JSX can already say. React's answer is the `children` prop: a component can own the frame and let each caller supply the content, the way an HTML element does.
+
+```tsx
+function Dialog({ children }: { children: ReactNode }) {
+  return <div role="dialog">{children}</div>
+}
+
+function DeletePrompt({ onConfirm, onCancel }: DeletePromptProps) {
+  return (
+    <Dialog>
+      <h2>Delete this file?</h2>
+      <p>This cannot be undone.</p>
+      <button onClick={onCancel}>Keep it</button>
+      <button onClick={onConfirm}>Delete</button>
+    </Dialog>
+  )
+}
+```
+
+The dialog knows how to be a dialog; the caller says what this particular dialog contains, with no new props and no release of the shared component. The signal to watch for is a prop that exists to pass content through — a label, a body, an icon toggle. Configuration props earn their place when the component must understand the value (the alert's `kind` decides the label and, in a real app, the styling); content should flow through `children`. When a component needs multiple content regions, passing named JSX props (`header={...}`, `footer={...}`) extends the same idea.
+
+## One component, one job
+
+The last question is when to split. A component has grown too many jobs when its props and state serve unrelated masters — fetching and formatting and rendering rows and tracking selection — because every new requirement then edits the same file, and every edit risks the other jobs. The split that usually falls out is the one from the previous sections: a stateful owner that holds the source of truth and decides, and presentational children that receive props and report events. A product list becomes a `ProductShelf` that owns the cart, and a `ProductRow` that renders one product and calls `onAdd` — the row is reusable, testable with plain props, and unable to corrupt state it cannot see.
+
+One more part of the contract deserves a sentence before the practice: the HTML a component renders is also its API. A clickable thing should be a `<button>`, not a `<div>` with an `onClick`, and inputs need labels — assistive technology and keyboards consume that output the way callers consume the props. Lesson 38 is devoted to this; design with it in mind from the start.
+
+## Common mistakes
+
+These are the errors that show up most often in interviews and code review:
+
+- Modeling mutually exclusive variants as independent boolean props, so contradictory calls compile and a hidden priority order decides, as the opening example showed.
+- Letting a child own state its parent needs to read or reset, such as an alert that dismisses itself, which splits one fact across two components.
+- Passing a setter down and letting children call it with whole new states, instead of passing narrow callbacks named for the event (`onDismiss`, `onAdd`) so the owner keeps the decision.
+- Mutating a prop — pushing into a prop array, assigning to a prop object's field. Props are the parent's values; a component that writes to them corrupts state it does not own.
+- Growing a prop for every new piece of content a caller needs, when `children` would let each caller write its own content with no API change.
+- Rendering interactive things as `<div onClick>` instead of `<button>`, which silently drops keyboard and assistive-technology users from the component's audience.
+- Splitting components by visual region alone rather than by responsibility, so state ends up in a component that cannot own it and gets threaded through props nobody reads.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+The exercises build the lesson's ideas in the order you met them:
+
+1. Fix the alert's boolean-flag API by rebuilding it around a severity union.
+2. Build a product shelf that owns its cart state and delegates each row to a presentational child.
+3. Design the component API for a notification system, deciding its variants, events, ownership, and content strategy.
+4. Explain, in your own words, how you judge a props API and where a component's state should live.
