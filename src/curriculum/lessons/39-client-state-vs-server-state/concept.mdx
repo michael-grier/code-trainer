@@ -1,14 +1,122 @@
 # Client State vs Server State
 
-This placeholder concept page reserves the lesson slot for **Client State vs Server State**. The content pass will replace it with the final interview-focused MDX lesson.
+Every lesson so far kept the data inside the component. This search box is the moment that stops being true: `query` is what the user typed, and `results` is whatever the server said matched it. One `useEffect`, one fetch, straight into state — the shape of half the React code ever written. The transcripts show what React puts on screen, and this lesson's practice problems render your components for real, with a miniature network whose response timing the tests control.
 
-## What this lesson will cover
+```tsx
+import { useEffect, useState } from 'react'
 
-- Core interview signals for client state vs server state.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+function ProductSearch() {
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<string[] | null>(null)
+
+  useEffect(() => {
+    if (query === '') {
+      setResults(null)
+      return
+    }
+    searchApi(query).then((items) => setResults(items))
+  }, [query])
+
+  return (
+    <div>
+      <input
+        aria-label="search"
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+      />
+      {query === '' && <p>type to search</p>}
+      {query !== '' && results === null && <p>searching…</p>}
+      {results !== null && <p>found: {results.join(', ')}</p>}
+    </div>
+  )
+}
+```
+
+The catalog holds `apple`, `apricot`, and `banana`. Type `a`, and before that request returns — networks are allowed to be slow — narrow it to `ap`. The second, cheaper request finishes first:
+
+<TerminalTranscript
+  label="timeline with a slow network"
+  lines={[
+    { type: 'command', text: "type 'a' — request A departs" },
+    { type: 'command', text: "type 'ap' — request B departs" },
+    { type: 'output', text: 'response B arrives → found: apple, apricot' },
+    { type: 'error', text: 'response A arrives → found: apple, apricot, banana' },
+  ]}
+/>
+
+Read the final screen against the input. The box says `ap`; the results include `banana`, which does not contain `ap`. The correct answer was on screen for a moment, and then a slower, older response overwrote it — and it will sit there, wrong, until something else triggers a fetch. Nothing in the component is misusing hooks: the effect is synchronizing with an external system exactly as lesson 36 taught, the dependency list is honest, and the race happened anyway. The bug is one level deeper: this component treats data from a server like data it owns, and those are different kinds of state.
+
+## Two kinds of state, one test
+
+**Client state** is what the component (or app) owns outright: `query`, an open dialog, a selected row, lesson 37's `touched` flags. It is created by your code, changed only by your code, synchronous, and always correct by definition — the rules of lessons 33 through 37 govern it fully.
+
+**Server state** is different in every one of those ways. `results` is not owned; it is a **snapshot of someone else's truth**. The truth lives on the server, other clients may change it, getting a copy is asynchronous and can fail, and the copy starts aging the moment it arrives. The test for which kind you are holding: *if this value is wrong, whose job is it to know the right one?* If the answer is "the server's," then what your component holds is a cache entry, whether or not you meant to build a cache — and cache entries need three things ordinary state does not: a status, a defense against reordering, and a freshness policy.
+
+## A snapshot needs a status
+
+The opener encoded "no results yet" as `null`, which conflates the states a user experiences differently: nothing requested, request in flight, request failed, request succeeded. This is lesson 26's exact opening problem — one flat value smuggling several mutually exclusive states — and its exact solution applies:
+
+```ts
+type SearchState =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'error'; message: string }
+  | { status: 'success'; items: string[] }
+```
+
+A discriminated union per request gives every screen an honest source: `searching…` renders from `loading`, a retry button from `error`, and `found:` only ever from `success`. The practice component keeps the lighter `null` form because its miniature network cannot fail, but the moment a real network is involved, the four-state union is the floor — an unhandled `error` state is the difference between a retry button and a spinner that never stops.
+
+## Snapshots race, and the newest must win
+
+Now the opener's bug itself. Two requests were in flight at once, and the component applied whichever response arrived last, not whichever question was asked last. The fix is lesson 36's cleanup, doing lesson 24's job — cancellation:
+
+```tsx
+useEffect(() => {
+  if (query === '') {
+    setResults(null)
+    return
+  }
+
+  // The cleanup marks this render's request as superseded, so a response
+  // that arrives after the query moved on is ignored instead of applied.
+  let superseded = false
+  searchApi(query).then((items) => {
+    if (!superseded) {
+      setResults(items)
+    }
+  })
+  return () => {
+    superseded = true
+  }
+}, [query])
+```
+
+Walk the race through the fixed version. Typing `ap` changes the dependency, so React runs the cleanup of the `a` effect first — `superseded` becomes `true` for that request — then starts the `ap` effect with its own fresh flag. When the slow `a` response finally lands, its `.then` finds `superseded` set and drops it. The rule this enforces is worth stating as policy: **a response may only be applied by the request that is still current**. The flag is the lightweight version; a real fetch would pass an `AbortController` signal from the same cleanup, stopping the network work too, exactly as lesson 24 built. Either way, the component stops trusting arrival order — because networks reorder, and the practice problems will reorder yours deliberately.
+
+## Snapshots age: freshness and invalidation
+
+A snapshot that survived the race is still only as good as its timestamp. Show a task list fetched three seconds ago and nobody minds; show one from yesterday and the app is lying about someone else's data. Real apps answer this with a **freshness policy**: each cache entry remembers when it was fetched, and a read either finds nothing (miss), finds a young entry (fresh — use it), or finds an old one (stale — *show it, but refetch*). That last option, stale-while-revalidate, is why well-built apps feel instant: the user sees the aged copy immediately while a background request replaces it. The decision function is a dozen lines of plain TypeScript — entry, age, threshold — and it is this lesson's first practice problem.
+
+Aging has one more trigger sharper than time: your own writes. The moment the user completes a task through your mutation, every cached copy of that task list is known-wrong, and the honest response is to **invalidate** — mark the affected entries stale so the next read refetches. When you find yourself wiring statuses, race flags, timestamps, and invalidation together, know that this stack is exactly what server-state libraries such as React Query and SWR industrialize; the reason to build the pieces once by hand, here, is so those tools read as conveniences over rules you understand rather than magic.
+
+## Common mistakes
+
+These are the errors that show up most often in interviews and code review:
+
+- Treating fetched data as owned state — plain `useState` with no status, no race guard, no freshness — as the opening search did. The test: if this value is wrong, whose job is it to know the right one?
+- Modeling a request with one nullable value, so in-flight, failed, and empty-result states all render the same screen. Reach for the four-state discriminated union.
+- Applying responses in arrival order. Without a superseded flag or abort signal in the effect cleanup, the slowest request wins the screen.
+- Forgetting the error state entirely, so a failed fetch leaves an eternal spinner and no retry path.
+- Copying server data into local state to edit it, then letting refetches silently overwrite the user's in-progress edits — mixing the two kinds of state in one variable.
+- Never invalidating after a mutation, so the app shows a list it knows it just changed on the server.
+- Refetching everything on every focus or keystroke with no freshness policy, the equal-and-opposite failure to never refetching at all.
+- Adopting a server-state library without understanding statuses, races, and invalidation — its options are knobs on exactly these rules, and misconfigured knobs reproduce every bug above.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+The exercises build the lesson's ideas in the order you met them:
+
+1. Implement the cache-read decision — miss, fresh, or stale — that a freshness policy is built on.
+2. Fix the racing search so a superseded request's response can never overwrite a newer one.
+3. Design the state architecture for a project board, deciding for each piece of data which kind of state it is and how it updates.
+4. Explain, in your own words, what makes server state a cache and what a cache demands that owned state does not.
