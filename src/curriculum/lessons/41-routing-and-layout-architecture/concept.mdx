@@ -1,14 +1,133 @@
 # Routing and Layout Architecture
 
-This placeholder concept page reserves the lesson slot for **Routing and Layout Architecture**. The content pass will replace it with the final interview-focused MDX lesson.
+A mail app has two pages and one piece of chrome: a shell with navigation buttons and a filter box that should follow the user everywhere. Each page renders the shell around its own content — which sounds like reuse, and compiles like reuse. The transcripts show what React puts on screen, and this lesson's practice problems render your components for real.
 
-## What this lesson will cover
+```tsx
+function Shell({ onNavigate, children }: ShellProps) {
+  const [filter, setFilter] = useState('')
 
-- Core interview signals for routing and layout architecture.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+  return (
+    <div>
+      <button onClick={() => onNavigate('inbox')}>inbox</button>
+      <button onClick={() => onNavigate('archive')}>archive</button>
+      <input
+        aria-label="filter"
+        value={filter}
+        onChange={(event) => setFilter(event.target.value)}
+      />
+      <p>filtering: {filter}</p>
+      {children}
+    </div>
+  )
+}
+
+function InboxPage({ onNavigate }: PageProps) {
+  return (
+    <Shell onNavigate={onNavigate}>
+      <p>inbox: 2 unread</p>
+    </Shell>
+  )
+}
+
+function ArchivePage({ onNavigate }: PageProps) {
+  return (
+    <Shell onNavigate={onNavigate}>
+      <p>archive: 5 stored</p>
+    </Shell>
+  )
+}
+
+function MailApp() {
+  const [page, setPage] = useState<Page>('inbox')
+
+  return page === 'inbox' ? (
+    <InboxPage onNavigate={setPage} />
+  ) : (
+    <ArchivePage onNavigate={setPage} />
+  )
+}
+```
+
+Type `urgent` into the filter, then click over to the archive:
+
+<TerminalTranscript
+  label="screen before and after navigating"
+  lines={[
+    { type: 'output', text: 'filtering: urgent · inbox: 2 unread' },
+    { type: 'output', text: 'filtering:  · archive: 5 stored' },
+  ]}
+/>
+
+The filter is gone. Nothing cleared it on purpose; the *architecture* cleared it. When `page` changes, `MailApp` swaps `InboxPage` for `ArchivePage` — a different component type at that position — so React unmounts the entire old subtree, and the old subtree *includes the shell*. The `ArchivePage` then mounts a brand-new `Shell`, whose `useState('')` runs fresh. Both pages render "the same" `Shell` component, but a component is a recipe, not an instance: two pages each cooking their own shell get two shells, and state lives in instances. Every navigation throws the chrome away and rebuilds it, and every piece of state inside the chrome dies with it. This lesson is about where things stand in the tree — which is what routing and layout architecture actually decide.
+
+## Layouts persist; content swaps
+
+The fix inverts the nesting. Instead of pages that each contain the shell, one shell contains the changing page — lesson 33's `children` composition, deployed at app scale:
+
+```tsx
+function InboxPage() {
+  return <p>inbox: 2 unread</p>
+}
+
+function ArchivePage() {
+  return <p>archive: 5 stored</p>
+}
+
+function MailApp() {
+  const [page, setPage] = useState<Page>('inbox')
+
+  // One Shell instance wraps the app; navigation swaps only the content
+  // inside it, so the chrome and its state survive every page change.
+  return (
+    <Shell onNavigate={setPage}>
+      {page === 'inbox' ? <InboxPage /> : <ArchivePage />}
+    </Shell>
+  )
+}
+```
+
+<TerminalTranscript
+  label="screen after navigating, fixed version"
+  lines={[{ type: 'output', text: 'filtering: urgent · archive: 5 stored' }]}
+/>
+
+Now the swap happens *inside* the shell's `children` slot. The `Shell` element sits at the same tree position across every render, so React keeps its instance — and its filter — alive, while only the content beneath it unmounts and remounts. The pages themselves got simpler too: they stopped carrying the chrome and became pure content. This inversion is the core idea every routing library expresses — the layout renders once and exposes a slot (React Router calls it an `Outlet`) where matched content appears — and it nests: an app shell wraps everything, a settings layout wraps the settings pages inside it, and each level's state survives navigation within it. The test for where a layout boundary belongs is exactly the opener's bug run in reverse: **whatever must survive a navigation must live at or above the layout that persists across it.**
+
+## The URL is state — shared state
+
+The mail app keeps `page` in `useState`, which works until the user does anything browsers are for: refresh, and the app forgets where they were; share the link, and the recipient lands on the inbox; press back, and they leave the site instead of returning to the inbox. A real app stores the current location in the URL, because the URL is a very particular kind of state: it is the piece the *browser* co-owns — bookmarkable, shareable, restorable, wired to the back button — synchronized through the history API, which is precisely the kind of external system lesson 36 taught you to synchronize with.
+
+That framing turns "what goes in the URL?" into a question you already know how to ask, because it is lesson 39's classification wearing an address bar: for each piece of state, ask *who needs it back later?* Which screen the user is on, which entity they are viewing (`/projects/p1`), which filters produce a view worth sending to a teammate — those belong in the URL, because a refresh or a shared link must reproduce them. A half-typed draft, an open dropdown, a hovered row — those are session-local client state, and putting them in the URL makes links brittle and history noisy. This lesson's practice problems model the location as plain state, since the graded harness has no address bar; the architecture — one persistent layout, swapped content, location as the single source of truth for *what shows* — is identical either way.
+
+## From URL to screen: matching
+
+Between the URL and the layout tree sits one honest function: something has to decide which screen a path shows and extract the data embedded in it. Routes are declared as **patterns** — `/projects/:projectId/tasks/:taskId` — where ordinary segments must match exactly and `:name` segments capture whatever appears in their position. Matching one pattern is segment arithmetic:
+
+```ts
+matchRoute('/users/:id', '/users/42')     // { id: '42' }
+matchRoute('/users/:id', '/users')        // null — too few segments
+matchRoute('/users/settings', '/users/42') // null — static segment differs
+```
+
+Split both strings on `/`, discard the empty pieces that leading and trailing slashes leave behind, require equal segment counts, then walk the segments in step: a `:param` captures, a static segment must equal its counterpart, and any failure means this pattern does not describe this path. The captured params object is how `/projects/p1/tasks/t9` becomes props for a task screen. You will implement exactly this function in the practice path — it is the entire kernel of a router, and having built it, a route table stops being magic: an ordered list of patterns tried top to bottom, first match wins. The ordering rule matters: specific routes (`/projects/new`) must be listed before parameterized ones (`/projects/:id`), or the param swallows them — `new` is a perfectly good `:id` — and the catch-all not-found route goes last, where it matches whatever nothing else claimed.
+
+## Common mistakes
+
+These are the errors that show up most often in interviews and code review:
+
+- Rendering the layout inside each page instead of the pages inside one layout, so every navigation remounts the chrome and resets its state, as the opening mail app showed.
+- Keeping the current screen only in component state, so refresh, shared links, and the back button all break — the location belongs in the URL, synchronized with the browser.
+- Putting session-local state in the URL — open dropdowns, half-typed drafts — producing brittle links and polluted history; apply the who-needs-it-back-later test.
+- Ordering a parameterized route before its specific siblings, so `/projects/:id` swallows `/projects/new` and the new-project screen becomes unreachable.
+- Forgetting the catch-all: with no not-found route at the end of the table, an unmatched URL renders a blank screen instead of an honest 404.
+- Duplicating navigation chrome per page and then patching the state loss by lifting the chrome's state into globals, instead of fixing the nesting so the chrome simply survives.
+- Placing a layout boundary below state that must outlive it — the lesson's test in reverse: whatever must survive a navigation must live at or above the layout that persists across it.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+The exercises build the lesson's ideas in the order you met them:
+
+1. Implement the route matcher that turns a pattern and a path into captured params or a rejection.
+2. Fix the mail app whose filter dies on navigation by inverting its layout nesting.
+3. Design the route table and layout tree for a project workspace, deciding what lives in the URL.
+4. Explain, in your own words, why layouts must contain pages and what makes the URL a special kind of state.
