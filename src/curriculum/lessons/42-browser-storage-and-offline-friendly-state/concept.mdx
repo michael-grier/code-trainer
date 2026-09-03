@@ -1,14 +1,124 @@
 # Browser Storage and Offline-Friendly State
 
-This placeholder concept page reserves the lesson slot for **Browser Storage and Offline-Friendly State**. The content pass will replace it with the final interview-focused MDX lesson.
+Lesson 41 ended with state the browser co-owns. This lesson is about state the browser *keeps*: values that survive a reload, a closed tab, a restarted machine. The draft editor below saves as the user types, restores on load, and worked flawlessly in every test its author ran. The transcripts show what React puts on screen, and this lesson's practice problems render your components for real against a storage stand-in with `localStorage`'s exact contract.
 
-## What this lesson will cover
+```tsx
+import { useState } from 'react'
 
-- Core interview signals for browser storage and offline-friendly state.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+type SavedDraft = { text: string }
+
+function DraftEditor() {
+  const [text, setText] = useState(
+    () => (JSON.parse(localStorage.getItem('draft') as string) as SavedDraft).text,
+  )
+
+  const update = (next: string) => {
+    setText(next)
+    localStorage.setItem('draft', JSON.stringify({ text: next }))
+  }
+
+  return (
+    <div>
+      <input
+        aria-label="draft"
+        value={text}
+        onChange={(event) => update(event.target.value)}
+      />
+      <p>draft: {text === '' ? '(empty)' : text}</p>
+    </div>
+  )
+}
+```
+
+Now watch it meet its first real user — someone who has never visited before:
+
+<TerminalTranscript
+  label="first visit, empty storage"
+  lines={[
+    {
+      type: 'error',
+      text: "TypeError: Cannot read properties of null (reading 'text')",
+    },
+  ]}
+/>
+
+The app does not degrade; it does not render at all. `getItem` returns `null` for a key that was never written, `JSON.parse(null)` coerces to the string `'null'` and parses to the value `null`, and `.text` on `null` throws during the very first render. The author never saw it because the author's own browser always had a draft saved — the `as string` cast was the compiler warning them, silenced. And this is only the gentlest failure in the family: the same line detonates on a corrupted value, and on any draft saved by *last month's version of the app* with a different shape. Everything this lesson teaches follows from one reclassification: data coming out of storage is not your state — it is external input.
+
+## Storage is an outside world with a small API
+
+`localStorage` holds string key-value pairs that persist per origin until removed: across reloads, closed tabs, and restarts, shared by every tab of your site. Its sibling `sessionStorage` has the same API scoped to one tab's lifetime. The API is deliberately small — `getItem` returns the string or `null`, `setItem` writes, `removeItem` deletes — and each of its properties is a constraint to design around. Values are strings only, so structured data goes through `JSON.stringify` on the way in and `JSON.parse` on the way out. Reads and writes are synchronous, so storage work is fine at event-handler scale and wrong inside hot loops. And `setItem` itself can throw — quota exceeded, or some private-browsing modes — so even writes deserve a `try`. (This lesson's graded problems use an in-file `fakeLocalStorage` with this exact contract, since the grading sandbox has no real one; the tests share it across mounts precisely the way reloads share the real thing.)
+
+## Reading storage is parsing external data
+
+Here is the reclassification with its consequences. Who wrote the value you are about to read? Maybe nobody (first visit). Maybe a devtools-curious user (garbage). Maybe a different tab mid-write, or — the case that gets every long-lived app eventually — *an older version of your own code*, whose idea of the draft's shape predates yours. That list should sound familiar: it is lesson 31's situation, byte for byte, and it gets lesson 31's treatment. Never `JSON.parse`-and-trust; restore through one defensive door:
+
+```tsx
+// Storage is external data: missing, corrupted, and outdated values are all
+// normal, so the restore parses defensively and falls back to empty.
+function restoreDraft(): string {
+  const raw = localStorage.getItem('draft')
+  if (raw === null) {
+    return ''
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      'text' in parsed &&
+      typeof parsed.text === 'string'
+    ) {
+      return parsed.text
+    }
+  } catch {
+    // Malformed JSON from an old or corrupted write: fall through.
+  }
+
+  return ''
+}
+
+function DraftEditor() {
+  const [text, setText] = useState(restoreDraft)
+  // ... unchanged ...
+}
+```
+
+<TerminalTranscript
+  label="first visit, empty storage, fixed version"
+  lines={[{ type: 'output', text: 'draft: (empty)' }]}
+/>
+
+Every failure mode now lands on the same safe answer: `null` short-circuits, the `try` absorbs unparseable text, the shape check (lesson 31's ladder, in miniature) rejects wrong structures, and only a value that proves itself gets trusted. Note also `useState(restoreDraft)` — passing the function, not calling it. That is the **lazy initializer** form: React invokes it once, on mount, instead of your code re-reading storage on every render for a value that only matters the first time.
+
+Writing is the easier half, and where it goes is a lesson 36 question. The draft above persists inside the change handler — an event caused the new value, so the handler saves it. An effect with `[text]` synchronizing state out to storage is the other honest shape, and for chatty values a debounced version of it. Either way the write is `try`-wrapped in production code, because a full quota should cost the persistence feature, not the keystroke.
+
+## Stored shapes outlive the code that wrote them
+
+The subtlest storage bug needs no corruption at all. Version one of your settings ships `{ theme, fontSize }`, users accumulate saved values, and version two renames the field. Every upgraded user now loads data their new code never wrote — the drift bug from lesson 28, except the compiler cannot see it, because one side of the disagreement lives in users' browsers. The defense is to make the shape self-describing: stamp every payload with a `version`, and route restores through it — current version passes the shape check, known old versions get **migrated** (their values transformed into today's shape), and anything else falls back to defaults. Discarding an unknown version is not defeat; a draft or preference is worth migrating, not worth crashing over. This lesson's first practice problem builds exactly this restore.
+
+## What belongs in storage
+
+Lesson 39's classification decides this one too. Client state a user would miss — drafts, preferences, the collapsed sidebar — is what `localStorage` is *for*: cheap durability for state only this browser knows. Server state is a worse fit than it looks: a cached product list in storage is a second cache with no status, no freshness policy, and no invalidation, silently competing with the real one; if you persist server data at all, persist it as the cache layer's own concern, not as loose app state. And two things never belong: anything secret — every script on the page can read `localStorage`, a fact the next lesson turns into an attack — and anything huge, since the string budget is a handful of megabytes and the API is synchronous. Offline-friendly, at this lesson's scale, means the honest subset: what the user typed survives anything, what came from the server can be refetched, and the restore path treats every stored byte as a stranger.
+
+## Common mistakes
+
+These are the errors that show up most often in interviews and code review:
+
+- Parsing storage without handling `null`, so the app crashes for exactly the users seeing it for the first time, as the opening editor did.
+- Trusting `JSON.parse` output — no try/catch, no shape check — when the writer may have been a corrupted write, another tab, or an older version of the app.
+- Silencing the compiler with `as string` on `getItem`'s return. The `string | null` type was the whole warning.
+- Re-reading storage on every render instead of once, through a lazy `useState` initializer or an equivalent restore-on-mount.
+- Shipping shape changes with no version field and no migration, so an upgrade turns every faithful user's saved data into a landmine.
+- Persisting server state as loose app state, creating a shadow cache with no freshness or invalidation story alongside lesson 39's real one.
+- Storing tokens or other secrets in `localStorage`, which any injected script can read — the next lesson's subject.
+- Letting a `setItem` failure (quota, private mode) throw through an event handler, so a full disk breaks typing instead of just pausing persistence.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+The exercises build the lesson's ideas in the order you met them:
+
+1. Implement the versioned settings restore: current shapes verified, version-1 shapes migrated, everything else defaulted.
+2. Fix the draft editor that crashes on first visit, wiring a defensive restore through a lazy initializer.
+3. Design the offline story for a note-taking app: what persists, when it flushes, and what happens on reconnect.
+4. Explain, in your own words, why storage reads are untrusted input and which state earns persistence.

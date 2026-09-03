@@ -1,14 +1,88 @@
 # Frontend Security Basics
 
-This placeholder concept page reserves the lesson slot for **Frontend Security Basics**. The content pass will replace it with the final interview-focused MDX lesson.
+Two lessons ago you learned storage reads are untrusted input. This lesson widens that instinct into a rule about the whole browser, and it opens with the attack that rule prevents. A comment widget renders what people write. The author wanted newlines to show, so — reasonably, it seems — they let the comment become HTML. The transcripts here come from running the real attack in a real browser, and this lesson's practice problems render your components for real and check that the payload stays inert.
 
-## What this lesson will cover
+```tsx
+function Comment({ text }: { text: string }) {
+  return (
+    <div dangerouslySetInnerHTML={{ __html: text.replaceAll('\n', '<br>') }} />
+  )
+}
+```
 
-- Core interview signals for frontend security basics.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+Most users type sentences. This one types a comment:
+
+```text
+nice post! <img src=x onerror="/* the attacker's code runs here */">
+```
+
+<TerminalTranscript
+  label="what renders, real browser"
+  lines={[
+    { type: 'output', text: 'nice post!' },
+    {
+      type: 'error',
+      text: "the onerror handler executed — attacker code ran in the victim's session",
+    },
+  ]}
+/>
+
+Read what the browser did with that string. Assigning it as HTML told the browser to *parse* it, so `<img src=x …>` became a real image element; `src=x` fails to load; the `onerror` handler fires; and now a script chosen by one commenter is running inside every reader's page. This is **cross-site scripting (XSS)**, and "runs inside the page" is the whole catastrophe: that script can read anything the page can — the logged-in user's cookies and `localStorage` (last lesson's warning about tokens, cashed in), the DOM, the session — and act as the user, silently. The most quietly damning detail is the safe version: had the widget shown the comment as *text*, the reader would have seen the literal characters `<img src=x onerror=…>` on screen, harmless and obvious. The vulnerability was not the attacker's cleverness. It was one decision to treat a string as markup.
+
+## The browser is a trust boundary
+
+The mental shift is the same one from lessons 31 and 42, stated in its most general form: **everything from outside your code is data, not instructions, until you deliberately decide otherwise.** A comment is data. A URL parameter is data. A username, a search query, a field from an API response — data. Each becomes dangerous only where your code hands it to something that *interprets* it: an HTML parser, the JavaScript engine, a SQL query, a shell. The web calls the general defense **output encoding** — escaping a value for the specific place it is about to land, so its characters stay characters instead of becoming syntax. XSS is what output encoding prevents in the HTML context, and it is the frontend's signature vulnerability because the browser is an interpreter the user's data flows toward constantly.
+
+The reason this bug is *rare* in modern React apps, despite being everywhere in the DOM API, is worth stating plainly, because it is a guarantee you rely on hundreds of times a page.
+
+## React escapes by default — until you turn it off
+
+When you write `{value}` in JSX, React sets it as **text**, never as markup. The dangerous characters — `<`, `>`, `&`, quotes — are escaped on the way to the screen, so a comment containing `<img onerror=…>` displays those characters and parses as nothing:
+
+```tsx
+function Comment({ text }: { text: string }) {
+  return <div>{text}</div>
+}
+```
+
+<TerminalTranscript
+  label="what renders, real browser"
+  lines={[
+    { type: 'output', text: 'nice post! <img src=x onerror="...">' },
+    { type: 'output', text: '(no script runs; the characters are shown literally)' },
+  ]}
+/>
+
+That is the same payload, defanged by a curly brace. Every `{}` in every component you have written this track carried this protection for free — it is why lessons 33 through 43 never once worried about the text they rendered. The escape hatch out of it is named to warn you: `dangerouslySetInnerHTML`. It exists for the genuine case of rendering HTML you *produced and trust* (a Markdown renderer's sanitized output), and it hands the browser your string as markup with React's protection removed. The opening widget reached for it to solve a newline problem — a problem `white-space: pre-wrap` in CSS, or splitting on `\n` into elements, solves without ever leaving the safe path. The rule: treat `dangerouslySetInnerHTML` as a request to disable the framework's core defense, justified only by HTML you generated, and even then only after sanitizing. When you truly must render user-influenced HTML, escape by hand or run it through a vetted sanitizer; the first practice problem builds the escaper so the mechanism is not a mystery.
+
+## Client checks are UX; the server is the wall
+
+The second frontend security instinct corrects the opposite error — trusting the client too much rather than too little. Lesson 37's form validation makes a better experience: instant feedback, no wasted round-trips. It secures nothing. Every line of client code arrives on a machine the user controls, where they can edit it, disable it, or skip it entirely and hit your API with `curl`. A disabled submit button, a hidden admin panel, a `role === 'admin'` check in a component — all are advisory. The disabled button stops the honest user's mistake and delays no attacker by a second.
+
+This reframes what belongs where. The client validates for *feedback*; the server validates for *safety*, because the server is the one boundary the user cannot reach behind. The client may *hide* the admin panel for tidiness, but the server must *authorize* every privileged action independently, because hiding a button does not protect the endpoint the button called. This is lesson 30's "authentication is not authorization" arriving in the browser, and it is the seam the backend track is built to defend — but the frontend habit is to design assuming a hostile client: never send the browser a secret you would not hand the user, and never let a UI check be the only thing standing between a user and an action.
+
+## Tokens, and where scripts can reach
+
+The two ideas meet at authentication tokens, and the meeting explains a rule you will otherwise take on faith. A token proves who the user is; whoever holds it can act as them. Where should the browser keep it? `localStorage` is tempting and wrong: it is readable by any JavaScript on the page, so a single XSS anywhere in your app — or in any dependency, or any script you embed — hands every user's token to the attacker. The standard alternative is an **httpOnly cookie**: the browser attaches it to requests automatically but hides it from JavaScript entirely, so `document.cookie` cannot read it and an injected script cannot steal it. (Cookies bring their own concern, cross-site request forgery, which the backend track handles.) The through-line: minimize what a hypothetical injected script could reach. Keep secrets out of JavaScript's view, keep third-party scripts to the ones you actually trust — each runs with your page's full privileges — and treat every value crossing into an interpreter as the comment that opened this lesson.
+
+## Common mistakes
+
+These are the errors that show up most often in interviews and code review:
+
+- Rendering user content as HTML — `dangerouslySetInnerHTML`, `innerHTML`, or `document.write` — so a crafted string becomes executing script, as the opening widget did.
+- Reaching for `dangerouslySetInnerHTML` to solve a formatting problem (newlines, bold) that CSS or element structure solves on the safe path.
+- Rendering untrusted HTML through a sanitizer you did not configure, or trusting an allowlist you never audited, instead of escaping when plain text would do.
+- Treating client-side validation or a disabled control as a security boundary, when it is a machine the user fully controls and can bypass with `curl`.
+- Gating a privileged action on a UI check alone — a hidden panel, a `role` check in a component — while the endpoint it calls authorizes nothing.
+- Storing auth tokens or other secrets in `localStorage`, where any injected script reads them, instead of an httpOnly cookie or memory.
+- Embedding third-party scripts casually, each of which runs with your page's full privileges and sees everything a first-party script sees.
+- Building a URL, a query, or another interpreted string by concatenating user input, the same treat-data-as-code mistake XSS is, in a different interpreter.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+The exercises build the lesson's ideas in the order you met them:
+
+1. Implement the HTML escaper that turns dangerous characters into inert entities, ampersand first.
+2. Fix the comment list that renders user text as HTML, moving it back onto React's escaped-by-default path while keeping its formatting.
+3. Design the trust boundaries for an account settings feature: what the client checks, what the server must enforce, and where the token lives.
+4. Explain, in your own words, why the browser is a trust boundary and why a client-side check secures nothing.
