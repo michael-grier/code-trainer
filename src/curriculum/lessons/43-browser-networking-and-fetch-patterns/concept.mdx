@@ -1,14 +1,142 @@
 # Browser Networking and Fetch Patterns
 
-This placeholder concept page reserves the lesson slot for **Browser Networking and Fetch Patterns**. The content pass will replace it with the final interview-focused MDX lesson.
+Lesson 39 taught you what server state demands once it arrives. This lesson is about the trip itself — and it starts with the most widely shipped fetch bug in existence. A dashboard loads items on demand; its author handled failure, or believed so: there is a `try`/`catch`, and it shows a clear message when the network is down. The transcripts show what React puts on screen, and this lesson's practice problems render your components for real, against a miniature network whose responses the tests script.
 
-## What this lesson will cover
+```tsx
+const load = async () => {
+  setState({ phase: 'loading' })
+  try {
+    const response = await fetch('/api/items')
+    const body = (await response.json()) as { items: string[] }
+    setState({ phase: 'loaded', items: body.items })
+  } catch {
+    setState({ phase: 'error', message: 'could not reach the server' })
+  }
+}
+```
 
-- Core interview signals for browser networking and fetch patterns.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+Then the database behind `/api/items` has a bad afternoon, and the server does what well-behaved servers do — it answers honestly:
+
+<TerminalTranscript
+  label="timeline"
+  lines={[
+    { type: 'command', text: 'load — request departs' },
+    { type: 'command', text: 'server responds: 500 {"error":"database down"}' },
+    {
+      type: 'error',
+      text: "TypeError: Cannot read properties of undefined (reading 'length')",
+    },
+  ]}
+/>
+
+Trace how a handled failure became a crash. The server *responded* — with status 500 and a JSON body describing the problem — so `fetch`'s promise **fulfilled**, and the `catch` never ran. `response.json()` happily parsed `{"error":"database down"}`, the `as` cast declared it had `items` (lesson 31's warning, ignored again), and `setState` recorded a successful load whose `items` is `undefined`. The crash then happened in *render*, at `state.items.length`, far from the fetch and outside its `try`. The user with a broken cable got the polite message; the user whose server failed got a dead screen. One missing check separates them, and understanding why requires the one fact this lesson orbits.
+
+## `fetch` settles; it does not succeed
+
+`fetch`'s promise models the *transport*, not the conversation. If bytes made it there and back — whatever they say — the promise fulfills. It rejects only when no response exists at all: DNS failure, refused connection, offline, or an abort. A 404, a 500, a 503: all fulfillments. The contract is small enough to hold in a miniature and worth seeing settle with your own eyes:
+
+```ts
+type FetchOutcome =
+  | { kind: 'response'; status: number }
+  | { kind: 'network-error' }
+
+// A miniature of fetch's promise contract: any response from the server
+// fulfills, and only a transport failure rejects.
+function miniFetch(outcome: FetchOutcome): Promise<{ status: number }> {
+  if (outcome.kind === 'response') {
+    return Promise.resolve({ status: outcome.status })
+  }
+  return Promise.reject(new Error('network down'))
+}
+
+async function attempt(label: string, outcome: FetchOutcome) {
+  try {
+    const response = await miniFetch(outcome)
+    console.log(`${label}: resolved with status ${response.status}`)
+  } catch (error) {
+    console.log(`${label}: rejected (${(error as Error).message})`)
+  }
+}
+
+await attempt('healthy', { kind: 'response', status: 200 })
+await attempt('server crash', { kind: 'response', status: 500 })
+await attempt('cable cut', { kind: 'network-error' })
+```
+
+<TerminalTranscript
+  label="console"
+  lines={[
+    { type: 'output', text: 'healthy: resolved with status 200' },
+    { type: 'output', text: 'server crash: resolved with status 500' },
+    { type: 'output', text: 'cable cut: rejected (network down)' },
+  ]}
+/>
+
+The middle line is the lesson. A server crash *resolves*. The design is deliberate — the browser delivered a response, and what the status means is your application's business — but it inverts the intuition every other promise API builds, which is why the opener's author fell for it, and why you will find this bug in codebases forever. The response object carries the verdict instead: `response.status` holds the code, and `response.ok` is the built-in shorthand for `status` in the 200–299 range.
+
+## Every response walks one path
+
+The repair gives each outcome its own exit, and the state shape to hold them is one you already own — lesson 39's discriminated status union, here with `idle`, `loading`, `error`, and `loaded` members:
+
+```tsx
+const load = async () => {
+  setState({ phase: 'loading' })
+  try {
+    const response = await fetch('/api/items')
+
+    // fetch fulfills for every response the server manages to send; only
+    // the status says whether it was an answer or an apology.
+    if (!response.ok) {
+      setState({ phase: 'error', message: `server error (${response.status})` })
+      return
+    }
+
+    const body = (await response.json()) as { items: string[] }
+    setState({ phase: 'loaded', items: body.items })
+  } catch {
+    setState({ phase: 'error', message: 'could not reach the server' })
+  }
+}
+```
+
+<TerminalTranscript
+  label="timeline, fixed version"
+  lines={[
+    { type: 'command', text: 'load — server responds 500' },
+    { type: 'output', text: 'server error (500)' },
+    { type: 'command', text: 'load — network fails' },
+    { type: 'output', text: 'could not reach the server' },
+  ]}
+/>
+
+Now the two failures the opener conflated are told apart on screen — a distinction users act on: "server error" means *wait and retry*, "could not reach" means *check your connection*. Two further honesty notes on this path. `response.json()` is its own `await` and its own hazard: a 502 from a proxy often carries an HTML body, and parsing it throws — landing in the `catch` with the network-error message, a misdiagnosis; production wrappers check `ok` *before* parsing, as this one does, and treat a parse failure on an OK response as its own case. And the body's *shape* is still lesson 31's problem — the `as` cast here trusts the server the way the lesson 31 opener did, acceptable in a graded miniature, replaced by a validator at any boundary you ship.
+
+## Retrying without making things worse
+
+Some of those failures are worth a second try — but "retry everything" is how one outage becomes two. The judgment compresses into a small pure function, this lesson's second practice problem, and its rules are the interview answer:
+
+Which outcomes are **transient**? Network errors (the cable may return), 5xx (the server may recover), and 429 — the server explicitly saying *too fast*. Which are permanent? Everything else in 4xx: a 404 will be a 404 the tenth time, a 400 means the request itself is wrong, and retrying it is asking the same question louder. How fast? **Exponential backoff with a cap** — double the delay each attempt (200ms, 400ms, 800ms…) so a struggling server gets air, capped so the tenth attempt is not scheduled for next week. How long? A budget of attempts, after which the honest move is lesson 39's error state with a manual retry — a user-visible give-up beats a silent infinite loop. One caution flag to carry into the backend track: retrying a request that *changes* things (a POST that charges a card) risks doing it twice; safe automatic retries belong to requests that can be repeated harmlessly, and lesson 46 picks that thread up properly.
+
+The last piece of lifecycle control is one you already own twice over: `fetch` accepts an `AbortController`'s signal, and aborting rejects the promise — the transport-failure path. Lesson 39's superseded-request cleanup and a timeout (start a timer, abort on expiry) are both this one mechanism, wired from lesson 24.
+
+## Common mistakes
+
+These are the errors that show up most often in interviews and code review:
+
+- Treating `fetch`'s `catch` as the failure handler, so HTTP errors sail down the success path and detonate later, as the opening dashboard did. The promise models transport; `response.ok` models the answer.
+- Parsing the body before checking the status, so an HTML error page from a proxy throws in `json()` and gets reported as a network problem.
+- Showing one generic failure message for a down server and a down connection, discarding the one distinction the user could act on.
+- Retrying 4xx responses. The request is wrong or the thing is absent; repetition changes neither.
+- Retrying instantly in a tight loop — no backoff, no cap, no budget — which turns a stumbling server into a hammered one.
+- Auto-retrying non-idempotent requests, where the first attempt may have succeeded invisibly and the retry does it again.
+- Fetching with no abort wiring, so superseded and abandoned requests keep racing lesson 39's races and burning the user's bandwidth.
+- Modeling the request with a bare nullable value instead of the status union, leaving loading, error, and empty screens indistinguishable — lesson 39's floor applies to every fetch.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+The exercises build the lesson's ideas in the order you met them:
+
+1. Trace the miniature of fetch's contract and predict which outcomes resolve and which reject.
+2. Implement the retry planner: transient outcomes retried with capped exponential backoff, permanent ones refused.
+3. Fix the dashboard that crashes on a 500 by giving every response its own honest path.
+4. Explain, in your own words, what fetch's promise does and does not promise, and which failures deserve a retry.
