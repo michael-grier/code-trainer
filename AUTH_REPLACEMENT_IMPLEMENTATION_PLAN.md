@@ -743,6 +743,14 @@ Completion criterion: all checks pass, browser coverage passes on the supported 
 
 ## Phase 9: documentation and cleanup
 
+Implementation record, 2026-09-04:
+
+- `.env.example` and `DEPLOYMENT.md` now cover guest-only use, local setup, Convex secrets, Resend, the required first-party proxy, the 30-day session, revocation, abuse limits, rotation, release order, rollback, and the learner-runner boundary.
+- Vite reads the local Convex site URL generated in `.env.local`, while `AUTH_PROXY_TARGET` remains an explicit override for proxy tests.
+- The build plan and project instructions describe Better Auth rather than the retired provider. Direct retired-provider lock records were removed; the only remaining lockfile name is Convex's own optional peer metadata.
+- The selected Progress handoff is shipped in responsive light and dark themes, and the discarded static mock files have been removed.
+- A frozen install succeeds, the generated local proxy returns the guest session without an override, all 293 unit tests pass, lint and the production build pass, Convex compiles, and all 15 browser checks pass across Chromium, Firefox, and WebKit.
+
 Update:
 
 - `.env.example`
@@ -830,7 +838,7 @@ Completion criterion: the release owner can restore sign-in without guessing whi
 - Guests can use the complete curriculum without configuring auth.
 - One email-code screen handles new and returning users.
 - Regular users remain signed in for a rolling 30 days.
-- Shared-device users receive a session-only choice when the supported public API permits it.
+- Shared-device users are told to use private browsing or sign out because the pinned email-code endpoint has no supported session-only option.
 - Signing in never discards guest, authenticated-cache, or cloud progress silently.
 - `Synced` means Convex has authenticated the session and acknowledged the relevant cloud state.
 - Signing out returns the app to guest state without showing authenticated work.
@@ -839,14 +847,12 @@ Completion criterion: the release owner can restore sign-in without guessing whi
 
 ## Remaining decisions
 
-Implementation can begin with Phase 0, but these choices must resolve at their gates:
+These production choices remain release gates:
 
 - Whether production Clerk data exists.
 - Which frontend host must implement the first-party rewrite.
-- Which transactional email provider and verified sender domain to use.
-- Whether the pinned email OTP route supports session-only cookies through a public API.
-- Which static auth interface the user selects.
-- How long the dual-provider migration grace period lasts when migration is required.
+- Which verified sender domain to use with Resend.
+- How long the dual-provider migration grace period lasts if production data requires migration.
 
 ## Definition of done
 

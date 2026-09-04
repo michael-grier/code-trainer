@@ -65,7 +65,7 @@ Use these exact choices unless explicitly changed later:
 - `@monaco-editor/react`
 - Sucrase
 - `@fontsource-variable/geist`
-- Clerk through `@clerk/clerk-react` for authentication
+- Better Auth and `@convex-dev/better-auth` for passwordless authentication
 - Convex through `convex` for authenticated progress persistence and sync
 - ESLint flat config with TypeScript, React Hooks, and React Refresh plugins
 
@@ -400,7 +400,7 @@ Use separate localStorage keys so signed-in user data is not shown to a later si
 
 ```text
 guest progress: "code-trainer:progress:v2:guest"
-authenticated cache: "code-trainer:progress:v2:user:<clerkUserId>"
+authenticated cache: "code-trainer:progress:v2:user:<accountId>"
 ```
 
 Use a versioned state shape so future migrations are possible:
@@ -464,9 +464,7 @@ Use defensive parsing when loading from `localStorage`. If persisted data is inv
 
 ## 8.1 Authentication, Cloud Sync, and Deployment
 
-Use Clerk for authentication and Convex for authenticated progress persistence.
-
-Do not build custom password auth. Authentication should be delegated to Clerk so the app does not own password storage, password recovery, session security, bot protection, or MFA mechanics.
+Use Better Auth email OTP for authentication and Convex for authenticated progress persistence. Do not add passwords: the app owns the email-code configuration and session policy without owning password storage or recovery.
 
 ### 8.1.1 Auth UX
 
@@ -479,7 +477,7 @@ Guest users:
 
 Signed-in users:
 
-- See Clerk account controls in the header.
+- See account and session controls in the header.
 - Sync progress to Convex.
 - Can continue across devices.
 - Use an authenticated localStorage cache while cloud state is loading.
@@ -488,10 +486,10 @@ On sign-in:
 
 - Load guest local progress.
 - Load cloud progress from Convex.
-- Merge the two states deterministically.
-- Save the merged state to Convex.
-- Save the merged state to the authenticated local cache.
-- Keep the guest progress key unless the user explicitly chooses to clear it.
+- Show the progress handoff when both sources contain learning history.
+- Let the user merge by latest field timestamp or continue with account progress.
+- Save a merged state to Convex before replacing local account state or clearing guest progress.
+- Keep both local copies when the durable write fails.
 
 On sign-out:
 
@@ -499,38 +497,39 @@ On sign-out:
 - Return to guest progress.
 - Do not copy authenticated progress into the guest key automatically.
 
-### 8.1.2 Clerk Integration
+### 8.1.2 Better Auth Integration
 
 Frontend requirements:
 
-- Wrap the app in `ClerkProvider`.
-- Use Clerk sign-in/sign-up controls or Clerk-hosted flows.
-- Use `UserButton` for signed-in account management.
-- Use Clerk's `useAuth()` with Convex's Clerk provider integration.
+- Wrap configured builds in `ConvexBetterAuthProvider` and the app-owned auth adapter.
+- Use one email-code sheet for new and returning users.
+- Keep the auth client on the browser's origin and proxy `/api/auth/*` to Convex.
+- Offer current-device and all-device sign-out controls.
+- Keep session credentials in host-only `HttpOnly` cookies, never browser storage.
 
 Environment variables:
 
 ```text
-VITE_CLERK_PUBLISHABLE_KEY
 VITE_CONVEX_URL
+VITE_CONVEX_SITE_URL
 ```
 
-Secrets and provider configuration should stay out of the frontend bundle. Any Clerk issuer/domain configuration required by Convex belongs in Convex configuration or environment settings.
+`SITE_URL`, `BETTER_AUTH_SECRET`, `RESEND_API_KEY`, and `AUTH_EMAIL_FROM` belong in Convex environment settings. Never expose them through a `VITE_` variable.
 
 ### 8.1.3 Convex Integration
 
 Use Convex for user-specific progress only. Do not move static curriculum content, MDX files, tests, or reference answers into Convex in v1.
 
-Convex functions must derive the user ID from the authenticated identity on the server side. The client must not be trusted to pass a user ID for authorization.
+Convex functions must resolve the current Better Auth user on the server side. The client must not be trusted to pass a user ID for authorization.
 
 Recommended server-side identity pattern:
 
 ```typescript
-const identity = await ctx.auth.getUserIdentity()
-if (!identity) {
-  throw new Error('Authentication required')
+const user = await authComponent.safeGetAuthUser(ctx)
+if (!user) {
+  throw new ConvexError({ code: 'AUTH_REQUIRED' })
 }
-const userId = identity.subject
+const userId = user._id
 ```
 
 Recommended Convex tables:
@@ -612,17 +611,17 @@ Use toasts sparingly. Persistent sync failures should be visible without repeate
 
 Recommended deployment model:
 
-- Static frontend host for the Vite app.
-- Convex deployment for progress functions and data.
-- Clerk application for authentication.
+- Frontend host for the Vite app with a same-origin `/api/auth/*` reverse proxy.
+- Convex deployment for Better Auth, progress functions, and data.
+- Resend account with a verified sender for one-time codes.
 
 Deployment documentation must list required environment variables and setup steps:
 
-- Clerk publishable key in the frontend host.
-- Convex URL in the frontend host.
-- Clerk/Convex auth provider configuration.
-- Allowed origins and redirect URLs for the deployed domain.
-- Local development setup for Clerk and Convex.
+- Convex client and site URLs in the frontend environment.
+- Better Auth secret, exact public site origin, Resend key, and sender in Convex.
+- A first-party auth rewrite that preserves cookies and overwrites client IP headers.
+- Session lifetime, revocation, abuse limits, secret rotation, and rollback.
+- Local Better Auth, Resend, and Convex setup.
 
 ## 9. Guided Path and Access Rules
 
@@ -1553,7 +1552,7 @@ Tasks:
 - Configure Vite with React, Tailwind, and MDX plugins.
 - Configure Tailwind CSS 4.
 - Configure shadcn/ui.
-- Configure Clerk and Convex dependencies.
+- Configure Better Auth and Convex dependencies.
 - Configure Geist font.
 - Configure ESLint flat config.
 - Add base `tsconfig` settings.
@@ -1562,9 +1561,9 @@ Tasks:
 
 Acceptance criteria:
 
-- `npm run dev` starts.
-- `npm run build` completes with a placeholder app.
-- `npm run lint` runs.
+- `bun run dev` starts.
+- `bun run build` completes with a placeholder app.
+- `bun run lint` runs.
 
 ### Phase 1: App Shell and Routing
 
@@ -1579,9 +1578,8 @@ Tasks:
 - Add not found page.
 - Add dark mode.
 - Add toast provider.
-- Add Clerk provider shell.
-- Add Convex provider shell.
-- Add signed-out/sign-in controls and signed-in user menu.
+- Add the Better Auth and Convex provider shell.
+- Add signed-out/sign-in controls and signed-in account actions.
 
 Acceptance criteria:
 
@@ -1630,9 +1628,9 @@ Acceptance criteria:
 
 Tasks:
 
-- Configure Clerk authentication.
+- Configure Better Auth email-code authentication.
 - Configure Convex project files.
-- Add Convex auth provider configuration for Clerk.
+- Add the Convex Better Auth component and auth provider configuration.
 - Implement Convex schema for user progress and user settings.
 - Implement Convex progress functions.
 - Implement local/cloud progress merge logic.
@@ -1640,7 +1638,7 @@ Tasks:
 - Implement optimistic local updates with debounced cloud writes.
 - Implement sync status UI.
 - Add retry behavior for failed sync writes.
-- Add deployment notes for environment variables, allowed origins, and redirect URLs.
+- Add deployment notes for environment variables, the exact site origin, and the first-party auth proxy.
 
 Acceptance criteria:
 
@@ -1945,7 +1943,7 @@ Tasks:
 - Manually test representative problems of each kind.
 - Test progress persistence.
 - Test guest progress.
-- Test Clerk sign-in/sign-out.
+- Test email-code sign-in, session persistence, and sign-out.
 - Test guest-to-cloud progress merge.
 - Test authenticated progress sync across reloads.
 - Test sync failure/retry UI.
@@ -1957,8 +1955,8 @@ Tasks:
 
 Acceptance criteria:
 
-- `npm run build` passes.
-- `npm run lint` passes or documented warnings are resolved.
+- `bun run build` passes.
+- `bun run lint` passes or documented warnings are resolved.
 - No known broken route.
 - No known impossible problem.
 - Authenticated sync has been manually verified in a deployed or deploy-like environment.
@@ -2077,10 +2075,10 @@ Deliverables:
 
 Owns:
 
-- Clerk setup.
+- Better Auth email-code setup.
 - Convex setup.
 - Convex schema and progress functions.
-- Clerk/Convex auth integration.
+- Better Auth/Convex integration.
 - Guest-to-cloud merge logic.
 - Sync status UI.
 - Deployment environment documentation.
@@ -2174,7 +2172,7 @@ export type ProgressSyncAdapter = {
 }
 ```
 
-The progress hook should expose sync status without making problem views depend directly on Clerk or Convex.
+The progress hook should expose sync status without making problem views depend directly on Better Auth or Convex.
 
 ### Cloud Progress Contract
 
@@ -2201,8 +2199,8 @@ Cloud functions must infer the authenticated user on the server. Client-provided
 
 Required:
 
-- `npm run build`
-- `npm run lint`
+- `bun run build`
+- `bun run lint`
 
 Recommended if time allows:
 
@@ -2338,7 +2336,7 @@ Mitigation:
 
 Mitigation:
 
-- Use Clerk and Convex rather than custom auth.
+- Keep the custom surface small by using Better Auth's email-code and session primitives with Convex.
 - Keep the backend limited to user progress and settings.
 - Keep the curriculum static in the frontend.
 - Document required environment variables and provider setup.
@@ -2358,16 +2356,16 @@ Mitigation:
 
 - Use separate localStorage keys for guest progress and authenticated cache.
 - On sign-out, return to guest progress instead of copying user progress into the guest key.
-- Do not store Clerk secrets or Convex server credentials in frontend code.
+- Do not store auth secrets or Convex server credentials in frontend code.
 
 ## 23. Definition of Done
 
 The app is done when:
 
-- `npm install` installs dependencies successfully.
-- `npm run dev` serves the app.
-- `npm run build` type-checks and bundles cleanly.
-- `npm run lint` passes.
+- `bun install` installs dependencies successfully.
+- `bun run dev` serves the app.
+- `bun run build` type-checks and bundles cleanly.
+- `bun run lint` passes.
 - All routes work.
 - All 60 lessons are present and registered.
 - Every lesson has MDX concept content.
@@ -2377,7 +2375,7 @@ The app is done when:
 - TypeScript code execution works in a Web Worker.
 - Guest progress persists to localStorage.
 - Authenticated progress syncs to Convex.
-- Clerk sign-in, sign-up, sign-out, and user menu flows work.
+- Email-code sign-in, session persistence, current-device sign-out, and all-device sign-out work.
 - Guest progress merges into cloud progress after sign-in.
 - Authenticated progress is not exposed as guest progress after sign-out.
 - Sync status and retry behavior work.
@@ -2396,7 +2394,7 @@ The app is done when:
 3. Define curriculum/problem/progress types.
 4. Add lesson registry and placeholder lessons.
 5. Implement progress, guided-path, and last-visited logic.
-6. Add Clerk, Convex, guest mode, cloud sync, and deployment setup.
+6. Add Better Auth, Convex, guest mode, cloud sync, and deployment setup.
 7. Implement TypeScript runner and test harness.
 8. Build code/debug/refactor views.
 9. Implement trace/written/design views.
