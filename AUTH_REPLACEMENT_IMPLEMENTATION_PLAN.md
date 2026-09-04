@@ -1,6 +1,6 @@
 # Clerk replacement implementation plan
 
-Status: implementation in progress, Phases 0 through 2 complete for local development
+Status: implementation in progress, Phases 0 through 2 complete; Phase 3 implemented pending non-production integration verification
 Last updated: 2026-09-04
 
 ## Outcome
@@ -329,6 +329,17 @@ All attempts must fail while ordinary JavaScript, React, console capture, timeou
 Completion criterion: automated browser tests prove that learner code cannot access session material or make network requests, and the existing runner tests remain green.
 
 ## Phase 3: add the Better Auth backend
+
+Implementation record, 2026-09-04:
+
+- The backend uses `better-auth@1.6.30`, `@convex-dev/better-auth@0.12.5`, and `convex@1.45.0`, with the Better Auth component registered in `convex/convex.config.ts`.
+- Email OTP is the only enabled sign-in method. Codes are eight digits, expire after five minutes, are stored hashed, rotate on resend, and allow five verification attempts.
+- Sessions are stateful and roll for 30 days, with refresh writes limited to once per day. Session cookies are host-only, `HttpOnly`, `SameSite=Strict`, and `Secure` outside local HTTP development. The component's 15-minute Convex JWT cookie is removed from responses so the SPA will keep that JWT in memory only.
+- Auth responses are served only under `/api/auth/*`, receive `Cache-Control: no-store`, and deliberately omit cross-origin response headers. Better Auth still validates `SITE_URL` as its sole trusted browser origin.
+- Resend delivery uses its HTTPS API directly. The server never logs or stores plaintext email addresses or codes outside Better Auth's transient send callback. Delivery errors contain only a random correlation ID and HTTP status.
+- Sending is limited independently by Better Auth's trusted-IP rules and a transactional, HMAC-keyed per-address rule: one send per minute and five sends per hour. Verification has its own trusted-IP rule and the OTP record's attempt counter.
+- The worktree has no `CONVEX_DEPLOYMENT`, so the normal code-generation command cannot connect. The checked-in API declaration temporarily mirrors the component API shape produced by Convex; rerun `bun x convex dev` in a linked non-production environment before exercising auth. No Convex project or deployment was initialized or changed during this phase.
+- Production remains gated on proving that the frontend rewrite overwrites the trusted IP header and that direct Convex HTTP ingress cannot supply a forged value. OTP delivery, cookie persistence, session revocation, JWT acceptance, and origin rejection still require the linked non-production browser tests in Phase 8.
 
 ### 3.1 Dependencies and component registration
 
