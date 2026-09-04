@@ -3,7 +3,7 @@ import { convex } from '@convex-dev/better-auth/plugins'
 import { APIError } from 'better-auth/api'
 import { betterAuth, type BetterAuthOptions } from 'better-auth/minimal'
 import { emailOTP } from 'better-auth/plugins/email-otp'
-import { v } from 'convex/values'
+import { ConvexError, v } from 'convex/values'
 
 import { components } from './_generated/api'
 import type { DataModel } from './_generated/dataModel'
@@ -15,6 +15,16 @@ const SESSION_EXPIRES_IN_SECONDS = 60 * 60 * 24 * 30
 const SESSION_UPDATE_AGE_SECONDS = 60 * 60 * 24
 
 export const authComponent = createClient<DataModel>(components.betterAuth)
+
+export async function requireAuthUserId(ctx: GenericCtx<DataModel>) {
+  const user = await authComponent.safeGetAuthUser(ctx)
+
+  if (!user) {
+    throw new ConvexError({ code: 'AUTH_REQUIRED' })
+  }
+
+  return user._id
+}
 
 export const createAuth = (ctx: GenericCtx<DataModel>) => {
   const siteOrigin = getSiteOrigin()

@@ -560,6 +560,15 @@ Completion criterion: ordinary sign-out loses no acknowledged progress, and forc
 
 ## Phase 6: strengthen Convex authorization and input limits
 
+Implementation record, 2026-09-04:
+
+- Every public progress query and mutation now resolves the user through the Better Auth component's live session lookup. Missing, expired, and revoked sessions receive the stable `AUTH_REQUIRED` error.
+- Ownership remains next to each index-backed database read. The account-switch guard is compared with the server-derived user ID and is never used as authority.
+- Progress snapshots allow at most 500 problem records, 400 KB per problem, and 2 MB total. Drafts, written answers, structured answers, identifiers, rubric items, timestamp maps, and queued lessons have smaller field-specific limits.
+- Structured trace and design answers remain flexible JSON, but their size, depth, collection width, keys, and numeric values are checked before a write.
+- Timestamps must be finite, non-negative, and no more than five minutes ahead of Convex server time. Invalid input returns `PROGRESS_INPUT_INVALID` or `PROGRESS_LIMIT_EXCEEDED` with only a safe field name.
+- Pure validation tests cover current curriculum answer shapes, malformed identifiers, field timestamp ownership, duplicate records, clock skew, structured-answer depth, and record and snapshot limits. Session-backed Convex integration tests still require the linked non-production deployment in Phase 8.
+
 ### 6.1 Replace the auth helper
 
 Replace `requireUserId` in `convex/progress.ts` with one shared helper that validates the active Better Auth session and returns its user ID.
