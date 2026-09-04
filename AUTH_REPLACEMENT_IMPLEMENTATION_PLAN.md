@@ -1,6 +1,6 @@
 # Clerk replacement implementation plan
 
-Status: implementation in progress, Phase 0 complete for local development
+Status: implementation in progress, Phases 0 and 1 complete for local development
 Last updated: 2026-09-04
 
 ## Outcome
@@ -260,6 +260,16 @@ Completion criterion: one smoke test boots the existing app in Chromium, Firefox
 
 ## Phase 1: choose the auth interface through static mocks
 
+Implementation record, 2026-09-04:
+
+- The selected interface is Option B, `Progress handoff`.
+- On desktop, authentication uses a full-height right-side sheet so the learner's local progress remains visible throughout email entry, code verification, and progress reconciliation.
+- On narrow screens, the sheet fills the viewport and keeps the current step and recovery actions visible without exposing the underlying page to pointer or keyboard interaction.
+- The interface uses the application's existing theme state and semantic color tokens. It must respond immediately when the root `dark` class changes; no auth state may hard-code light-only backgrounds, borders, focus rings, status colors, or shadows.
+- Keep the existing light/dark selector and theme provider unchanged. Auth controls inherit that choice rather than storing a second preference.
+- Preserve the mock's plain persistent-session copy: the browser remembers the user for a rolling 30 days, and shared-computer users should sign out or use private browsing.
+- Keep all mock states as the Phase 5 implementation contract, including error recovery, loading, progress merge, account actions, and the pending-sync sign-out warning.
+
 Create three genuinely different static options under the gitignored `mocks/` directory. Match the existing Geist typography, colors, spacing, buttons, header, mobile behavior, and light and dark themes.
 
 Each option must show:
@@ -275,7 +285,7 @@ Each option must show:
 - Pending-sync sign-out warning.
 - Narrow mobile layout and keyboard focus states.
 
-Serve the mocks locally and stop for the user's selection. Delete the mocks only after the selected design has been implemented.
+Serve the mocks locally and stop for the user's selection. Keep the selected mock as a gitignored implementation reference, then delete the mock set after the design ships in Phase 5.
 
 Completion criterion: the user selects one option and any requested adjustments are written into the implementation notes.
 
