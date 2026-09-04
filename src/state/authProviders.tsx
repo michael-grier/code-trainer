@@ -9,6 +9,11 @@ import {
 
 import { authClient } from '@/lib/auth-client'
 import { authApi } from '@/lib/convexAuthApi'
+import { clearProgressState, getProgressStorageKey } from '@/lib/storage'
+import {
+  broadcastSignedOut,
+  listenForSignedOut,
+} from '@/state/authBroadcast'
 import {
   AuthActionError,
   AuthContext,
@@ -44,7 +49,10 @@ export function UnconfiguredAuthProvider({ children }: { children: ReactNode }) 
 export function AppAuthProvider({ children }: { children: ReactNode }) {
   const session = authClient.useSession()
   const convexAuth = useConvexAuth()
-  const sessionUserId = session.data?.user.id
+  const rawSessionUserId = session.data?.user.id
+  const refetchSession = session.refetch
+  const [isRemoteSignOutPending, setIsRemoteSignOutPending] = useState(false)
+  const sessionUserId = isRemoteSignOutPending ? undefined : rawSessionUserId
   const currentUserQuery = useConvexQuery({
     query: authApi.getCurrentUser,
     args: convexAuth.isAuthenticated ? {} : 'skip',
@@ -69,6 +77,29 @@ export function AppAuthProvider({ children }: { children: ReactNode }) {
       setPreviousUser(undefined)
     }
   }, [snapshot.status, snapshot.user])
+
+  useEffect(
+    () =>
+      listenForSignedOut((signedOutUserId) => {
+        clearProgressState(
+          window.localStorage,
+          getProgressStorageKey(signedOutUserId),
+        )
+
+        if (
+          signedOutUserId !== rawSessionUserId &&
+          signedOutUserId !== previousUser?.id
+        ) {
+          return
+        }
+
+        // Hide the account immediately instead of waiting on a network refresh.
+        setPreviousUser(undefined)
+        setIsRemoteSignOutPending(true)
+        void refetchSession().finally(() => setIsRemoteSignOutPending(false))
+      }),
+    [previousUser?.id, rawSessionUserId, refetchSession],
+  )
 
   const requestCode = useCallback(async (email: string) => {
     const result = await authClient.emailOtp.sendVerificationOtp({
@@ -101,23 +132,29 @@ export function AppAuthProvider({ children }: { children: ReactNode }) {
         throw toAuthActionError(result.error, 'That sign-in code did not work.')
       }
 
-      await session.refetch()
+      setIsRemoteSignOutPending(false)
+      await refetchSession()
     },
-    [session],
+    [refetchSession],
   )
 
   const signOut = useCallback(async () => {
+    const userId = rawSessionUserId
     const result = await authClient.signOut()
 
     if (result.error) {
       throw toAuthActionError(result.error, 'We could not sign you out.')
     }
 
-    await session.refetch()
-  }, [session])
+    await refetchSession()
+    if (userId) {
+      broadcastSignedOut(userId)
+    }
+  }, [rawSessionUserId, refetchSession])
 
   const signOutAllDevices = useCallback(async () => {
-    const revokeResult = await authClient.revokeSessions()
+    const userId = rawSessionUserId
+    const revokeResult = await authClient.revokeOtherSessions()
 
     if (revokeResult.error) {
       throw toAuthActionError(
@@ -132,8 +169,11 @@ export function AppAuthProvider({ children }: { children: ReactNode }) {
       throw toAuthActionError(signOutResult.error, 'We could not sign you out.')
     }
 
-    await session.refetch()
-  }, [session])
+    await refetchSession()
+    if (userId) {
+      broadcastSignedOut(userId)
+    }
+  }, [rawSessionUserId, refetchSession])
 
   const value = useMemo<AppAuth>(
     () => ({

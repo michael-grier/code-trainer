@@ -494,6 +494,15 @@ Completion criterion: source and tests contain no Clerk-specific naming outside 
 
 Implement only the option selected in Phase 1, using existing button, dialog, dropdown, form, and theme conventions.
 
+Implementation record, 2026-09-04:
+
+- The selected Progress handoff design now ships as a responsive right-side sheet. Its email, code, loading, merge, account, and interrupted-sign-out states use the application's semantic color tokens and were inspected in both light and dark modes.
+- Email-code sign-in accepts one pasteable eight-digit code, explains the persistent 30-day session, prevents duplicate submissions, and presents resend and server rate-limit timing.
+- Meaningful guest work pauses the first account write. `Move and continue` clears the guest cache only after Convex acknowledges the merged snapshot; `Use account progress` keeps the guest cache available.
+- Sign-out flushes the latest progress before session revocation. A failed flush offers retry or an explicit discard path. Sign-out events also clear the affected account cache and refresh auth state in other tabs through `BroadcastChannel`.
+- `Sign out all devices` revokes the other sessions before ending the current session, so the final cookie-clearing request still has authority.
+- Live email delivery, real session exchange, and the full progress handoff remain gated on a linked non-production Convex deployment in Phase 8.
+
 ### 5.1 Email step
 
 - Use a labeled `type="email"` field with `autocomplete="email"`.

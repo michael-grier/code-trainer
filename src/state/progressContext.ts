@@ -9,6 +9,7 @@ import {
   getTrackCompletion,
 } from '@/state/guidance'
 import type { ProgressState } from '@/state/progress'
+import type { ProgressSummary } from '@/state/cloudProgress'
 
 export type SyncStatus =
   | 'guest'
@@ -18,11 +19,20 @@ export type SyncStatus =
   | 'saved-locally'
   | 'failed'
 
+export type ProgressHandoff = {
+  device: ProgressSummary
+  account: ProgressSummary
+  isSaving: boolean
+  moveAndContinue: () => Promise<boolean>
+  useAccountProgress: () => void
+}
+
 export type ProgressContextValue = {
   state: ProgressState
   storageKey: string
   syncStatus: SyncStatus
   isHydrated: boolean
+  handoff?: ProgressHandoff
   recommendedLesson: ReturnType<typeof getRecommendedLesson>
   counts: ReturnType<typeof getProgressCounts>
   getDraft: (lessonSlug: string, problemId: string) => string | undefined

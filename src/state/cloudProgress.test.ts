@@ -4,6 +4,7 @@ import {
   cloudSnapshotToProgressState,
   mergeProgressStates,
   progressStateToCloudSnapshot,
+  summarizeProgress,
 } from '@/state/cloudProgress'
 import {
   createEmptyProgressState,
@@ -96,5 +97,22 @@ describe('cloud progress sync helpers', () => {
     expect(roundTrip.drafts[draftKey]).toBe('export function practice() {}')
     expect(roundTrip.updatedAt[getUpdatedAtKey('drafts', 'arrays-and-hashing', 'practice')]).toBe(300)
     expect(roundTrip.traceAnswers[traceKey]).toBe('runs once')
+  })
+
+  test('distinguishes meaningful guest work from navigation metadata', () => {
+    const navigationOnly = createEmptyProgressState(100)
+    navigationOnly.lastVisited = {
+      lessonSlug: 'arrays-and-hashing',
+      updatedAt: 200,
+    }
+
+    expect(summarizeProgress(navigationOnly).hasMeaningfulWork).toBe(false)
+
+    navigationOnly.traceAnswers['lesson::problem::question'] = 'answer'
+
+    expect(summarizeProgress(navigationOnly)).toMatchObject({
+      savedAnswers: 1,
+      hasMeaningfulWork: true,
+    })
   })
 })

@@ -42,6 +42,7 @@ import {
   markProgressSynced,
   mergeProgressStates,
   progressStateToCloudSnapshot,
+  summarizeProgress,
   type CloudProgressSnapshot,
 } from '@/state/cloudProgress'
 import { useAppAuth } from '@/state/authContext'
@@ -65,12 +66,20 @@ type ProgressProviderProps = {
 
 type FlushMode = 'debounced' | 'immediate'
 
+type PendingProgressHandoff = {
+  account: ProgressState
+  guest: ProgressState
+}
+
 export function ProgressProvider({ children, cloud, userId }: ProgressProviderProps) {
   const storageKey = getProgressStorageKey(userId)
   const [state, setState] = useState<ProgressState>(() => createEmptyProgressState())
   const [isHydrated, setIsHydrated] = useState(false)
   const [hasMergedCloud, setHasMergedCloud] = useState(false)
   const [hasPendingCloudWrite, setHasPendingCloudWrite] = useState(false)
+  const [pendingHandoff, setPendingHandoff] =
+    useState<PendingProgressHandoff>()
+  const [isHandoffSaving, setIsHandoffSaving] = useState(false)
   const [syncError, setSyncError] = useState<Error | null>(null)
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const latestStateRef = useRef(state)
@@ -95,6 +104,8 @@ export function ProgressProvider({ children, cloud, userId }: ProgressProviderPr
     setSyncError(null)
     setHasPendingCloudWrite(false)
     setHasMergedCloud(false)
+    setPendingHandoff(undefined)
+    setIsHandoffSaving(false)
     mergedCloudUserRef.current = undefined
     requestedFlushModeRef.current = 'debounced'
     setIsHydrated(true)
@@ -165,15 +176,26 @@ export function ProgressProvider({ children, cloud, userId }: ProgressProviderPr
       getProgressStorageKey(),
     )
     const cloudState = cloudSnapshotToProgressState(cloudSnapshot)
-    const localState = mergeProgressStates(authenticatedCache, guestCache)
-    const mergedState = mergeProgressStates(localState, cloudState)
+    const accountState = mergeProgressStates(authenticatedCache, cloudState)
+    const guestSummary = summarizeProgress(guestCache)
 
-    requestedFlushModeRef.current = 'immediate'
     mergedCloudUserRef.current = userId
     setSyncError(null)
+
+    if (guestSummary.hasMeaningfulWork) {
+      latestStateRef.current = accountState
+      setState(accountState)
+      setPendingHandoff({ account: accountState, guest: guestCache })
+      setHasPendingCloudWrite(false)
+      setHasMergedCloud(false)
+      return
+    }
+
+    requestedFlushModeRef.current = 'immediate'
+    latestStateRef.current = accountState
+    setState(accountState)
     setHasPendingCloudWrite(true)
     setHasMergedCloud(true)
-    setState(mergedState)
   }, [
     canUseCloud,
     cloudError,
@@ -289,7 +311,7 @@ export function ProgressProvider({ children, cloud, userId }: ProgressProviderPr
       return 'failed'
     }
 
-    if (cloudIsLoading || !hasMergedCloud) {
+    if (cloudIsLoading || pendingHandoff || !hasMergedCloud) {
       return 'loading-cloud'
     }
 
@@ -308,6 +330,7 @@ export function ProgressProvider({ children, cloud, userId }: ProgressProviderPr
     hasMergedCloud,
     hasPendingCloudWrite,
     isOnline,
+    pendingHandoff,
     saveCloudProgress,
     state,
     syncError,
@@ -334,6 +357,69 @@ export function ProgressProvider({ children, cloud, userId }: ProgressProviderPr
     return flushCloudProgress()
   }, [flushCloudProgress])
 
+  const moveAndContinue = useCallback(async () => {
+    if (
+      !pendingHandoff ||
+      !userId ||
+      !canUseCloud ||
+      !saveCloudProgress ||
+      !isOnline
+    ) {
+      return false
+    }
+
+    // The sheet can be dismissed, so include account edits made while the
+    // handoff is pending instead of merging the initial account snapshot.
+    const merged = mergeProgressStates(
+      latestStateRef.current,
+      pendingHandoff.guest,
+    )
+    const revision = getProgressRevision(merged)
+
+    setIsHandoffSaving(true)
+
+    try {
+      await saveCloudProgress({
+        progress: progressStateToCloudSnapshot(merged, revision),
+      })
+
+      const synced = markProgressSynced(merged, revision)
+
+      latestStateRef.current = synced
+      saveProgressState(window.localStorage, getProgressStorageKey(userId), synced)
+      window.localStorage.removeItem(getProgressStorageKey())
+      setState(synced)
+      setPendingHandoff(undefined)
+      setHasMergedCloud(true)
+      setHasPendingCloudWrite(false)
+      setSyncError(null)
+      return true
+    } catch (error) {
+      setSyncError(error instanceof Error ? error : new Error('Cloud sync failed'))
+      return false
+    } finally {
+      setIsHandoffSaving(false)
+    }
+  }, [
+    canUseCloud,
+    isOnline,
+    pendingHandoff,
+    saveCloudProgress,
+    userId,
+  ])
+
+  const useAccountProgress = useCallback(() => {
+    if (!pendingHandoff) {
+      return
+    }
+
+    requestedFlushModeRef.current = 'immediate'
+    setPendingHandoff(undefined)
+    setHasMergedCloud(true)
+    setHasPendingCloudWrite(true)
+    setSyncError(null)
+  }, [pendingHandoff])
+
   const contextValue = useMemo<ProgressContextValue>(() => {
     const recommendedLesson = getRecommendedLesson(lessons, state)
 
@@ -342,6 +428,15 @@ export function ProgressProvider({ children, cloud, userId }: ProgressProviderPr
       storageKey,
       syncStatus,
       isHydrated,
+      handoff: pendingHandoff
+        ? {
+            device: summarizeProgress(pendingHandoff.guest),
+            account: summarizeProgress(state),
+            isSaving: isHandoffSaving,
+            moveAndContinue,
+            useAccountProgress,
+          }
+        : undefined,
       recommendedLesson,
       counts: getProgressCounts(lessons, state),
       getDraft: (lessonSlug, problemId) =>
@@ -464,13 +559,17 @@ export function ProgressProvider({ children, cloud, userId }: ProgressProviderPr
     }
   }, [
     flushProgress,
+    isHandoffSaving,
     isHydrated,
+    moveAndContinue,
+    pendingHandoff,
     retrySync,
     saveLastVisited,
     state,
     storageKey,
     syncStatus,
     update,
+    useAccountProgress,
   ])
 
   return (

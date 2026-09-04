@@ -62,7 +62,7 @@ function SheetContent({
             variant="ghost"
           >
             <X className="size-4" />
-            <span className="sr-only">Close navigation</span>
+            <span className="sr-only">Close dialog</span>
           </Button>
         </SheetPrimitive.Close>
       </SheetPrimitive.Content>
@@ -109,4 +109,3 @@ export {
   SheetTitle,
   SheetTrigger,
 }
-
