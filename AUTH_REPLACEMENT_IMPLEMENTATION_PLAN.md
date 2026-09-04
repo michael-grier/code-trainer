@@ -606,6 +606,11 @@ Completion criterion: oversized and malformed payload tests fail before any data
 
 Skip this phase for a clean cutover.
 
+Implementation record, 2026-09-04:
+
+- The implementation remains on the clean-cutover branch selected in Phase 0, so no legacy identity table, dual JWT issuer, browser-key migration, or production data mutation was added.
+- The repository has no linked Convex deployment or hosting record from which to prove that live Clerk-owned progress is absent. That confirmation remains a production release gate. If live data is found, stop the clean cutover and complete this phase against a backup before disabling Clerk.
+
 ### 7.1 Prepare the migration
 
 1. Export a Convex backup.
