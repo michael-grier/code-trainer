@@ -10,6 +10,7 @@ dist-ssr
 coverage
 playwright-report
 test-results
+public/runner-assets
 
 # T3 Code worktree threads
 .t3-worktrees/

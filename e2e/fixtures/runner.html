@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Runner test fixture</title>
+  </head>
+  <body>
+    <script type="module">
+      import {
+        runCode,
+        runReactTests,
+        runTypeCheckInWorker,
+      } from '/src/runtime/index.ts'
+
+      globalThis.runnerTest = {
+        runCode,
+        runReactTests,
+        runTypeCheckInWorker,
+      }
+      document.body.dataset.ready = 'true'
+    </script>
+  </body>
+</html>

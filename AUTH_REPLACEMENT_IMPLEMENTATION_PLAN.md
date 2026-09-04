@@ -1,6 +1,6 @@
 # Clerk replacement implementation plan
 
-Status: implementation in progress, Phases 0 and 1 complete for local development
+Status: implementation in progress, Phases 0 through 2 complete for local development
 Last updated: 2026-09-04
 
 ## Outcome
@@ -129,7 +129,8 @@ New browser files:
 
 - `src/lib/auth-client.ts`: configure the Better Auth and Convex client plugins.
 - `src/state/authContext.tsx`: expose the application-owned auth state machine and actions.
-- A small sandbox-frame entry under `src/runtime/`: host the existing workers at an opaque origin and mediate their messages.
+- `src/runtime/sandboxClient.ts`, `sandboxFrame.ts`, and `sandboxProtocol.ts`: host the existing workers at an opaque origin and mediate validated messages.
+- `public/runner-sandbox.html` and `scripts/build-runner-sandbox.mjs`: ship the CSP-constrained frame and its generated, self-contained worker assets.
 
 Existing browser files to change:
 
@@ -292,6 +293,16 @@ Completion criterion: the user selects one option and any requested adjustments 
 ## Phase 2: isolate learner code from authenticated networking
 
 This is a production auth prerequisite because learner code is arbitrary JavaScript.
+
+Implementation record, 2026-09-04:
+
+- JavaScript, React, and type-check entry points now send work to one hidden iframe through a private `MessageChannel`. The iframe has `sandbox="allow-scripts"` without `allow-same-origin`, so its effective origin is opaque.
+- The frame's CSP denies all resources by default and explicitly blocks connections, forms, child frames, objects, images, and media. It permits only same-origin coordinator scripts, blob workers, and `unsafe-eval`; `unsafe-eval` is required by the existing React harness but cannot reach the application origin or network from this context.
+- The build generates self-contained classic worker bundles from the existing worker sources. Classic blob workers are required because WebKit rejects module blob workers created by an opaque-origin frame. Blob URLs remain live until the first worker event because WebKit consumes them asynchronously.
+- Requests and responses validate their protocol version, discriminant, cryptographically random request ID, runner kind, nested input or result shape, message size, and expected test set. The frame limits concurrency, rejects reused IDs, and terminates each worker on completion, cancellation, error, or timeout.
+- JavaScript and React workers bind their native outbound `postMessage` before learner code loads. Learner code therefore cannot intercept the legitimate result, learn its request ID, and substitute a forged result.
+- Browser tests in Chromium, Firefox, and WebKit prove ordinary JavaScript, React, type checking, console-safe results, and timeout termination still work. They also prove that cookies, browser storage, IndexedDB, the parent DOM, auth and Convex routes, external HTTP, script imports, WebSockets, EventSource, popups, navigation, forged results, and reused request IDs are unavailable or rejected. A React-specific probe separately confirms that its emulated DOM and storage cannot expose parent-page state.
+- Generated runner assets live under the gitignored `public/runner-assets/` directory. Both Vite development commands and production builds regenerate the complete set atomically before starting.
 
 ### 2.1 Introduce an opaque execution context
 

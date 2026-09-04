@@ -11,6 +11,7 @@ export default tseslint.config(
       'node_modules',
       'convex/_generated',
       'playwright-report',
+      'public/runner-assets',
       'test-results',
     ],
   },
