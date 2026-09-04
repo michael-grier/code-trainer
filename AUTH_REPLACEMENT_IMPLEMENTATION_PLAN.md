@@ -338,7 +338,7 @@ Implementation record, 2026-09-04:
 - Auth responses are served only under `/api/auth/*`, receive `Cache-Control: no-store`, and deliberately omit cross-origin response headers. Better Auth still validates `SITE_URL` as its sole trusted browser origin.
 - Resend delivery uses its HTTPS API directly. The server never logs or stores plaintext email addresses or codes outside Better Auth's transient send callback. Delivery errors contain only a random correlation ID and HTTP status.
 - Sending is limited independently by Better Auth's trusted-IP rules and a transactional, HMAC-keyed per-address rule: one send per minute and five sends per hour. Verification has its own trusted-IP rule and the OTP record's attempt counter.
-- The worktree has no `CONVEX_DEPLOYMENT`, so the normal code-generation command cannot connect. The checked-in API declaration temporarily mirrors the component API shape produced by Convex; rerun `bun x convex dev` in a linked non-production environment before exercising auth. No Convex project or deployment was initialized or changed during this phase.
+- At the end of Phase 3 the worktree had no `CONVEX_DEPLOYMENT`, so its API declaration temporarily mirrored the expected component shape. Phase 8 later generated the real declarations and exercised the functions against an isolated anonymous local deployment. No hosted Convex project or production deployment was initialized or changed.
 - Production remains gated on proving that the frontend rewrite overwrites the trusted IP header and that direct Convex HTTP ingress cannot supply a forged value. OTP delivery, cookie persistence, session revocation, JWT acceptance, and origin rejection still require the linked non-production browser tests in Phase 8.
 
 ### 3.1 Dependencies and component registration
@@ -668,6 +668,15 @@ Completion criterion: Clerk can be disabled without orphaning progress or leavin
 
 ## Phase 8: verification
 
+Implementation record, 2026-09-04:
+
+- `bun x convex dev --once` created an anonymous local-only deployment, installed the Better Auth component, applied every declared index, generated the real API files, and compiled all Convex functions. The local deployment is not linked to a Convex account.
+- All five protected progress operations returned `AUTH_REQUIRED` without a session. The first-party auth route returned a guest session, rejected an invalid OTP, rejected an untrusted origin, enforced the 100-request global rule exactly, and returned `AUTH_EMAIL_RATE_LIMITED` with `Retry-After` for an immediate repeat email request.
+- That live check found that Better Auth deliberately swallows delivery-callback errors. The HMAC email limiter now runs in a pre-request hook before code generation, so a blocked request cannot rotate the valid code and its 429 reaches the client. Core request throttling uses an atomic project table with key and request-age indexes instead of the component's unindexed cleanup path.
+- The suite now covers auth transitions, input normalization, public error messages, resend timing, sign-out flush readiness, cross-tab events, durable-before-local progress handoff ordering, failure preservation, storage-key separation, progress merging, and payload limits.
+- `bun run test` passes 293 tests in 73 files; lint, the production build, and `convex dev --once` pass. All 15 proxy, persistent-cookie, and runner-isolation browser checks pass across Chromium, Firefox, and WebKit.
+- Real Resend delivery, valid-code sign-in and reuse rejection, real Better Auth cookie restart, JWT refresh, revocation, cross-account authorization, and live cloud handoff still require configured transactional email on a non-production deployment. The existing persistent-cookie browser test proves the first-party proxy contract with a probe cookie, not a Better Auth session.
+
 ### Unit tests
 
 Use existing Vitest infrastructure for:
@@ -691,7 +700,7 @@ Cover:
 - Unauthenticated rejection for every protected function.
 - Revoked-session rejection.
 - User A cannot read, replace, or delete user B's progress.
-- Client-provided user IDs are absent from all public arguments.
+- Client-provided user IDs are absent from ownership decisions. The expected-user guard may only reject an account-switch race; it is never authority.
 - Index-backed reads for every progress access path.
 - Oversized snapshots perform no partial write.
 - Migration claims and retries are atomic.

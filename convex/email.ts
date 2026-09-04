@@ -14,10 +14,7 @@ type AuthEmail = {
 
 type EmailActionContext = Pick<ActionCtx, 'runMutation'>
 
-export async function sendAuthEmail(
-  ctx: EmailActionContext,
-  message: AuthEmail,
-) {
+export async function sendAuthEmail(message: AuthEmail) {
   if (message.type !== 'sign-in') {
     throw new APIError('BAD_REQUEST', {
       code: 'UNSUPPORTED_EMAIL_CODE_TYPE',
@@ -31,27 +28,6 @@ export async function sendAuthEmail(
 
   const config = getEmailConfig()
   const normalizedEmail = message.email.trim().toLowerCase()
-  const emailKey = await createPrivateDigest(
-    config.secret,
-    `email-rate-limit:${normalizedEmail}`,
-  )
-  const rateLimit = await ctx.runMutation(
-    internal.authRateLimit.consumeAuthEmailSend,
-    { key: emailKey },
-  )
-
-  if (!rateLimit.allowed) {
-    throw new APIError(
-      'TOO_MANY_REQUESTS',
-      {
-        code: 'AUTH_EMAIL_RATE_LIMITED',
-        message: 'Please wait before requesting another code.',
-        retryAfterSeconds: rateLimit.retryAfterSeconds,
-      },
-      { 'Retry-After': String(rateLimit.retryAfterSeconds) },
-    )
-  }
-
   const deliveryCorrelationId = crypto.randomUUID()
   const idempotencyKey = await createPrivateDigest(
     config.secret,
@@ -84,6 +60,39 @@ export async function sendAuthEmail(
     reportDeliveryFailure(deliveryCorrelationId, response.status)
     throw emailUnavailableError()
   }
+}
+
+export async function enforceAuthEmailRateLimit(
+  ctx: EmailActionContext,
+  email: string,
+) {
+  const normalizedEmail = email.trim().toLowerCase()
+  const emailKey = await createPrivateAuthKey(
+    `email-rate-limit:${normalizedEmail}`,
+  )
+  const rateLimit = await ctx.runMutation(
+    internal.authRateLimit.consumeAuthEmailSend,
+    { key: emailKey },
+  )
+
+  if (!rateLimit.allowed) {
+    throw new APIError(
+      'TOO_MANY_REQUESTS',
+      {
+        code: 'AUTH_EMAIL_RATE_LIMITED',
+        message: 'Please wait before requesting another code.',
+        retryAfterSeconds: rateLimit.retryAfterSeconds,
+      },
+      { 'Retry-After': String(rateLimit.retryAfterSeconds) },
+    )
+  }
+}
+
+export function createPrivateAuthKey(value: string) {
+  return createPrivateDigest(
+    requireEnvironmentValue('BETTER_AUTH_SECRET'),
+    value,
+  )
 }
 
 function getEmailConfig() {

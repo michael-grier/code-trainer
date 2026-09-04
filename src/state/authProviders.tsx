@@ -21,6 +21,11 @@ import {
   type VerifyCodeInput,
 } from '@/state/authContext'
 import {
+  normalizeEmail,
+  normalizeEmailCode,
+  toAuthActionError,
+} from '@/state/authFlow'
+import {
   resolveAppAuthState,
   type AppUser,
   type CurrentUserResult,
@@ -114,7 +119,7 @@ export function AppAuthProvider({ children }: { children: ReactNode }) {
 
   const verifyCode = useCallback(
     async ({ email, code }: VerifyCodeInput) => {
-      const normalizedCode = code.replace(/[\s-]/g, '')
+      const normalizedCode = normalizeEmailCode(code)
 
       if (!/^\d{8}$/.test(normalizedCode)) {
         throw new AuthActionError('Enter the 8-digit code from your email.', {
@@ -197,30 +202,4 @@ function toCurrentUserResult(
   }
 
   return { status: result.status }
-}
-
-function normalizeEmail(email: string) {
-  return email.trim().toLowerCase()
-}
-
-function toAuthActionError(error: unknown, fallbackMessage: string) {
-  if (!isRecord(error)) {
-    return new AuthActionError(fallbackMessage)
-  }
-
-  return new AuthActionError(
-    typeof error.message === 'string' ? error.message : fallbackMessage,
-    {
-      code: typeof error.code === 'string' ? error.code : undefined,
-      status: typeof error.status === 'number' ? error.status : undefined,
-      retryAfterSeconds:
-        typeof error.retryAfterSeconds === 'number'
-          ? error.retryAfterSeconds
-          : undefined,
-    },
-  )
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }

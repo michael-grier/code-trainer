@@ -27,6 +27,11 @@ import {
 } from '@/components/ui/sheet'
 import { clearProgressState } from '@/lib/storage'
 import { AuthActionError, useAppAuth } from '@/state/authContext'
+import {
+  getAuthErrorMessage,
+  getCountdownSeconds,
+  getSignOutReadiness,
+} from '@/state/authFlow'
 import { summarizeProgress, type ProgressSummary } from '@/state/cloudProgress'
 import {
   useProgress,
@@ -129,7 +134,7 @@ export function AuthSheet() {
       if (authError.retryAfterSeconds) {
         setResendAt(Date.now() + authError.retryAfterSeconds * 1_000)
       }
-      setError(authErrorMessage(authError, 'send'))
+      setError(getAuthErrorMessage(authError, 'send'))
     } finally {
       setIsWorking(false)
     }
@@ -144,7 +149,7 @@ export function AuthSheet() {
       await auth.verifyCode({ email, code })
       setStep('loading')
     } catch (verifyError) {
-      setError(authErrorMessage(toAuthActionError(verifyError), 'verify'))
+      setError(getAuthErrorMessage(toAuthActionError(verifyError), 'verify'))
     } finally {
       setIsWorking(false)
     }
@@ -179,9 +184,9 @@ export function AuthSheet() {
     setIsWorking(true)
     setSignOutEverywhere(everywhere)
 
-    const saved = await progress.flushProgress()
+    const readiness = await getSignOutReadiness(progress.flushProgress)
 
-    if (!saved) {
+    if (readiness === 'unsynced') {
       setStep('signout-warning')
       setIsWorking(false)
       return
@@ -204,7 +209,7 @@ export function AuthSheet() {
       clearProgressState(window.localStorage, progress.storageKey)
       closeSheet()
     } catch (signOutError) {
-      setError(authErrorMessage(toAuthActionError(signOutError), 'signout'))
+      setError(getAuthErrorMessage(toAuthActionError(signOutError), 'signout'))
       setIsWorking(false)
     }
   }
@@ -772,39 +777,12 @@ function toAuthActionError(error: unknown) {
     : new AuthActionError('The request could not be completed.')
 }
 
-function authErrorMessage(
-  error: AuthActionError,
-  action: 'send' | 'verify' | 'signout',
-) {
-  if (error.code === 'INVALID_OTP') {
-    return 'That code does not match. Check the email and try again.'
-  }
-  if (error.code === 'OTP_EXPIRED') {
-    return 'That code expired. Request a new code to continue.'
-  }
-  if (error.code === 'TOO_MANY_ATTEMPTS') {
-    return 'Too many attempts. Request a new code to continue.'
-  }
-  if (error.status === 429) {
-    return error.retryAfterSeconds
-      ? `Request limit reached. Try again in ${error.retryAfterSeconds} seconds.`
-      : 'Request limit reached. Please wait before trying again.'
-  }
-  if (action === 'send') {
-    return 'Email could not be sent. You can keep learning locally and retry later.'
-  }
-  if (action === 'verify') {
-    return error.message
-  }
-  return 'Sign-out did not finish. Your account session is still active.'
-}
-
 function useCountdown(deadline: number) {
   const [seconds, setSeconds] = useState(0)
 
   useEffect(() => {
     const update = () => {
-      setSeconds(Math.max(0, Math.ceil((deadline - Date.now()) / 1_000)))
+      setSeconds(getCountdownSeconds(deadline))
     }
 
     update()

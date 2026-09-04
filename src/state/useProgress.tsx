@@ -46,6 +46,7 @@ import {
   type CloudProgressSnapshot,
 } from '@/state/cloudProgress'
 import { useAppAuth } from '@/state/authContext'
+import { moveProgressToAccount } from '@/state/progressHandoff'
 import {
   ProgressContext,
   type ProgressContextValue,
@@ -368,26 +369,25 @@ export function ProgressProvider({ children, cloud, userId }: ProgressProviderPr
       return false
     }
 
-    // The sheet can be dismissed, so include account edits made while the
-    // handoff is pending instead of merging the initial account snapshot.
-    const merged = mergeProgressStates(
-      latestStateRef.current,
-      pendingHandoff.guest,
-    )
-    const revision = getProgressRevision(merged)
-
     setIsHandoffSaving(true)
 
     try {
-      await saveCloudProgress({
-        progress: progressStateToCloudSnapshot(merged, revision),
+      const synced = await moveProgressToAccount({
+        // The sheet can be dismissed, so include account edits made while the
+        // handoff waits instead of using its initial account snapshot.
+        account: latestStateRef.current,
+        guest: pendingHandoff.guest,
+        saveCloud: (progress) => saveCloudProgress({ progress }),
+        saveAccount: (accountState) =>
+          saveProgressState(
+            window.localStorage,
+            getProgressStorageKey(userId),
+            accountState,
+          ),
+        clearGuest: () => window.localStorage.removeItem(getProgressStorageKey()),
       })
 
-      const synced = markProgressSynced(merged, revision)
-
       latestStateRef.current = synced
-      saveProgressState(window.localStorage, getProgressStorageKey(userId), synced)
-      window.localStorage.removeItem(getProgressStorageKey())
       setState(synced)
       setPendingHandoff(undefined)
       setHasMergedCloud(true)

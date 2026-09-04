@@ -1,15 +1,19 @@
 import { createClient, type GenericCtx } from '@convex-dev/better-auth'
 import { convex } from '@convex-dev/better-auth/plugins'
-import { APIError } from 'better-auth/api'
+import { APIError, createAuthMiddleware } from 'better-auth/api'
 import { betterAuth, type BetterAuthOptions } from 'better-auth/minimal'
 import { emailOTP } from 'better-auth/plugins/email-otp'
 import { ConvexError, v } from 'convex/values'
 
-import { components } from './_generated/api'
+import { components, internal } from './_generated/api'
 import type { DataModel } from './_generated/dataModel'
 import { query } from './_generated/server'
 import authConfig from './auth.config'
-import { sendAuthEmail } from './email'
+import {
+  createPrivateAuthKey,
+  enforceAuthEmailRateLimit,
+  sendAuthEmail,
+} from './email'
 
 const SESSION_EXPIRES_IN_SECONDS = 60 * 60 * 24 * 30
 const SESSION_UPDATE_AGE_SECONDS = 60 * 60 * 24
@@ -41,13 +45,70 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
     },
     rateLimit: {
       enabled: true,
-      storage: 'database',
       window: 60,
       max: 100,
       customRules: {
         '/email-otp/send-verification-otp': { window: 60, max: 3 },
         '/sign-in/email-otp': { window: 300, max: 5 },
       },
+      customStorage: {
+        get: async (key) =>
+          ctx.runQuery(internal.authRateLimit.getAuthRequestRateLimit, {
+            key: await createPrivateAuthKey(`request-rate-limit:${key}`),
+          }),
+        set: async (key, value) => {
+          if (!('runMutation' in ctx)) {
+            throw new Error(
+              'Auth request rate limiting requires a mutation context.',
+            )
+          }
+
+          await ctx.runMutation(internal.authRateLimit.setAuthRequestRateLimit, {
+            key: await createPrivateAuthKey(`request-rate-limit:${key}`),
+            count: value.count,
+            lastRequest: value.lastRequest,
+          })
+        },
+        consume: async (key, rule) => {
+          if (!('runMutation' in ctx)) {
+            throw new Error(
+              'Auth request rate limiting requires a mutation context.',
+            )
+          }
+
+          return ctx.runMutation(
+            internal.authRateLimit.consumeAuthRequestRateLimit,
+            {
+              key: await createPrivateAuthKey(`request-rate-limit:${key}`),
+              windowSeconds: rule.window,
+              max: rule.max,
+            },
+          )
+        },
+      },
+    },
+    hooks: {
+      before: createAuthMiddleware(async (request) => {
+        if (request.path !== '/email-otp/send-verification-otp') {
+          return
+        }
+
+        const email = getRequestEmail(request.body)
+
+        if (!email) {
+          return
+        }
+        if (!('runMutation' in ctx)) {
+          throw new APIError('INTERNAL_SERVER_ERROR', {
+            code: 'AUTH_EMAIL_CONTEXT_UNAVAILABLE',
+            message: 'Authentication email is temporarily unavailable.',
+          })
+        }
+
+        // Run before OTP generation because delivery callback errors are
+        // intentionally swallowed by Better Auth.
+        await enforceAuthEmailRateLimit(ctx, email)
+      }),
     },
     advanced: {
       cookiePrefix: 'code_trainer',
@@ -73,14 +134,7 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
         storeOTP: 'hashed',
         rateLimit: { window: 60, max: 3 },
         sendVerificationOTP: async (message) => {
-          if (!('runMutation' in ctx)) {
-            throw new APIError('INTERNAL_SERVER_ERROR', {
-              code: 'AUTH_EMAIL_CONTEXT_UNAVAILABLE',
-              message: 'Authentication email is temporarily unavailable.',
-            })
-          }
-
-          await sendAuthEmail(ctx, message)
+          await sendAuthEmail(message)
         },
       }),
       convex({ authConfig }),
@@ -140,4 +194,14 @@ function getAuthSecret() {
   }
 
   return secret
+}
+
+function getRequestEmail(body: unknown) {
+  return isRecord(body) && typeof body.email === 'string'
+    ? body.email
+    : undefined
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
