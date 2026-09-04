@@ -46,6 +46,7 @@ export async function sendAuthEmail(
       {
         code: 'AUTH_EMAIL_RATE_LIMITED',
         message: 'Please wait before requesting another code.',
+        retryAfterSeconds: rateLimit.retryAfterSeconds,
       },
       { 'Retry-After': String(rateLimit.retryAfterSeconds) },
     )

@@ -1,4 +1,3 @@
-import { useAuth } from '@clerk/clerk-react'
 import {
   useCallback,
   useEffect,
@@ -8,6 +7,7 @@ import {
   type ReactNode,
 } from 'react'
 import {
+  useConvexAuth,
   useMutation,
   useQuery_experimental as useConvexQuery,
 } from 'convex/react'
@@ -36,7 +36,6 @@ import {
   loadProgressState,
   saveProgressState,
 } from '@/lib/storage'
-import { isClerkConfigured, isConvexConfigured } from '@/lib/env'
 import {
   cloudSnapshotToProgressState,
   getProgressRevision,
@@ -45,6 +44,7 @@ import {
   progressStateToCloudSnapshot,
   type CloudProgressSnapshot,
 } from '@/state/cloudProgress'
+import { useAppAuth } from '@/state/authContext'
 import {
   ProgressContext,
   type ProgressContextValue,
@@ -105,16 +105,16 @@ export function ProgressProvider({ children, cloud, userId }: ProgressProviderPr
   }, [state])
 
   const flushCloudProgress = useCallback(async () => {
-    if (!canUseCloud || !saveCloudProgress || !hasMergedCloud || !isOnline) {
-      return
-    }
-
     const stateToFlush = latestStateRef.current
     const revisionAtFlush = getProgressRevision(stateToFlush)
 
     if (revisionAtFlush <= (stateToFlush.lastSyncedAt ?? 0)) {
       setHasPendingCloudWrite(false)
-      return
+      return true
+    }
+
+    if (!canUseCloud || !saveCloudProgress || !hasMergedCloud || !isOnline) {
+      return false
     }
 
     setHasPendingCloudWrite(true)
@@ -135,9 +135,11 @@ export function ProgressProvider({ children, cloud, userId }: ProgressProviderPr
           Math.max(current.lastSyncedAt ?? 0, revisionAtFlush),
         ),
       )
+      return !hasNewerLocalChanges
     } catch (error) {
       setSyncError(error instanceof Error ? error : new Error('Cloud sync failed'))
       setHasPendingCloudWrite(true)
+      return false
     }
   }, [canUseCloud, hasMergedCloud, isOnline, saveCloudProgress])
 
@@ -242,7 +244,12 @@ export function ProgressProvider({ children, cloud, userId }: ProgressProviderPr
         requestedFlushModeRef.current = 'immediate'
       }
 
-      setState((current) => recipe(current, Date.now()))
+      setState((current) => {
+        const next = recipe(current, Date.now())
+
+        latestStateRef.current = next
+        return next
+      })
     },
     [],
   )
@@ -315,6 +322,16 @@ export function ProgressProvider({ children, cloud, userId }: ProgressProviderPr
 
     requestedFlushModeRef.current = 'immediate'
     await flushCloudProgress()
+  }, [flushCloudProgress])
+
+  const flushProgress = useCallback(async () => {
+    if (flushTimerRef.current) {
+      clearTimeout(flushTimerRef.current)
+      flushTimerRef.current = null
+    }
+
+    requestedFlushModeRef.current = 'immediate'
+    return flushCloudProgress()
   }, [flushCloudProgress])
 
   const contextValue = useMemo<ProgressContextValue>(() => {
@@ -442,9 +459,19 @@ export function ProgressProvider({ children, cloud, userId }: ProgressProviderPr
       getLessonStatus,
       getRecommendedProblem,
       saveLastVisited,
+      flushProgress,
       retrySync,
     }
-  }, [isHydrated, retrySync, saveLastVisited, state, storageKey, syncStatus, update])
+  }, [
+    flushProgress,
+    isHydrated,
+    retrySync,
+    saveLastVisited,
+    state,
+    storageKey,
+    syncStatus,
+    update,
+  ])
 
   return (
     <ProgressContext.Provider value={contextValue}>
@@ -458,23 +485,32 @@ export function ProgressProviderWithOptionalAuth({
 }: {
   children: ReactNode
 }) {
-  if (!isClerkConfigured) {
+  const auth = useAppAuth()
+
+  if (auth.status === 'unconfigured') {
     return <ProgressProvider>{children}</ProgressProvider>
   }
 
-  return <AuthenticatedProgressProvider>{children}</AuthenticatedProgressProvider>
+  return <ConfiguredProgressProvider>{children}</ConfiguredProgressProvider>
 }
 
-function AuthenticatedProgressProvider({ children }: { children: ReactNode }) {
-  const { isLoaded, isSignedIn, userId } = useAuth()
-  const signedInUserId = isLoaded && isSignedIn ? userId ?? undefined : undefined
+function ConfiguredProgressProvider({ children }: { children: ReactNode }) {
+  const auth = useAppAuth()
+  const convexAuth = useConvexAuth()
+  const userId = auth.user?.id
+  const cloudReady =
+    auth.status === 'authenticated' && convexAuth.isAuthenticated
 
-  if (!isConvexConfigured) {
-    return <ProgressProvider userId={signedInUserId}>{children}</ProgressProvider>
+  if (!userId) {
+    return <ProgressProvider key="guest">{children}</ProgressProvider>
   }
 
   return (
-    <CloudBackedProgressProvider userId={signedInUserId}>
+    <CloudBackedProgressProvider
+      cloudReady={cloudReady}
+      key={userId}
+      userId={userId}
+    >
       {children}
     </CloudBackedProgressProvider>
   )
@@ -482,29 +518,43 @@ function AuthenticatedProgressProvider({ children }: { children: ReactNode }) {
 
 function CloudBackedProgressProvider({
   children,
+  cloudReady,
   userId,
 }: {
   children: ReactNode
-  userId?: string
+  cloudReady: boolean
+  userId: string
 }) {
   const queryResult = useConvexQuery({
     query: progressApi.getProgress,
-    args: userId ? {} : 'skip',
+    args: cloudReady ? {} : 'skip',
   })
-  const saveProgress = useMutation(progressApi.mergeProgress)
+  const mergeProgress = useMutation(progressApi.mergeProgress)
+  const saveProgress = useCallback(
+    ({ progress }: { progress: CloudProgressSnapshot }) =>
+      mergeProgress({ expectedUserId: userId, progress }),
+    [mergeProgress, userId],
+  )
+  const matchingResponse =
+    queryResult.status === 'success' && queryResult.data.userId === userId
+      ? queryResult.data
+      : undefined
   const cloudSnapshot =
-    queryResult.status === 'success' ? queryResult.data : undefined
+    matchingResponse?.progress
   const cloudError = queryResult.status === 'error' ? queryResult.error : undefined
-  const cloudIsLoading = Boolean(userId) && queryResult.status === 'pending'
+  const cloudIsLoading =
+    cloudReady &&
+    (queryResult.status === 'pending' ||
+      (queryResult.status === 'success' && !matchingResponse))
   const cloud = useMemo(
     () => ({
-      enabled: Boolean(userId),
+      enabled: cloudReady,
       snapshot: cloudSnapshot,
       isLoading: cloudIsLoading,
       error: cloudError,
       saveProgress,
     }),
-    [cloudError, cloudIsLoading, cloudSnapshot, saveProgress, userId],
+    [cloudError, cloudIsLoading, cloudReady, cloudSnapshot, saveProgress],
   )
 
   return (

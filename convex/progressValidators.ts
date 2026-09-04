@@ -45,3 +45,8 @@ export const cloudProgressSnapshotValidator = v.object({
   problems: v.array(cloudProblemProgressValidator),
   settings: v.union(cloudUserSettingsValidator, v.null()),
 })
+
+export const cloudProgressResponseValidator = v.object({
+  userId: v.string(),
+  progress: cloudProgressSnapshotValidator,
+})

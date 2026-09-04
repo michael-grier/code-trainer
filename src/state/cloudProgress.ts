@@ -38,6 +38,11 @@ export type CloudProgressSnapshot = {
   settings: CloudUserSettings | null
 }
 
+export type CloudProgressResponse = {
+  userId: string
+  progress: CloudProgressSnapshot
+}
+
 type MutableCloudProblemProgressRecord = CloudProblemProgressRecord & {
   traceAnswers: Record<string, unknown>
   designAnswers: Record<string, unknown>

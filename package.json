@@ -19,7 +19,6 @@
     "convex:deploy": "convex deploy"
   },
   "dependencies": {
-    "@clerk/clerk-react": "^5.0.0",
     "@convex-dev/better-auth": "0.12.5",
     "@fontsource-variable/geist": "^5.0.0",
     "@mdx-js/rollup": "^3.0.0",

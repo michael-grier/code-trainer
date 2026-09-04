@@ -2,6 +2,7 @@ import type { FunctionReference, FunctionType } from 'convex/server'
 
 import type {
   CloudProblemProgressRecord,
+  CloudProgressResponse,
   CloudProgressSnapshot,
 } from '@/state/cloudProgress'
 
@@ -24,12 +25,12 @@ function makeReference<
 }
 
 export const progressApi = {
-  getProgress: makeReference<'query', EmptyArgs, CloudProgressSnapshot>(
+  getProgress: makeReference<'query', EmptyArgs, CloudProgressResponse>(
     'progress:getProgress',
   ),
   mergeProgress: makeReference<
     'mutation',
-    { progress: CloudProgressSnapshot },
+    { expectedUserId: string; progress: CloudProgressSnapshot },
     null
   >('progress:mergeProgress'),
   upsertProblemProgress: makeReference<

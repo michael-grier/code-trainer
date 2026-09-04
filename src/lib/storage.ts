@@ -9,9 +9,9 @@ export const USER_PROGRESS_STORAGE_KEY_PREFIX = 'code-trainer:progress:v2:user:'
 
 type ProgressStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>
 
-export function getProgressStorageKey(clerkUserId?: string) {
-  return clerkUserId
-    ? `${USER_PROGRESS_STORAGE_KEY_PREFIX}${clerkUserId}`
+export function getProgressStorageKey(accountId?: string) {
+  return accountId
+    ? `${USER_PROGRESS_STORAGE_KEY_PREFIX}${accountId}`
     : GUEST_PROGRESS_STORAGE_KEY
 }
 

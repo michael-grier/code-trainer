@@ -53,6 +53,7 @@ export type ProgressContextValue = {
   getLessonStatus: typeof getLessonStatus
   getRecommendedProblem: typeof getRecommendedProblem
   saveLastVisited: (lessonSlug: string, problemId?: string) => void
+  flushProgress: () => Promise<boolean>
   retrySync: () => Promise<void>
 }
 

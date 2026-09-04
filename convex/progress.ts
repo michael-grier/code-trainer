@@ -7,11 +7,12 @@ import {
   type MutationBuilder,
   type QueryBuilder,
 } from 'convex/server'
-import { v } from 'convex/values'
+import { ConvexError, v } from 'convex/values'
 
 import schema from './schema'
 import {
   cloudProblemProgressValidator,
+  cloudProgressResponseValidator,
   cloudProgressSnapshotValidator,
 } from './progressValidators'
 
@@ -34,7 +35,7 @@ async function requireUserId(ctx: Pick<QueryCtx | MutationCtx, 'auth'>) {
 
 export const getProgress = query({
   args: {},
-  returns: cloudProgressSnapshotValidator,
+  returns: cloudProgressResponseValidator,
   handler: async (ctx) => {
     const userId = await requireUserId(ctx)
     const problems = await ctx.db
@@ -47,42 +48,53 @@ export const getProgress = query({
       .unique()
 
     return {
-      problems: problems.map((problem) => ({
-        lessonSlug: problem.lessonSlug,
-        problemId: problem.problemId,
-        completedAt: problem.completedAt,
-        draft: problem.draft,
-        traceAnswers: problem.traceAnswers,
-        writtenAnswer: problem.writtenAnswer,
-        designAnswers: problem.designAnswers,
-        rubricReviews: problem.rubricReviews,
-        revealedReferenceAt: problem.revealedReferenceAt,
-        fieldUpdatedAt: problem.fieldUpdatedAt,
-        updatedAt: problem.updatedAt,
-      })),
-      settings: settings
-        ? {
-            lastLessonSlug: settings.lastLessonSlug,
-            lastProblemId: settings.lastProblemId,
-            pathMode: settings.pathMode,
-            focusLessonSlug: settings.focusLessonSlug,
-            queuedLessonSlugs: settings.queuedLessonSlugs,
-            lastVisitedUpdatedAt: settings.lastVisitedUpdatedAt,
-            learningPathUpdatedAt: settings.learningPathUpdatedAt,
-            updatedAt: settings.updatedAt,
-          }
-        : null,
+      userId,
+      progress: {
+        problems: problems.map((problem) => ({
+          lessonSlug: problem.lessonSlug,
+          problemId: problem.problemId,
+          completedAt: problem.completedAt,
+          draft: problem.draft,
+          traceAnswers: problem.traceAnswers,
+          writtenAnswer: problem.writtenAnswer,
+          designAnswers: problem.designAnswers,
+          rubricReviews: problem.rubricReviews,
+          revealedReferenceAt: problem.revealedReferenceAt,
+          fieldUpdatedAt: problem.fieldUpdatedAt,
+          updatedAt: problem.updatedAt,
+        })),
+        settings: settings
+          ? {
+              lastLessonSlug: settings.lastLessonSlug,
+              lastProblemId: settings.lastProblemId,
+              pathMode: settings.pathMode,
+              focusLessonSlug: settings.focusLessonSlug,
+              queuedLessonSlugs: settings.queuedLessonSlugs,
+              lastVisitedUpdatedAt: settings.lastVisitedUpdatedAt,
+              learningPathUpdatedAt: settings.learningPathUpdatedAt,
+              updatedAt: settings.updatedAt,
+            }
+          : null,
+      },
     }
   },
 })
 
 export const mergeProgress = mutation({
   args: {
+    expectedUserId: v.string(),
     progress: cloudProgressSnapshotValidator,
   },
   returns: v.null(),
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx)
+
+    // This value is a concurrency guard, never the source of authority. It
+    // prevents an in-flight snapshot from crossing an account switch.
+    if (args.expectedUserId !== userId) {
+      throw new ConvexError({ code: 'AUTH_ACCOUNT_CHANGED' })
+    }
+
     const existingProblems = await ctx.db
       .query('userProblemProgress')
       .withIndex('by_user', (q) => q.eq('userId', userId))

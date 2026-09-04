@@ -1,6 +1,6 @@
 # Clerk replacement implementation plan
 
-Status: implementation in progress, Phases 0 through 2 complete; Phase 3 implemented pending non-production integration verification
+Status: implementation in progress, Phases 0 through 2 complete; Phases 3 and 4 implemented pending non-production integration verification
 Last updated: 2026-09-04
 
 ## Outcome
@@ -424,6 +424,17 @@ Use the Better Auth component's session-validating user lookup. Do not return th
 Completion criterion: unauthenticated callers receive `null` or a typed auth error, and authenticated callers receive their own minimal user record.
 
 ## Phase 4: replace the client auth adapter
+
+Implementation record, 2026-09-04:
+
+- The browser now has one application-owned auth context. Better Auth calls are confined to `src/lib/auth-client.ts` and its provider; feature code consumes the six explicit application states and four auth actions.
+- `authenticated` is reached only when the Better Auth session, `useConvexAuth()`, and `auth:getCurrentUser` agree on the same user ID. A transient refresh or network failure retains only the last server-validated account, while a different session ID immediately drops that retained identity.
+- The Convex JWT comes from `ConvexBetterAuthProvider` and remains in its in-memory cache. The auth client uses the browser's own origin and credentialed `/api/auth/*` requests without a cross-domain or web-storage plugin.
+- Progress keeps the same account cache mounted while its token refreshes, pauses cloud work until Convex is authenticated, and remounts on account changes. Progress query responses carry the server-derived owner ID, and writes include an expected owner used only as a mismatch guard; the server identity remains authoritative.
+- An immediate progress flush now reports whether the exact latest revision reached Convex. This is the coordination point for the safe sign-out flow in Phase 5.
+- Clerk's provider, hooks, environment variable, and direct dependency have been removed. The authenticated storage-key format is unchanged, but provider-specific parameter naming is gone.
+- Six focused state-machine tests cover guest-only mode, partial authentication, refresh, network failure, successful validation, and account switching. Live browser verification still waits on a linked non-production Convex deployment.
+- `@convex-dev/better-auth@0.12.5` publishes a provider prop type that resolves session data to `never` with Better Auth 1.6.30. The root contains one documented type-compatibility assertion at that package boundary; remove it when the upstream declaration is corrected.
 
 ### 4.1 Create one application auth boundary
 
