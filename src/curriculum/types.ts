@@ -189,9 +189,14 @@ export type Lesson = {
   summary: string
   track: string
   order: number
+  availability?: 'coming-soon'
   concept: ComponentType
   problems: Problem[]
   approaches: Record<string, Approach[]>
+}
+
+export function isLessonAvailable(lesson: Lesson) {
+  return lesson.availability !== 'coming-soon'
 }
 
 export type Track = {

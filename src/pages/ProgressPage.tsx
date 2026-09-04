@@ -2,15 +2,24 @@ import { Search, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { getLessonsForTrack, lessons, tracks } from '@/curriculum'
-import type { Lesson, Track } from '@/curriculum'
+import {
+  getLessonsForTrack,
+  isLessonAvailable,
+  lessons,
+  tracks,
+  type Lesson,
+  type Track,
+} from '@/curriculum'
 import { getProblemKey } from '@/state/progress'
 import { useProgress } from '@/state/progressContext'
 
 export function ProgressPage() {
   const progress = useProgress()
   const counts = progress.counts
+  const availableLessonCount = lessons.filter(isLessonAvailable).length
+  const comingSoonLessonCount = lessons.length - availableLessonCount
   const [query, setQuery] = useState('')
   const normalizedQuery = query.trim().toLowerCase()
   const trackSections = useMemo(
@@ -32,7 +41,9 @@ export function ProgressPage() {
         <h1 className="text-2xl font-semibold tracking-tight">Curriculum map</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           {counts.completed} done · {counts.inProgress} in progress ·{' '}
-          {lessons.length - counts.completed - counts.inProgress} remaining
+          {availableLessonCount - counts.completed - counts.inProgress} remaining
+          {' · '}
+          {comingSoonLessonCount} coming soon
         </p>
       </section>
 
@@ -108,6 +119,21 @@ function LessonStatusRow({ lesson }: { lesson: Lesson }) {
   const completedProblems = lesson.problems.filter(
     (problem) => progress.state.completed[getProblemKey(lesson.slug, problem.id)],
   ).length
+
+  if (status === 'coming-soon') {
+    return (
+      <li>
+        <div className="flex items-center justify-between gap-3 rounded-md px-2 py-2 text-muted-foreground">
+          <span className="min-w-0 truncate">
+            {lesson.order}. {lesson.title}
+          </span>
+          <Badge className="border border-border" variant="muted">
+            Coming soon
+          </Badge>
+        </div>
+      </li>
+    )
+  }
 
   return (
     <li>

@@ -64,6 +64,26 @@ const lessons: Lesson[] = [
     ],
     approaches: {},
   },
+  {
+    slug: 'third',
+    title: 'Third',
+    summary: 'Third lesson',
+    track: 'track',
+    order: 3,
+    availability: 'coming-soon',
+    concept: Concept,
+    problems: [
+      {
+        id: 'one',
+        kind: 'written',
+        title: 'One',
+        prompt: 'Prompt',
+        completionMode: 'submitted-with-reference-review',
+        referenceAnswer: 'Answer',
+      },
+    ],
+    approaches: {},
+  },
 ]
 
 const track: Track = {
@@ -84,6 +104,11 @@ describe('guidance', () => {
 
     expect(getRecommendedLesson(lessons, progress)?.slug).toBe('first')
     expect(getRecommendedProblem(lessons[0], progress).id).toBe('two')
+
+    progress.completed[getProblemKey('first', 'two')] = true
+    progress.completed[getProblemKey('second', 'one')] = true
+
+    expect(getRecommendedLesson(lessons, progress)).toBeUndefined()
   })
 
   it('computes lesson and track completion', () => {
@@ -109,6 +134,7 @@ describe('guidance', () => {
 
     expect(getLessonStatus(lessons[0], lessons, progress)).toBe('recommended')
     expect(getLessonStatus(lessons[1], lessons, progress)).toBe('ahead-of-path')
+    expect(getLessonStatus(lessons[2], lessons, progress)).toBe('coming-soon')
 
     progress.learningPath.mode = 'self-directed'
     progress.learningPath.focusLessonSlug = 'second'

@@ -41,5 +41,5 @@ export function getTrack(trackId: string | undefined) {
   return tracks.find((track) => track.id === trackId)
 }
 
+export { isLessonAvailable } from '@/curriculum/types'
 export type { Lesson, Problem, Track } from '@/curriculum/types'
-

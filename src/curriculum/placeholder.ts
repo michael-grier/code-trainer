@@ -65,6 +65,7 @@ export function createPlaceholderLesson({
     summary,
     track,
     order,
+    availability: 'coming-soon',
     concept,
     problems: [
       ...codeProblems,
