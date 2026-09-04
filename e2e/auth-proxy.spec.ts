@@ -11,7 +11,7 @@ test('keeps the auth cookie first-party and hides it from app code', async ({
   page,
 }) => {
   await page.goto('/')
-  await expect(page).toHaveTitle('Code Trainer')
+  await expect(page).toHaveTitle('Code Trainer | Interactive TypeScript Practice')
 
   const response = await page.request.post('/api/auth/probe/set', {
     headers: {
