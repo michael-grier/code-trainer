@@ -24,6 +24,29 @@ describe('runner sandbox protocol', () => {
     ).toBeUndefined()
   })
 
+  it('accepts shared references but rejects cyclic input', () => {
+    const shared = { value: 1 }
+    const createRequest = (args: unknown[]) => ({
+      type: 'execute',
+      protocolVersion: RUNNER_PROTOCOL_VERSION,
+      requestId: 'request-1234',
+      runner: 'javascript',
+      input: {
+        code: 'export function solve(value) { return value }',
+        functionName: 'solve',
+        tests: [{ name: 'returns input', args, expected: 1 }],
+      },
+    })
+
+    expect(getRunnerRequestError(createRequest([shared, shared]))).toBeUndefined()
+
+    const cyclic: { self?: unknown } = {}
+    cyclic.self = cyclic
+    expect(getRunnerRequestError(createRequest([cyclic]))).toBe(
+      'Runner request is too large or contains unsupported values.',
+    )
+  })
+
   it('rejects oversized code before it reaches a worker', () => {
     expect(
       getRunnerRequestError({

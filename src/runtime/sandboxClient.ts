@@ -60,14 +60,7 @@ export async function executeRunnerRequest(
     throw new Error(requestError)
   }
 
-  const startedAt = getNow()
-  const connection = await getConnectionWithin(timeoutMs)
-  const elapsedMs = getNow() - startedAt
-  const remainingMs = Math.max(0, timeoutMs - elapsedMs)
-
-  if (remainingMs === 0) {
-    throw new RunnerSandboxTimeoutError()
-  }
+  const connection = await getConnectionWithinStartupBudget()
 
   return new Promise((resolve, reject) => {
     const finishWithError = (error: Error) => {
@@ -92,7 +85,7 @@ export async function executeRunnerRequest(
       } finally {
         finishWithError(new RunnerSandboxTimeoutError())
       }
-    }, remainingMs)
+    }, timeoutMs)
 
     connection.pending.set(request.requestId, {
       runner: request.runner,
@@ -149,7 +142,7 @@ export function createTypeCheckRunnerRequest(
   }
 }
 
-async function getConnectionWithin(timeoutMs: number) {
+async function getConnectionWithinStartupBudget() {
   if (
     typeof window === 'undefined' ||
     typeof document === 'undefined' ||
@@ -159,7 +152,6 @@ async function getConnectionWithin(timeoutMs: number) {
     throw new Error('The secure code runner is not available in this environment.')
   }
 
-  const waitMs = Math.min(timeoutMs, FRAME_READY_TIMEOUT_MS)
   let timeoutId = 0
 
   try {
@@ -168,7 +160,7 @@ async function getConnectionWithin(timeoutMs: number) {
       new Promise<never>((_, reject) => {
         timeoutId = window.setTimeout(
           () => reject(new RunnerSandboxTimeoutError()),
-          waitMs,
+          FRAME_READY_TIMEOUT_MS,
         )
       }),
     ])
@@ -297,8 +289,4 @@ function getSandboxFrameUrl(nonce: string) {
   const url = new URL(`${basePath}runner-sandbox.html`, window.location.origin)
   url.hash = nonce
   return url.href
-}
-
-function getNow() {
-  return globalThis.performance?.now() ?? Date.now()
 }

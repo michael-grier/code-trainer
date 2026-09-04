@@ -25,7 +25,6 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet'
-import { clearProgressState } from '@/lib/storage'
 import { AuthActionError, useAppAuth } from '@/state/authContext'
 import {
   getAuthErrorMessage,
@@ -206,7 +205,6 @@ export function AuthSheet() {
         await auth.signOut()
       }
 
-      clearProgressState(window.localStorage, progress.storageKey)
       closeSheet()
     } catch (signOutError) {
       setError(getAuthErrorMessage(toAuthActionError(signOutError), 'signout'))

@@ -101,6 +101,24 @@ test('runs JavaScript, React, type checks, and timeouts inside the sandbox', asy
   expect(timeoutResult).toMatchObject({ status: 'timeout' })
 })
 
+test('keeps sandbox startup outside the learner execution timeout', async ({
+  page,
+}) => {
+  await page.route('**/runner-sandbox.html', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 750))
+    await route.continue()
+  })
+
+  const result = await runCode(page, {
+    code: 'export function identity(value) { return value }',
+    functionName: 'identity',
+    tests: [{ name: 'returns the value', args: [42], expected: 42 }],
+    timeoutMs: 500,
+  })
+
+  expect(result.status).toBe('passed')
+})
+
 test('gives learner code an opaque origin with no storage, DOM, or network', async ({
   page,
 }) => {
@@ -250,9 +268,15 @@ test('gives learner code an opaque origin with no storage, DOM, or network', asy
   expect(reactResult.status).toBe('passed')
 
   expect(completedForbiddenRequests).toEqual([])
-  expect(failedForbiddenRequests.every((error) => error.includes('csp'))).toBe(
-    true,
-  )
+  // Firefox blocks these worker requests before Playwright emits
+  // `requestfailed`; other engines expose the CSP failure text here.
+  if (failedForbiddenRequests.length > 0) {
+    expect(
+      failedForbiddenRequests.every((error) =>
+        /\bcsp\b|content security policy/i.test(error),
+      ),
+    ).toBe(true)
+  }
 
   const iframe = page.locator('iframe[data-code-trainer-runner]')
   await expect(iframe).toHaveAttribute('sandbox', 'allow-scripts')

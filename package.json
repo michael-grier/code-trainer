@@ -10,7 +10,7 @@
     "dev:convex": "convex dev --typecheck disable",
     "dev:all": "bash ./scripts/dev-all.sh",
     "build": "bun run build:runner && tsc -b && vite build",
-    "build:runner": "node scripts/build-runner-sandbox.mjs",
+    "build:runner": "bun scripts/build-runner-sandbox.mjs",
     "lint": "eslint .",
     "test": "vitest run --exclude 'e2e/**'",
     "test:e2e": "playwright test",

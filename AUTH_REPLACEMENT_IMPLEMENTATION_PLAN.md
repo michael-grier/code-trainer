@@ -674,7 +674,7 @@ Implementation record, 2026-09-04:
 - All five protected progress operations returned `AUTH_REQUIRED` without a session. The first-party auth route returned a guest session, rejected an invalid OTP, rejected an untrusted origin, enforced the 100-request global rule exactly, and returned `AUTH_EMAIL_RATE_LIMITED` with `Retry-After` for an immediate repeat email request.
 - That live check found that Better Auth deliberately swallows delivery-callback errors. The HMAC email limiter now runs in a pre-request hook before code generation, so a blocked request cannot rotate the valid code and its 429 reaches the client. Core request throttling uses an atomic project table with key and request-age indexes instead of the component's unindexed cleanup path.
 - The suite now covers auth transitions, input normalization, public error messages, resend timing, sign-out flush readiness, cross-tab events, durable-before-local progress handoff ordering, failure preservation, storage-key separation, progress merging, and payload limits.
-- `bun run test` passes 293 tests in 73 files; lint, the production build, and `convex dev --once` pass. All 15 proxy, persistent-cookie, and runner-isolation browser checks pass across Chromium, Firefox, and WebKit.
+- `bun run test` passes 299 tests in 74 files; lint, the production build, and `convex dev --once` pass. All 18 proxy, persistent-cookie, and runner-isolation browser checks pass across Chromium, Firefox, and WebKit.
 - Real Resend delivery, valid-code sign-in and reuse rejection, real Better Auth cookie restart, JWT refresh, revocation, cross-account authorization, and live cloud handoff still require configured transactional email on a non-production deployment. The existing persistent-cookie browser test proves the first-party proxy contract with a probe cookie, not a Better Auth session.
 
 ### Unit tests
@@ -749,7 +749,7 @@ Implementation record, 2026-09-04:
 - Vite reads the local Convex site URL generated in `.env.local`, while `AUTH_PROXY_TARGET` remains an explicit override for proxy tests.
 - The build plan and project instructions describe Better Auth rather than the retired provider. Direct retired-provider lock records were removed; the only remaining lockfile name is Convex's own optional peer metadata.
 - The selected Progress handoff is shipped in responsive light and dark themes, and the discarded static mock files have been removed.
-- A frozen install succeeds, the generated local proxy returns the guest session without an override, all 293 unit tests pass, lint and the production build pass, Convex compiles, and all 15 browser checks pass across Chromium, Firefox, and WebKit.
+- A frozen install succeeds, the generated local proxy returns the guest session without an override, all 299 unit tests pass, lint and the production build pass, Convex compiles, and all 18 browser checks pass across Chromium, Firefox, and WebKit.
 
 Update:
 

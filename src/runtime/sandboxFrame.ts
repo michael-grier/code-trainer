@@ -10,6 +10,7 @@ import {
   type RunnerPortResponse,
   type RunnerResultResponse,
 } from './sandboxProtocol'
+import { clampRunnerText } from './runnerText'
 import type { CodeRunResult } from './types'
 
 const MAX_ACTIVE_EXECUTIONS = 4
@@ -118,7 +119,7 @@ async function startExecution(
         port,
         request,
         worker,
-        clampError(event.message || 'Runner execution failed.'),
+        clampRunnerText(event.message || 'Runner execution failed.'),
       )
     })
 
@@ -247,7 +248,7 @@ function handleWorkerMessage(
   }
 
   if (value.type === 'error' && typeof value.error === 'string') {
-    finishWithError(port, request, worker, clampError(value.error))
+    finishWithError(port, request, worker, clampRunnerText(value.error))
     return
   }
 
@@ -346,7 +347,7 @@ function postError(
     protocolVersion: RUNNER_PROTOCOL_VERSION,
     requestId: request.requestId,
     runner: request.runner,
-    error: clampError(error),
+    error: clampRunnerText(error),
   })
 }
 
@@ -388,10 +389,6 @@ function rememberRequestId(requestId: string) {
   if (oldestRequestId) {
     rememberedRequestIds.delete(oldestRequestId)
   }
-}
-
-function clampError(error: string) {
-  return error.slice(0, 1_000)
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

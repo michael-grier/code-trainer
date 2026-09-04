@@ -1,5 +1,7 @@
 import ts from 'typescript'
 
+import { clampRunnerText } from './runnerText'
+
 // The exact configuration every type-checked problem is graded under.
 // Section 12.6 of the build plan requires this to be fixed and documented:
 // changing any option here changes what counts as a passing submission, so
@@ -121,7 +123,9 @@ function toTypeCheckDiagnostic(
   diagnostic: ts.Diagnostic,
   solutionLineCount: number,
 ): TypeCheckDiagnostic {
-  const message = ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n')
+  const message = clampRunnerText(
+    ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'),
+  )
 
   if (
     !diagnostic.file ||

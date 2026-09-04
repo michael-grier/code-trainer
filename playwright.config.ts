@@ -14,7 +14,7 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: 'node scripts/auth-proxy-probe.mjs',
+      command: 'bun scripts/auth-proxy-probe.mjs',
       url: 'http://127.0.0.1:4174/health',
       reuseExistingServer: false,
     },

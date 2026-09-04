@@ -1,6 +1,7 @@
 import type { TestCase } from '@/curriculum/types'
 
 import { deepEqual } from './deepEqual'
+import { clampRunnerText } from './runnerText'
 import type { ConsoleMessage, TestRunResult } from './types'
 
 export type TestCandidate = (
@@ -38,9 +39,11 @@ export async function runTestCases(
         logs,
         error: passed
           ? undefined
-          : `Expected ${formatValue(test.expected)}, received ${formatValue(
-              actual,
-            )}.`,
+          : clampRunnerText(
+              `Expected ${formatValue(test.expected)}, received ${formatValue(
+                actual,
+              )}.`,
+            ),
       })
     } catch (error) {
       results.push({
@@ -76,7 +79,7 @@ export function getStatusFromTestResults(results: TestRunResult[]) {
 
 export function formatValue(value: unknown): string {
   if (typeof value === 'string') {
-    return JSON.stringify(value)
+    return clampRunnerText(JSON.stringify(value))
   }
 
   if (typeof value === 'undefined') {
@@ -84,32 +87,32 @@ export function formatValue(value: unknown): string {
   }
 
   if (typeof value === 'bigint') {
-    return `${value.toString()}n`
+    return clampRunnerText(`${value.toString()}n`)
   }
 
   if (typeof value === 'function') {
-    return `[Function ${value.name || 'anonymous'}]`
+    return clampRunnerText(`[Function ${value.name || 'anonymous'}]`)
   }
 
   if (typeof value === 'symbol') {
-    return value.toString()
+    return clampRunnerText(value.toString())
   }
 
   try {
     const serialized = JSON.stringify(value, createDisplayReplacer(), 2)
-    return serialized ?? String(value)
+    return clampRunnerText(serialized ?? String(value))
   } catch {
-    return String(value)
+    return clampRunnerText(String(value))
   }
 }
 
 export function errorToMessage(error: unknown) {
   if (error instanceof Error) {
-    return error.message
+    return clampRunnerText(error.message)
   }
 
   if (typeof error === 'string') {
-    return error
+    return clampRunnerText(error)
   }
 
   return formatValue(error)
@@ -150,4 +153,3 @@ function getNow() {
 function getElapsedMs(startedAt: number) {
   return Math.max(0, Math.round(getNow() - startedAt))
 }
-

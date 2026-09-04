@@ -44,4 +44,17 @@ describe('auth request rate limiting', () => {
       next: { count: 1, lastRequest: 10_000 },
     })
   })
+
+  it('starts a new window at the exact expiry boundary', () => {
+    expect(
+      decideAuthRequestRateLimit(
+        { count: 3, lastRequest: -50_000 },
+        rule,
+      ),
+    ).toEqual({
+      allowed: true,
+      retryAfter: null,
+      next: { count: 1, lastRequest: 10_000 },
+    })
+  })
 })

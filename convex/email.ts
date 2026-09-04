@@ -4,6 +4,7 @@ import { internal } from './_generated/api'
 import type { ActionCtx } from './_generated/server'
 
 const RESEND_EMAIL_URL = 'https://api.resend.com/emails'
+const EMAIL_DELIVERY_TIMEOUT_MS = 10_000
 const textEncoder = new TextEncoder()
 
 type AuthEmail = {
@@ -38,6 +39,7 @@ export async function sendAuthEmail(message: AuthEmail) {
   try {
     response = await fetch(RESEND_EMAIL_URL, {
       method: 'POST',
+      signal: AbortSignal.timeout(EMAIL_DELIVERY_TIMEOUT_MS),
       headers: {
         Authorization: `Bearer ${config.apiKey}`,
         'Content-Type': 'application/json',

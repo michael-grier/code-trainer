@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  clearProgressHandoffDismissal,
+  dismissProgressHandoff,
   GUEST_PROGRESS_STORAGE_KEY,
   getProgressStorageKey,
+  hasDismissedProgressHandoff,
   parseProgressState,
   USER_PROGRESS_STORAGE_KEY_PREFIX,
 } from '@/lib/storage'
@@ -58,5 +61,22 @@ describe('progress storage', () => {
 
     expect(parsed.completed).toEqual({ 'lesson::problem': true })
     expect(parsed.drafts).toEqual({ 'lesson::problem': 'answer' })
+  })
+
+  it('dismisses a handoff only for the guest revision the user saw', () => {
+    const values = new Map<string, string>()
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+      removeItem: (key: string) => values.delete(key),
+    }
+
+    dismissProgressHandoff(storage, 'user_123', 100)
+
+    expect(hasDismissedProgressHandoff(storage, 'user_123', 100)).toBe(true)
+    expect(hasDismissedProgressHandoff(storage, 'user_123', 101)).toBe(false)
+
+    clearProgressHandoffDismissal(storage, 'user_123')
+    expect(hasDismissedProgressHandoff(storage, 'user_123', 100)).toBe(false)
   })
 })

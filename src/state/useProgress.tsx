@@ -32,7 +32,10 @@ import {
   type ProgressState,
 } from '@/state/progress'
 import {
+  clearProgressHandoffDismissal,
+  dismissProgressHandoff,
   getProgressStorageKey,
+  hasDismissedProgressHandoff,
   loadProgressState,
   saveProgressState,
 } from '@/lib/storage'
@@ -179,11 +182,17 @@ export function ProgressProvider({ children, cloud, userId }: ProgressProviderPr
     const cloudState = cloudSnapshotToProgressState(cloudSnapshot)
     const accountState = mergeProgressStates(authenticatedCache, cloudState)
     const guestSummary = summarizeProgress(guestCache)
+    const guestRevision = getProgressRevision(guestCache)
+    const handoffWasDismissed = hasDismissedProgressHandoff(
+      window.localStorage,
+      userId,
+      guestRevision,
+    )
 
     mergedCloudUserRef.current = userId
     setSyncError(null)
 
-    if (guestSummary.hasMeaningfulWork) {
+    if (guestSummary.hasMeaningfulWork && !handoffWasDismissed) {
       latestStateRef.current = accountState
       setState(accountState)
       setPendingHandoff({ account: accountState, guest: guestCache })
@@ -267,12 +276,10 @@ export function ProgressProvider({ children, cloud, userId }: ProgressProviderPr
         requestedFlushModeRef.current = 'immediate'
       }
 
-      setState((current) => {
-        const next = recipe(current, Date.now())
+      const next = recipe(latestStateRef.current, Date.now())
 
-        latestStateRef.current = next
-        return next
-      })
+      latestStateRef.current = next
+      setState(next)
     },
     [],
   )
@@ -384,7 +391,10 @@ export function ProgressProvider({ children, cloud, userId }: ProgressProviderPr
             getProgressStorageKey(userId),
             accountState,
           ),
-        clearGuest: () => window.localStorage.removeItem(getProgressStorageKey()),
+        clearGuest: () => {
+          window.localStorage.removeItem(getProgressStorageKey())
+          clearProgressHandoffDismissal(window.localStorage, userId)
+        },
       })
 
       latestStateRef.current = synced
@@ -409,16 +419,21 @@ export function ProgressProvider({ children, cloud, userId }: ProgressProviderPr
   ])
 
   const useAccountProgress = useCallback(() => {
-    if (!pendingHandoff) {
+    if (!pendingHandoff || !userId) {
       return
     }
 
+    dismissProgressHandoff(
+      window.localStorage,
+      userId,
+      getProgressRevision(pendingHandoff.guest),
+    )
     requestedFlushModeRef.current = 'immediate'
     setPendingHandoff(undefined)
     setHasMergedCloud(true)
     setHasPendingCloudWrite(true)
     setSyncError(null)
-  }, [pendingHandoff])
+  }, [pendingHandoff, userId])
 
   const contextValue = useMemo<ProgressContextValue>(() => {
     const recommendedLesson = getRecommendedLesson(lessons, state)

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import { runTestCases } from './testHarness'
-import type { ConsoleMessage } from './types'
+import { errorToMessage, runTestCases } from './testHarness'
+import { MAX_RUNNER_TEXT_LENGTH, type ConsoleMessage } from './types'
 
 describe('runTestCases', () => {
   it('marks passing and failing test cases', async () => {
@@ -55,5 +55,19 @@ describe('runTestCases', () => {
       { method: 'log', values: ['value:ready'] },
     ])
   })
-})
 
+  it('bounds formatted values and errors for the sandbox protocol', async () => {
+    const longValue = 'x'.repeat(MAX_RUNNER_TEXT_LENGTH * 2)
+    const [result] = await runTestCases(
+      () => longValue,
+      [{ name: 'large output', args: [], expected: `${longValue}y` }],
+    )
+
+    expect(result.actual.length).toBe(MAX_RUNNER_TEXT_LENGTH)
+    expect(result.expected.length).toBe(MAX_RUNNER_TEXT_LENGTH)
+    expect(result.error?.length).toBe(MAX_RUNNER_TEXT_LENGTH)
+    expect(errorToMessage(new Error(longValue)).length).toBe(
+      MAX_RUNNER_TEXT_LENGTH,
+    )
+  })
+})

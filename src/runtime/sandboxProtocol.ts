@@ -2,7 +2,11 @@ import type { ReactTestCase, TestCase } from '@/curriculum/types'
 
 import type { ReactRunInput } from './reactWorker'
 import type { TypeCheckInput, TypeCheckResult } from './typeGrader'
-import type { CodeRunResult, RuntimeWorkerInput } from './types'
+import {
+  MAX_RUNNER_TEXT_LENGTH,
+  type CodeRunResult,
+  type RuntimeWorkerInput,
+} from './types'
 
 export const RUNNER_PROTOCOL_VERSION = 1
 export const MAX_RUNNER_CODE_LENGTH = 200_000
@@ -10,7 +14,6 @@ export const MAX_RUNNER_MESSAGE_BYTES = 1_000_000
 
 const MAX_REQUEST_ID_LENGTH = 128
 const MAX_TEST_CASES = 100
-const MAX_SHORT_TEXT_LENGTH = 1_000
 const MAX_VALUE_DEPTH = 32
 const MAX_VALUE_NODES = 50_000
 
@@ -372,7 +375,7 @@ function isCode(value: unknown) {
 }
 
 function isShortText(value: unknown): value is string {
-  return typeof value === 'string' && value.length <= MAX_SHORT_TEXT_LENGTH
+  return typeof value === 'string' && value.length <= MAX_RUNNER_TEXT_LENGTH
 }
 
 function isOptionalTimeout(value: unknown) {
@@ -430,8 +433,11 @@ function isCloneableValue(
 ) {
   // Structured clone supports values such as undefined and bigint that JSON
   // does not. Walk the graph directly while bounding its size and depth.
-  const seen = new WeakSet<object>()
-  const pending: Array<{ value: unknown; depth: number }> = [
+  const ancestors = new WeakSet<object>()
+  const pending: Array<
+    | { value: unknown; depth: number }
+    | { leave: object }
+  > = [
     { value: root, depth: 0 },
   ]
   let bytes = 0
@@ -442,6 +448,11 @@ function isCloneableValue(
 
     if (!item) {
       break
+    }
+
+    if ('leave' in item) {
+      ancestors.delete(item.leave)
+      continue
     }
 
     nodes += 1
@@ -461,11 +472,12 @@ function isCloneableValue(
     ) {
       bytes += 16
     } else if (typeof value === 'object') {
-      if (seen.has(value)) {
+      if (ancestors.has(value)) {
         return false
       }
 
-      seen.add(value)
+      ancestors.add(value)
+      pending.push({ leave: value })
       const entries = Array.isArray(value)
         ? value.map((entry, index) => [String(index), entry] as const)
         : Object.entries(value)

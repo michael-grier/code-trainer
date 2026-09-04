@@ -177,7 +177,7 @@ export function decideAuthRequestRateLimit(
 } {
   const windowMs = rule.windowSeconds * 1_000
 
-  if (!existing || rule.now - existing.lastRequest > windowMs) {
+  if (!existing || rule.now - existing.lastRequest >= windowMs) {
     return {
       allowed: true,
       retryAfter: null,

@@ -151,10 +151,8 @@ export function AppAuthProvider({ children }: { children: ReactNode }) {
       throw toAuthActionError(result.error, 'We could not sign you out.')
     }
 
+    clearSignedOutAccount(userId)
     await refetchSession()
-    if (userId) {
-      broadcastSignedOut(userId)
-    }
   }, [rawSessionUserId, refetchSession])
 
   const signOutAllDevices = useCallback(async () => {
@@ -174,10 +172,8 @@ export function AppAuthProvider({ children }: { children: ReactNode }) {
       throw toAuthActionError(signOutResult.error, 'We could not sign you out.')
     }
 
+    clearSignedOutAccount(userId)
     await refetchSession()
-    if (userId) {
-      broadcastSignedOut(userId)
-    }
   }, [rawSessionUserId, refetchSession])
 
   const value = useMemo<AppAuth>(
@@ -202,4 +198,14 @@ function toCurrentUserResult(
   }
 
   return { status: result.status }
+}
+
+function clearSignedOutAccount(userId: string | undefined) {
+  if (!userId) {
+    return
+  }
+
+  // BroadcastChannel does not echo to its sender, so this tab clears itself.
+  clearProgressState(window.localStorage, getProgressStorageKey(userId))
+  broadcastSignedOut(userId)
 }
