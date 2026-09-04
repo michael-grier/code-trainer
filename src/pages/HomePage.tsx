@@ -1,15 +1,24 @@
 import { Link } from 'react-router-dom'
 
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { getLessonsForTrack, getTrack, lessons, tracks } from '@/curriculum'
-import type { Lesson } from '@/curriculum'
+import {
+  getLessonsForTrack,
+  getTrack,
+  isLessonAvailable,
+  lessons,
+  tracks,
+  type Lesson,
+} from '@/curriculum'
 import { getContinueTarget, learningTargetToPath } from '@/state/learningFlow'
 import { useProgress } from '@/state/progressContext'
 import { getProblemKey } from '@/state/progress'
 
 export function HomePage() {
   const progress = useProgress()
-  const recommendedLesson = progress.recommendedLesson ?? lessons[0]
+  const availableLessons = lessons.filter(isLessonAvailable)
+  const comingSoonLessonCount = lessons.length - availableLessons.length
+  const recommendedLesson = progress.recommendedLesson ?? availableLessons[0]
   const recommendedTrack = getTrack(recommendedLesson.track)
   const continueTarget = getContinueTarget(lessons, progress.state)
   const continuePath = learningTargetToPath(continueTarget)
@@ -25,7 +34,8 @@ export function HomePage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Welcome back</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {totalCompletedLessons} of {lessons.length} lessons complete
+            {totalCompletedLessons} of {availableLessons.length} available lessons
+            complete · {comingSoonLessonCount} coming soon
             {progress.syncStatus === 'guest' ? ' · saved in this browser' : ''}
           </p>
         </div>
@@ -90,6 +100,19 @@ function LessonRow({ lesson }: { lesson: Lesson }) {
   const completedProblems = lesson.problems.filter(
     (problem) => progress.state.completed[getProblemKey(lesson.slug, problem.id)],
   ).length
+
+  if (!isLessonAvailable(lesson)) {
+    return (
+      <li>
+        <div className="flex items-center justify-between gap-3 rounded-md px-2 py-2 text-muted-foreground">
+          <span className="min-w-0 truncate">{lesson.title}</span>
+          <Badge className="border border-border" variant="muted">
+            Coming soon
+          </Badge>
+        </div>
+      </li>
+    )
+  }
 
   return (
     <li>

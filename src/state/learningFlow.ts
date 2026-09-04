@@ -1,4 +1,4 @@
-import type { Lesson } from '@/curriculum/types'
+import { isLessonAvailable, type Lesson } from '@/curriculum/types'
 import { getRecommendedLesson, getRecommendedProblem } from '@/state/guidance'
 import { getProblemKey, type ProgressState } from '@/state/progress'
 
@@ -23,7 +23,7 @@ export function getContinueTarget(
       (item) => item.slug === progress.lastVisited?.lessonSlug,
     )
 
-    if (lesson) {
+    if (lesson && isLessonAvailable(lesson)) {
       const problem = progress.lastVisited.problemId
         ? lesson.problems.find(
             (item) => item.id === progress.lastVisited?.problemId,
@@ -39,7 +39,8 @@ export function getContinueTarget(
     }
   }
 
-  const recommendedLesson = getRecommendedLesson(lessons, progress) ?? lessons[0]
+  const recommendedLesson =
+    getRecommendedLesson(lessons, progress) ?? lessons.find(isLessonAvailable)
 
   if (!recommendedLesson) {
     return undefined
@@ -77,14 +78,16 @@ export function getProblemNavigation(
 export function getProblemNavigationItems(
   lessons: Lesson[],
 ): ProblemNavigationItem[] {
-  return lessons.flatMap((lesson) =>
-    lesson.problems.map((problem) => ({
-      lessonSlug: lesson.slug,
-      lessonTitle: lesson.title,
-      problemId: problem.id,
-      problemTitle: problem.title,
-    })),
-  )
+  return lessons
+    .filter(isLessonAvailable)
+    .flatMap((lesson) =>
+      lesson.problems.map((problem) => ({
+        lessonSlug: lesson.slug,
+        lessonTitle: lesson.title,
+        problemId: problem.id,
+        problemTitle: problem.title,
+      })),
+    )
 }
 
 export function getNextIncompleteProblem(

@@ -17,6 +17,7 @@ describe('createPlaceholderLesson', () => {
 
     expect(lesson.problems.filter((problem) => problem.kind === 'code')).toHaveLength(3)
     expect(lesson.problems).toHaveLength(5)
+    expect(lesson.availability).toBe('coming-soon')
   })
 
   it('keeps non-algorithm placeholders lighter', () => {

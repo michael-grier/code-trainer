@@ -57,6 +57,26 @@ const lessons: Lesson[] = [
     ],
     approaches: {},
   },
+  {
+    slug: 'third',
+    title: 'Third',
+    summary: 'Third lesson',
+    track: 'track',
+    order: 3,
+    availability: 'coming-soon',
+    concept: Concept,
+    problems: [
+      {
+        id: 'one',
+        kind: 'written',
+        title: 'One',
+        prompt: 'Prompt',
+        completionMode: 'submitted-with-reference-review',
+        referenceAnswer: 'Answer',
+      },
+    ],
+    approaches: {},
+  },
 ]
 
 describe('learning flow', () => {
@@ -94,6 +114,20 @@ describe('learning flow', () => {
     })
   })
 
+  it('ignores a last visited lesson that is still coming soon', () => {
+    const progress = createEmptyProgressState()
+
+    progress.lastVisited = {
+      lessonSlug: 'third',
+      updatedAt: 100,
+    }
+
+    expect(getContinueTarget(lessons, progress)).toEqual({
+      lessonSlug: 'first',
+      problemId: 'one',
+    })
+  })
+
   it('computes previous and next problem links across lessons', () => {
     expect(getProblemNavigation(lessons, 'first', 'two')).toEqual({
       previous: {
@@ -109,6 +143,8 @@ describe('learning flow', () => {
         problemTitle: 'One',
       },
     })
+
+    expect(getProblemNavigation(lessons, 'second', 'one').next).toBeUndefined()
   })
 
   it('formats targets into app paths', () => {

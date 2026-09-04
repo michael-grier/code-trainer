@@ -1,4 +1,8 @@
-import type { Lesson, Track } from '@/curriculum/types'
+import {
+  isLessonAvailable,
+  type Lesson,
+  type Track,
+} from '@/curriculum/types'
 import {
   getDraftKey,
   getProblemKey,
@@ -9,6 +13,7 @@ import {
 } from '@/state/progress'
 
 export type LessonStatus =
+  | 'coming-soon'
   | 'completed'
   | 'in-progress'
   | 'recommended'
@@ -43,7 +48,7 @@ export function getTrackCompletion(
   progress: ProgressState,
 ): TrackCompletion {
   const trackLessons = lessons.filter((lesson) =>
-    track.lessonSlugs.includes(lesson.slug),
+    track.lessonSlugs.includes(lesson.slug) && isLessonAvailable(lesson),
   )
   const completedLessons = trackLessons.filter(
     (lesson) => getLessonCompletion(lesson, progress).isComplete,
@@ -64,7 +69,11 @@ export function getRecommendedLesson(
   lessons: Lesson[],
   progress: ProgressState,
 ) {
-  return lessons.find((lesson) => !getLessonCompletion(lesson, progress).isComplete)
+  return lessons.find(
+    (lesson) =>
+      isLessonAvailable(lesson) &&
+      !getLessonCompletion(lesson, progress).isComplete,
+  )
 }
 
 export function getRecommendedProblem(lesson: Lesson, progress: ProgressState) {
@@ -80,6 +89,10 @@ export function getLessonStatus(
   lessons: Lesson[],
   progress: ProgressState,
 ): LessonStatus {
+  if (!isLessonAvailable(lesson)) {
+    return 'coming-soon'
+  }
+
   const completion = getLessonCompletion(lesson, progress)
   const recommendedLesson = getRecommendedLesson(lessons, progress)
 
@@ -109,6 +122,10 @@ export function getProgressCounts(
   return lessons.reduce<ProgressCounts>(
     (counts, lesson) => {
       const status = getLessonStatus(lesson, lessons, progress)
+
+      if (status === 'coming-soon') {
+        return counts
+      }
 
       if (status === 'completed') {
         counts.completed += 1
