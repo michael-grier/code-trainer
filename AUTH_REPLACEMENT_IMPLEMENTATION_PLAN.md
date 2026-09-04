@@ -1,6 +1,6 @@
 # Clerk replacement implementation plan
 
-Status: approved architecture, implementation not started
+Status: implementation in progress, Phase 0 complete for local development
 Last updated: 2026-09-04
 
 ## Outcome
@@ -173,6 +173,17 @@ Rules:
 - Treat a network error during session refresh as `failed` or `refreshing`, not as proof that the user signed out.
 
 ## Phase 0: resolve implementation gates
+
+Implementation record, 2026-09-04:
+
+- `bun install`, 265 unit tests, lint, and the production build pass before auth source changes.
+- Local work uses the clean-cutover branch because this repository has no frontend hosting configuration, GitHub deployment record, or linked Convex configuration. Confirm that no live Clerk progress exists before any production cutover.
+- A local same-origin `/api/auth/*` rewrite passes in Chromium, Firefox, and WebKit. It preserves the origin and cookie, replaces client-supplied forwarding headers with one proxy-controlled IP header, and keeps the `HttpOnly` cookie hidden from application JavaScript. The production host must still prove the same contract before deployment.
+- Phase 3 will use `better-auth@1.6.30`, `@convex-dev/better-auth@0.12.5`, and `convex@1.45.0`. This exact set installs without peer warnings. The previously locked Convex 1.42.1 does not satisfy the helper version currently selected by the component.
+- Better Auth 1.6.30 creates the email-OTP session with configured defaults and exposes no documented or typed `rememberMe` field on that endpoint. Version one therefore uses a persistent 30-day session by default and tells shared-device users to sign out or use private browsing.
+- Playwright Test 1.62.1 handles browser auth and runner-isolation checks. WebKit on Ubuntu requires `libevent-2.1-7t64`, `libavif16`, `libgav1-1`, and `libyuv0`; install those through Playwright's documented system-dependency step in CI and developer setup.
+
+Phase 0 has no production side effects. Production deployment remains blocked until the frontend host and live-data migration branch are confirmed.
 
 ### 0.1 Restore the local verification baseline
 

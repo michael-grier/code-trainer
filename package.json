@@ -11,7 +11,8 @@
     "dev:all": "bash ./scripts/dev-all.sh",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "test": "vitest run",
+    "test": "vitest run --exclude 'e2e/**'",
+    "test:e2e": "playwright test",
     "preview": "vite preview",
     "convex:dev": "convex dev",
     "convex:deploy": "convex deploy"
@@ -52,6 +53,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
+    "@playwright/test": "1.62.1",
     "@types/node": "^24.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
