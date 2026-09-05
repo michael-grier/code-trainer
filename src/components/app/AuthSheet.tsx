@@ -21,7 +21,6 @@ import {
   Sheet,
   SheetContent,
   SheetDescription,
-  SheetHeader,
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet'
@@ -241,9 +240,6 @@ export function AuthSheet() {
         </Button>
       </SheetTrigger>
       <SheetContent className="left-auto right-0 w-full max-w-none border-l border-r-0 bg-card text-card-foreground shadow-2xl sm:max-w-[28rem]">
-        <SheetHeader className="h-14 shrink-0 justify-center border-b px-5 py-0">
-          <p className="text-sm font-medium">Progress handoff</p>
-        </SheetHeader>
         <div className="min-h-0 flex-1 overflow-y-auto">
           {step === 'email' && (
             <EmailStep
