@@ -20,17 +20,20 @@ sync requires all three services.
 
 ## Environment variables
 
-Frontend build and local proxy:
+Frontend build, Vercel auth function, and local proxy:
 
 ```text
 VITE_CONVEX_URL=https://your-deployment.convex.cloud
+CONVEX_SITE_URL=https://your-deployment.convex.site
 VITE_CONVEX_SITE_URL=https://your-deployment.convex.site
 AUTH_PROXY_TARGET=https://optional-proxy-override.example
 ```
 
-`VITE_CONVEX_URL` is bundled into the browser. `VITE_CONVEX_SITE_URL` is read by
-the Vite development server to proxy `/api/auth`; it is not read by application
-code. `AUTH_PROXY_TARGET` overrides that target for local proxy testing.
+`VITE_CONVEX_URL` is bundled into the browser. Vercel reads the server-only
+`CONVEX_SITE_URL` at runtime and proxies `/api/auth/*` to it.
+`VITE_CONVEX_SITE_URL` is the equivalent local Vite proxy target and is not read
+by application code. `AUTH_PROXY_TARGET` overrides the local target for proxy
+testing.
 
 Convex backend environment:
 
@@ -89,11 +92,33 @@ Test these cases in a non-production deployment before release:
 - Provider failures expose no address, code, response body, or API key in logs.
 - The browser receives the session cookie from the public frontend origin.
 
+## Vercel setup
+
+1. Import the repository into Vercel and keep the detected Vite defaults:
+   `bun run build` with `dist` as the output directory.
+2. Make the first deployment without account-sync variables. Guest mode should
+   work, and the deployment establishes the stable production domain.
+3. Add these variables to the Vercel Production environment:
+
+   ```text
+   VITE_CONVEX_URL=https://your-deployment.convex.cloud
+   CONVEX_SITE_URL=https://your-deployment.convex.site
+   ```
+
+4. Set Convex `SITE_URL` to the exact stable Vercel production origin, then set
+   the Better Auth and Resend variables listed above.
+5. Deploy Convex before redeploying the Vercel production build.
+
+Leave the two Vercel variables unset for Preview deployments unless the preview
+uses a separate Convex deployment whose `SITE_URL` exactly matches that preview
+origin. An unconfigured preview remains fully usable in guest mode.
+
 ## First-party auth proxy
 
-Production must proxy, not redirect, every request under `/api/auth/*` to the
-same path on the deployment's `convex.site` origin. A static host without an
-edge rewrite, function, or reverse proxy is not sufficient for account sync.
+The repository implements the production proxy in `api/auth.ts` and routes
+`/api/auth/*` to it before the SPA fallback in `vercel.json`. The function reads
+`CONVEX_SITE_URL`, forwards the request to the same path on Convex, and returns
+the upstream response without redirecting the browser.
 
 The proxy must:
 
@@ -105,9 +130,11 @@ The proxy must:
 - Disable caching for auth paths and responses.
 - Keep the public request and cookies on the frontend HTTPS origin.
 
-The backend accepts only `SITE_URL` as a trusted origin and does not trust proxy
-headers other than the overwritten `X-Real-IP`. After configuring the host, run
-the proxy and cookie checks in `e2e/auth-proxy.spec.ts` against a preview URL.
+Vercel overwrites `X-Vercel-Forwarded-For` at its edge. The function copies that
+value to `X-Real-IP` only after deleting the browser-supplied forwarding
+headers. The backend accepts only `SITE_URL` as a trusted origin and does not
+trust other proxy headers. After configuring the host, run the proxy and cookie
+checks in `e2e/auth-proxy.spec.ts` against the deployed URL.
 
 ## Sessions, revocation, and limits
 
@@ -133,23 +160,19 @@ The UI honors `Retry-After`. Alert on sustained 429 rates, delivery failures,
 session/token exchange failures, and progress-sync failures without logging
 credentials or email addresses.
 
-## Production order
+## Demo deployment order
 
 No production deployment or data change is implicit in these instructions.
 
-1. Confirm whether any deployed database contains progress owned by an older
-   auth provider. Take a Convex backup first.
-2. If legacy rows exist, stop the clean cutover and follow Phase 7 of
-   `AUTH_REPLACEMENT_IMPLEMENTATION_PLAN.md`; do not guess identity mappings.
-3. Configure the verified sender and Convex secrets in a preview deployment.
-4. Deploy Convex and verify delivery, cookie persistence, JWT refresh,
-   revocation, authorization between two accounts, and progress handoff.
-5. Configure the preview host's first-party proxy and run the full browser
-   matrix.
-6. Set production Convex secrets and `SITE_URL`, deploy Convex, configure the
-   production proxy, then deploy the matching frontend artifact.
-7. Watch auth, email, and sync failures through the release window. Remove any
-   legacy provider only after data reconciliation and explicit approval.
+1. Create or select the empty Convex deployment for this demo.
+2. Verify the Resend sender and add the Convex backend variables.
+3. Create the Vercel project and confirm its stable production domain with a
+   guest-only deployment.
+4. Set the exact production `SITE_URL` in Convex and add the two Vercel
+   Production variables.
+5. Deploy Convex, then deploy the matching Vercel build.
+6. Verify email-code sign-in, cookie persistence, progress sync, sign-out, and
+   direct loading of SPA routes.
 
 Build and deploy with:
 
@@ -157,9 +180,6 @@ Build and deploy with:
 bun run build
 bun x convex deploy
 ```
-
-Keep the old frontend compatible until its replacement backend and proxy are
-ready.
 
 ## Rotation and rollback
 
@@ -171,11 +191,9 @@ ready.
 - Change `SITE_URL` only with the public domain and proxy; an origin mismatch
   intentionally blocks auth requests.
 
-Before cutover, preserve the previous frontend artifact and a fresh Convex
-backup. If auth fails before any identity migration, restore the old artifact
-and proxy while leaving new auth tables unused. Once migration has begun, stop
-new claims and use the reviewed mapping plus backup; never blindly rewrite user
-IDs.
+For this user-free demo, rollback means restoring the previous Vercel artifact
+while leaving the empty Convex auth tables unused. Start taking Convex backups
+before treating any saved account progress as durable user data.
 
 ## Release checks
 
