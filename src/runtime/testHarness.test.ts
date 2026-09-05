@@ -70,4 +70,11 @@ describe('runTestCases', () => {
       MAX_RUNNER_TEXT_LENGTH,
     )
   })
+
+  it('formats an Error whose message was changed to a non-string', () => {
+    const error = new Error('original')
+    Object.defineProperty(error, 'message', { value: 42 })
+
+    expect(errorToMessage(error)).toBe('42')
+  })
 })

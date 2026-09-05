@@ -442,6 +442,7 @@ function isCloneableValue(
   ]
   let bytes = 0
   let nodes = 0
+  let scheduledNodes = 1
 
   while (pending.length > 0) {
     const item = pending.pop()
@@ -472,19 +473,100 @@ function isCloneableValue(
     ) {
       bytes += 16
     } else if (typeof value === 'object') {
+      if (value instanceof ArrayBuffer) {
+        bytes += value.byteLength
+        if (bytes > byteLimit) {
+          return false
+        }
+        continue
+      }
+
+      if (ArrayBuffer.isView(value)) {
+        // SharedArrayBuffer views cannot cross this non-isolated boundary.
+        if (!(value.buffer instanceof ArrayBuffer)) {
+          return false
+        }
+
+        bytes += value.buffer.byteLength
+        if (bytes > byteLimit) {
+          return false
+        }
+        continue
+      }
+
+      if (value instanceof Date) {
+        bytes += 16
+        if (bytes > byteLimit) {
+          return false
+        }
+        continue
+      }
+
+      if (value instanceof RegExp) {
+        bytes += (value.source.length + value.flags.length) * 2
+        if (bytes > byteLimit) {
+          return false
+        }
+        continue
+      }
+
       if (ancestors.has(value)) {
         return false
       }
 
       ancestors.add(value)
       pending.push({ leave: value })
-      const entries = Array.isArray(value)
-        ? value.map((entry, index) => [String(index), entry] as const)
-        : Object.entries(value)
 
-      for (const [key, entry] of entries) {
-        bytes += key.length * 2
-        pending.push({ value: entry, depth: item.depth + 1 })
+      if (Array.isArray(value)) {
+        if (scheduledNodes + value.length > MAX_VALUE_NODES) {
+          return false
+        }
+
+        scheduledNodes += value.length
+        for (let index = 0; index < value.length; index += 1) {
+          bytes += String(index).length * 2
+          pending.push({ value: value[index], depth: item.depth + 1 })
+        }
+      } else if (value instanceof Map) {
+        const childCount = value.size * 2
+        if (scheduledNodes + childCount > MAX_VALUE_NODES) {
+          return false
+        }
+
+        scheduledNodes += childCount
+        bytes += value.size * 16
+        for (const [key, entry] of value) {
+          pending.push({ value: key, depth: item.depth + 1 })
+          pending.push({ value: entry, depth: item.depth + 1 })
+        }
+      } else if (value instanceof Set) {
+        if (scheduledNodes + value.size > MAX_VALUE_NODES) {
+          return false
+        }
+
+        scheduledNodes += value.size
+        bytes += value.size * 8
+        for (const entry of value) {
+          pending.push({ value: entry, depth: item.depth + 1 })
+        }
+      } else {
+        // Reject host objects whose structured-clone payload is hidden from
+        // Object.entries, since their size cannot be bounded here.
+        const prototype = Object.getPrototypeOf(value)
+        if (prototype !== Object.prototype && prototype !== null) {
+          return false
+        }
+
+        const entries = Object.entries(value)
+        if (scheduledNodes + entries.length > MAX_VALUE_NODES) {
+          return false
+        }
+
+        scheduledNodes += entries.length
+        for (const [key, entry] of entries) {
+          bytes += key.length * 2
+          pending.push({ value: entry, depth: item.depth + 1 })
+        }
       }
     } else {
       return false

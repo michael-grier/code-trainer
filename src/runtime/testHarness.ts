@@ -108,7 +108,7 @@ export function formatValue(value: unknown): string {
 
 export function errorToMessage(error: unknown) {
   if (error instanceof Error) {
-    return clampRunnerText(error.message)
+    return clampRunnerText(String(error.message))
   }
 
   if (typeof error === 'string') {

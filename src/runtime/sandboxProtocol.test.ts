@@ -4,6 +4,7 @@ import {
   getRunnerRequestError,
   isRunnerPortResponse,
   MAX_RUNNER_CODE_LENGTH,
+  MAX_RUNNER_MESSAGE_BYTES,
   RUNNER_PROTOCOL_VERSION,
 } from './sandboxProtocol'
 
@@ -45,6 +46,45 @@ describe('runner sandbox protocol', () => {
     expect(getRunnerRequestError(createRequest([cyclic]))).toBe(
       'Runner request is too large or contains unsupported values.',
     )
+  })
+
+  it('bounds structured-clone container payloads', () => {
+    const createRequest = (value: unknown) => ({
+      type: 'execute',
+      protocolVersion: RUNNER_PROTOCOL_VERSION,
+      requestId: 'request-1234',
+      runner: 'javascript',
+      input: {
+        code: 'export function solve(value) { return value }',
+        functionName: 'solve',
+        tests: [{ name: 'returns input', args: [value], expected: value }],
+      },
+    })
+    const oversizedError =
+      'Runner request is too large or contains unsupported values.'
+
+    expect(
+      getRunnerRequestError(createRequest(new Map([['key', 'value']]))),
+    ).toBeUndefined()
+    expect(
+      getRunnerRequestError(
+        createRequest(
+          new Map([['key', 'x'.repeat(MAX_RUNNER_MESSAGE_BYTES)]]),
+        ),
+      ),
+    ).toBe(oversizedError)
+    expect(
+      getRunnerRequestError(
+        createRequest(new ArrayBuffer(MAX_RUNNER_MESSAGE_BYTES + 1)),
+      ),
+    ).toBe(oversizedError)
+
+    const oversizedBuffer = new ArrayBuffer(MAX_RUNNER_MESSAGE_BYTES + 1)
+    expect(
+      getRunnerRequestError(
+        createRequest(new Uint8Array(oversizedBuffer, 0, 1)),
+      ),
+    ).toBe(oversizedError)
   })
 
   it('rejects oversized code before it reaches a worker', () => {
