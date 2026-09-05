@@ -28,15 +28,15 @@ bun run dev:vite
 
 Open [http://localhost:5173](http://localhost:5173).
 
-Use `bun run dev:all` when working on the Vite app and local Convex backend together. Backend setup instructions will be finalized after the custom authentication work lands.
+Use `bun run dev:all` to start Vite and `convex dev` together. Convex uses the selected development deployment, which may be local or cloud. Backend setup instructions will be finalized after the custom authentication work lands.
 
 ## Useful commands
 
 | Command | Purpose |
 | --- | --- |
 | `bun run dev:vite` | Start the frontend at `http://localhost:5173` |
-| `bun run dev:convex` | Start the local Convex development process |
-| `bun run dev:all` | Start Vite and Convex together |
+| `bun run dev:convex` | Watch backend changes against the selected Convex development deployment |
+| `bun run dev:all` | Start Vite and `convex dev` together |
 | `bun run test` | Run the Vitest suite |
 | `bun run lint` | Run ESLint |
 | `bun run build` | Type-check and create the production build |
