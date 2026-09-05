@@ -1,6 +1,7 @@
 import type { TestCase } from '@/curriculum/types'
 
 export const DEFAULT_RUN_TIMEOUT_MS = 2_000
+export const MAX_RUNNER_TEXT_LENGTH = 1_000
 
 export type ConsoleMethod = 'log' | 'info' | 'warn' | 'error'
 

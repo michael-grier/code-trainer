@@ -24,6 +24,7 @@ type WorkerScope = {
 }
 
 const workerScope = self as unknown as WorkerScope
+const postWorkerMessage = workerScope.postMessage.bind(workerScope)
 
 workerScope.addEventListener('message', (event) => {
   if (event.data.type !== 'run') {
@@ -67,7 +68,7 @@ async function handleRun(message: RuntimeWorkerRequest) {
         logs: loadLogs,
       }
 
-      workerScope.postMessage({
+      postWorkerMessage({
         type: 'result',
         requestId: message.requestId,
         result,
@@ -76,7 +77,7 @@ async function handleRun(message: RuntimeWorkerRequest) {
       consoleCapture.restore()
     }
   } catch (error) {
-    workerScope.postMessage({
+    postWorkerMessage({
       type: 'error',
       requestId: message.requestId,
       error: errorToMessage(error),

@@ -22,6 +22,13 @@ export type ReactWorkerResponse =
   | { type: 'result'; requestId: string; result: CodeRunResult }
   | { type: 'error'; requestId: string; error: string }
 
+type WorkerScope = {
+  postMessage: (message: ReactWorkerResponse) => void
+}
+
+const workerScope = self as unknown as WorkerScope
+const postWorkerMessage = workerScope.postMessage.bind(workerScope)
+
 // react-dom reads window and document when it loads, so the lightweight DOM
 // must exist as globals before the harness (which imports react-dom) does.
 // That ordering is why the harness arrives via dynamic import below.
@@ -78,13 +85,13 @@ async function handleRun(message: ReactWorkerRequest) {
       logs: [],
     }
 
-    self.postMessage({
+    postWorkerMessage({
       type: 'result',
       requestId: message.requestId,
       result,
     } satisfies ReactWorkerResponse)
   } catch (error) {
-    self.postMessage({
+    postWorkerMessage({
       type: 'error',
       requestId: message.requestId,
       error: errorToMessage(error),

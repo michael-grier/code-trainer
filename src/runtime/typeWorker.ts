@@ -1,4 +1,5 @@
 import { runTypeCheck, type LibFileMap, type TypeCheckInput } from './typeGrader'
+import { clampRunnerText } from './runnerText'
 
 export type TypeWorkerRequest = {
   type: 'check'
@@ -62,7 +63,10 @@ self.addEventListener('message', (event: MessageEvent<TypeWorkerRequest>) => {
     const response: TypeWorkerResponse = {
       type: 'error',
       requestId: request.requestId,
-      error: error instanceof Error ? error.message : 'Type check failed.',
+      error:
+        error instanceof Error
+          ? clampRunnerText(error.message)
+          : 'Type check failed.',
     }
 
     self.postMessage(response)

@@ -6,12 +6,14 @@ import {
 
 export const GUEST_PROGRESS_STORAGE_KEY = 'code-trainer:progress:v2:guest'
 export const USER_PROGRESS_STORAGE_KEY_PREFIX = 'code-trainer:progress:v2:user:'
+const PROGRESS_HANDOFF_DISMISSAL_KEY_PREFIX =
+  'code-trainer:progress-handoff:v1:user:'
 
 type ProgressStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>
 
-export function getProgressStorageKey(clerkUserId?: string) {
-  return clerkUserId
-    ? `${USER_PROGRESS_STORAGE_KEY_PREFIX}${clerkUserId}`
+export function getProgressStorageKey(accountId?: string) {
+  return accountId
+    ? `${USER_PROGRESS_STORAGE_KEY_PREFIX}${accountId}`
     : GUEST_PROGRESS_STORAGE_KEY
 }
 
@@ -32,6 +34,40 @@ export function saveProgressState(
 
 export function clearProgressState(storage: ProgressStorage, key: string) {
   storage.removeItem(key)
+}
+
+export function hasDismissedProgressHandoff(
+  storage: ProgressStorage,
+  accountId: string,
+  guestRevision: number,
+) {
+  return (
+    storage.getItem(getProgressHandoffDismissalKey(accountId)) ===
+    String(guestRevision)
+  )
+}
+
+export function dismissProgressHandoff(
+  storage: ProgressStorage,
+  accountId: string,
+  guestRevision: number,
+) {
+  // Tying the choice to a revision lets newly edited guest work prompt again.
+  storage.setItem(
+    getProgressHandoffDismissalKey(accountId),
+    String(guestRevision),
+  )
+}
+
+export function clearProgressHandoffDismissal(
+  storage: ProgressStorage,
+  accountId: string,
+) {
+  storage.removeItem(getProgressHandoffDismissalKey(accountId))
+}
+
+function getProgressHandoffDismissalKey(accountId: string) {
+  return `${PROGRESS_HANDOFF_DISMISSAL_KEY_PREFIX}${accountId}`
 }
 
 export function parseProgressState(value: string | null): ProgressState {

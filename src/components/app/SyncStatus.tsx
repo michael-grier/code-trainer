@@ -1,16 +1,40 @@
-import { useAuth } from '@clerk/clerk-react'
-
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/cn'
-import { isClerkConfigured, isConvexConfigured } from '@/lib/env'
+import { useAppAuth } from '@/state/authContext'
 import { useProgress } from '@/state/progressContext'
 
 export function SyncStatus() {
-  if (!isClerkConfigured) {
-    return <StatusLabel title="Guest progress will be stored locally.">Local</StatusLabel>
+  const auth = useAppAuth()
+
+  if (auth.status === 'unconfigured' || auth.status === 'guest') {
+    return <StatusLabel title="Guest progress is stored locally.">Local</StatusLabel>
   }
 
-  return <ConfiguredSyncStatus />
+  if (auth.status === 'loading') {
+    return (
+      <StatusLabel pulse title="Checking authentication state.">
+        Checking
+      </StatusLabel>
+    )
+  }
+
+  if (auth.status === 'refreshing') {
+    return (
+      <StatusLabel pulse title="Refreshing your secure sync session.">
+        Reconnecting
+      </StatusLabel>
+    )
+  }
+
+  if (auth.status === 'failed') {
+    return (
+      <StatusLabel title="Account progress is safe locally while cloud sync reconnects.">
+        Saved locally
+      </StatusLabel>
+    )
+  }
+
+  return <AuthenticatedSyncStatus />
 }
 
 function StatusLabel({
@@ -41,31 +65,8 @@ function StatusLabel({
   )
 }
 
-function ConfiguredSyncStatus() {
-  const { isLoaded, isSignedIn } = useAuth()
+function AuthenticatedSyncStatus() {
   const { retrySync, syncStatus } = useProgress()
-
-  if (!isLoaded) {
-    return (
-      <StatusLabel pulse title="Checking authentication state.">
-        Checking
-      </StatusLabel>
-    )
-  }
-
-  if (!isSignedIn) {
-    return (
-      <StatusLabel title="Sign in to sync progress across devices.">Local</StatusLabel>
-    )
-  }
-
-  if (!isConvexConfigured) {
-    return (
-      <StatusLabel title="Set VITE_CONVEX_URL to enable cloud sync.">
-        Sync off
-      </StatusLabel>
-    )
-  }
 
   if (syncStatus === 'loading-cloud' || syncStatus === 'syncing') {
     return (

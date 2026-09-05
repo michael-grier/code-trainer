@@ -38,6 +38,18 @@ export type CloudProgressSnapshot = {
   settings: CloudUserSettings | null
 }
 
+export type CloudProgressResponse = {
+  userId: string
+  progress: CloudProgressSnapshot
+}
+
+export type ProgressSummary = {
+  completedProblems: number
+  drafts: number
+  savedAnswers: number
+  hasMeaningfulWork: boolean
+}
+
 type MutableCloudProblemProgressRecord = CloudProblemProgressRecord & {
   traceAnswers: Record<string, unknown>
   designAnswers: Record<string, unknown>
@@ -423,6 +435,35 @@ export function getProgressRevision(state: ProgressState) {
     state.lastVisited?.updatedAt ?? 0,
     0,
   )
+}
+
+export function summarizeProgress(state: ProgressState): ProgressSummary {
+  const completedProblems = Object.keys(state.completed).length
+  const drafts = Object.values(state.drafts).filter(
+    (draft) => draft.trim().length > 0,
+  ).length
+  const savedAnswers =
+    Object.keys(state.traceAnswers).length +
+    Object.values(state.writtenAnswers).filter(
+      (answer) => answer.trim().length > 0,
+    ).length +
+    Object.keys(state.designAnswers).length +
+    Object.values(state.rubricReviews).reduce(
+      (count, review) => count + Object.keys(review).length,
+      0,
+    )
+  const hasLearningPathChoice =
+    state.learningPath.mode !== 'guided' ||
+    Boolean(state.learningPath.focusLessonSlug) ||
+    state.learningPath.queuedLessonSlugs.length > 0
+  const hasMeaningfulWork =
+    completedProblems > 0 ||
+    drafts > 0 ||
+    savedAnswers > 0 ||
+    Object.keys(state.revealedReferences).length > 0 ||
+    hasLearningPathChoice
+
+  return { completedProblems, drafts, savedAnswers, hasMeaningfulWork }
 }
 
 export function getLearningPathUpdatedAt(state: ProgressState) {

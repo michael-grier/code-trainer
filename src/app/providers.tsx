@@ -1,143 +1,51 @@
-import { ClerkProvider, useAuth } from '@clerk/clerk-react'
+import { ConvexBetterAuthProvider } from '@convex-dev/better-auth/react'
 import { ConvexReactClient } from 'convex/react'
-import { ConvexProviderWithClerk } from 'convex/react-clerk'
-import { ThemeProvider, useTheme } from 'next-themes'
-import { useMemo, type ComponentProps, type ReactNode } from 'react'
+import { ThemeProvider } from 'next-themes'
+import type { ComponentProps, ReactNode } from 'react'
 import { Toaster } from 'sonner'
 
-import { appEnv, isClerkConfigured, isConvexConfigured } from '@/lib/env'
+import { authClient } from '@/lib/auth-client'
+import { appEnv, isConvexConfigured } from '@/lib/env'
+import { AppAuthProvider, UnconfiguredAuthProvider } from '@/state/authProviders'
 import { ProgressProviderWithOptionalAuth } from '@/state/useProgress'
 
 type AppProvidersProps = {
   children: ReactNode
 }
 
-type ClerkAppearance = NonNullable<
-  ComponentProps<typeof ClerkProvider>['appearance']
->
-
 const convex = isConvexConfigured
   ? new ConvexReactClient(appEnv.convexUrl)
   : null
+type ProviderAuthClient = ComponentProps<
+  typeof ConvexBetterAuthProvider
+>['authClient']
 
-function getClerkAppearance(resolvedTheme?: string): ClerkAppearance {
-  const isDark = resolvedTheme === 'dark'
+// The component's published provider type resolves session data to `never`
+// with Better Auth 1.6.30, although both packages share the same runtime API.
+const providerAuthClient = authClient as unknown as ProviderAuthClient
 
-  return {
-    captcha: {
-      theme: isDark ? 'dark' : 'light',
-    },
-    elements: {
-      card: {
-        backgroundColor: 'var(--popover)',
-        borderColor: 'var(--border)',
-        color: 'var(--popover-foreground)',
-      },
-      cardBox: {
-        boxShadow: isDark
-          ? '0 24px 80px rgb(0 0 0 / 0.45)'
-          : '0 24px 80px rgb(15 23 42 / 0.16)',
-      },
-      footerActionLink: {
-        color: 'var(--primary)',
-      },
-      formButtonPrimary: {
-        backgroundColor: 'var(--primary)',
-        color: 'var(--primary-foreground)',
-      },
-      formFieldInput: {
-        backgroundColor: 'var(--background)',
-        borderColor: 'var(--input)',
-        color: 'var(--foreground)',
-      },
-      modalBackdrop: {
-        backgroundColor: isDark
-          ? 'rgb(0 0 0 / 0.64)'
-          : 'rgb(15 23 42 / 0.36)',
-      },
-      modalContent: {
-        colorScheme: isDark ? 'dark' : 'light',
-      },
-      rootBox: {
-        colorScheme: isDark ? 'dark' : 'light',
-      },
-      userButtonPopoverActionButton: {
-        color: 'var(--popover-foreground)',
-        '&:hover': {
-          backgroundColor: 'var(--accent)',
-          color: 'var(--accent-foreground)',
-        },
-      },
-      userButtonPopoverCard: {
-        backgroundColor: 'var(--popover)',
-        borderColor: 'var(--border)',
-        color: 'var(--popover-foreground)',
-      },
-    },
-    variables: {
-      borderRadius: '0.5rem',
-      colorBackground: 'var(--popover)',
-      colorBorder: 'var(--border)',
-      colorDanger: 'var(--destructive)',
-      colorForeground: 'var(--popover-foreground)',
-      colorInput: 'var(--background)',
-      colorInputForeground: 'var(--foreground)',
-      colorMuted: 'var(--muted)',
-      colorMutedForeground: 'var(--muted-foreground)',
-      colorPrimary: 'var(--primary)',
-      colorPrimaryForeground: 'var(--primary-foreground)',
-      colorRing: 'var(--ring)',
-      fontFamily: "'Geist Variable', ui-sans-serif, system-ui, sans-serif",
-      fontFamilyButtons:
-        "'Geist Variable', ui-sans-serif, system-ui, sans-serif",
-    },
-  }
-}
-
-function AuthAwareProviders({ children }: AppProvidersProps) {
-  const { resolvedTheme } = useTheme()
-  const clerkAppearance = useMemo(
-    () => getClerkAppearance(resolvedTheme),
-    [resolvedTheme],
-  )
-
-  const content = (
-    <ProgressProviderWithOptionalAuth>{children}</ProgressProviderWithOptionalAuth>
-  )
-
-  if (!isClerkConfigured) {
-    return content
-  }
-
+function DataProviders({ children }: AppProvidersProps) {
   if (!convex) {
     return (
-      <ClerkProvider
-        afterSignOutUrl="/"
-        appearance={clerkAppearance}
-        publishableKey={appEnv.clerkPublishableKey}
-      >
-        {content}
-      </ClerkProvider>
+      <UnconfiguredAuthProvider>
+        <ProgressProviderWithOptionalAuth>{children}</ProgressProviderWithOptionalAuth>
+      </UnconfiguredAuthProvider>
     )
   }
 
   return (
-    <ClerkProvider
-      afterSignOutUrl="/"
-      appearance={clerkAppearance}
-      publishableKey={appEnv.clerkPublishableKey}
-    >
-      <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
-        {content}
-      </ConvexProviderWithClerk>
-    </ClerkProvider>
+    <ConvexBetterAuthProvider authClient={providerAuthClient} client={convex}>
+      <AppAuthProvider>
+        <ProgressProviderWithOptionalAuth>{children}</ProgressProviderWithOptionalAuth>
+      </AppAuthProvider>
+    </ConvexBetterAuthProvider>
   )
 }
 
 export function AppProviders({ children }: AppProvidersProps) {
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-      <AuthAwareProviders>{children}</AuthAwareProviders>
+      <DataProviders>{children}</DataProviders>
       <Toaster closeButton richColors />
     </ThemeProvider>
   )

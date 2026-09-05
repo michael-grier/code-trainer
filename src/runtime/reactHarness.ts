@@ -10,6 +10,7 @@ import type {
   ReactTestStep,
 } from '@/curriculum/types'
 
+import { clampRunnerText } from './runnerText'
 import { errorToMessage } from './testHarness'
 import type { TestRunResult } from './types'
 
@@ -144,15 +145,19 @@ async function runReactTestCase(
     }
 
     const failures = collectExpectationFailures(container, test.expect)
+    const failureMessage =
+      failures.length === 0
+        ? undefined
+        : clampRunnerText(failures.join(' '))
 
     return {
       name: test.name,
       status: failures.length === 0 ? 'passed' : 'failed',
       expected: describeExpectations(test.expect),
-      actual: failures.length === 0 ? 'rendered as expected' : failures.join(' '),
+      actual: failureMessage ?? 'rendered as expected',
       durationMs: Date.now() - startedAt,
       logs: [],
-      error: failures.length === 0 ? undefined : failures.join(' '),
+      error: failureMessage,
     }
   } catch (error) {
     return {
@@ -304,13 +309,15 @@ function collectExpectationFailures(
 }
 
 function describeExpectations(expectations: ReactExpectation[]): string {
-  return expectations
-    .map((expectation) =>
-      expectation.type === 'text-present'
-        ? `shows "${expectation.text}"`
-        : `does not show "${expectation.text}"`,
-    )
-    .join(', ')
+  return clampRunnerText(
+    expectations
+      .map((expectation) =>
+        expectation.type === 'text-present'
+          ? `shows "${expectation.text}"`
+          : `does not show "${expectation.text}"`,
+      )
+      .join(', '),
+  )
 }
 
 function flushTasks() {
