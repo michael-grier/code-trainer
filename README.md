@@ -4,7 +4,7 @@
 
 Code Trainer is a browser-based interview practice app for intermediate full-stack TypeScript developers. Short MDX lessons lead into coding, debugging, refactoring, React, tracing, written, and system design exercises.
 
-This is a work-in-progress portfolio project. Of the 60 planned lessons, 46 are available and the other 14 are clearly marked "Coming soon." Guest progress works without an account and stays in the current browser. Custom authentication and cross-device progress sync through Convex are still in development.
+This is a work-in-progress portfolio project. Of the 60 planned lessons, 46 are available and the other 14 are clearly marked "Coming soon." Guest progress works without an account and stays in the current browser. Optional passwordless accounts sync progress across devices through Convex.
 
 ## What works today
 
@@ -13,6 +13,7 @@ This is a work-in-progress portfolio project. Of the 60 planned lessons, 46 are 
 - Automated tests, static checks, and type checks for problems with deterministic answers
 - Structured reference and rubric reviews for written and design work
 - Local progress, drafts, completion tracking, and a recommended next lesson
+- Passwordless email-code accounts with cross-device progress sync
 - Responsive navigation, keyboard focus states, and light and dark themes
 
 The exercise runtime stays in the browser. Web Workers isolate code and type-checking work from the interface, while Sucrase and the TypeScript compiler handle submitted code.
@@ -28,7 +29,7 @@ bun run dev:vite
 
 Open [http://localhost:5173](http://localhost:5173).
 
-Use `bun run dev:all` to start Vite and `convex dev` together. Convex uses the selected development deployment, which may be local or cloud. Backend setup instructions will be finalized after the custom authentication work lands.
+Use `bun run dev:all` to start Vite and `convex dev` together. Convex uses the selected development deployment, which may be local or cloud. See [DEPLOYMENT.md](DEPLOYMENT.md) for backend variables and deployment setup.
 
 ## Useful commands
 
@@ -48,7 +49,7 @@ Use `bun run dev:all` to start Vite and `convex dev` together. Convex uses the s
 - Tailwind CSS and shadcn/ui components
 - MDX lesson content with a typed curriculum model
 - Monaco Editor, Sucrase, TypeScript, and Web Workers for browser-side exercises
-- Local storage for guest progress and Convex for cloud persistence
+- Local storage for guest progress, plus Better Auth and Convex for account sync
 - Vitest and ESLint for automated checks
 
 The main project areas are:
@@ -63,4 +64,4 @@ The main project areas are:
 
 ## Work in progress
 
-The next milestones are to finish the remaining lessons, complete the Convex-backed authentication work, update the deployment contract, and publish the Vercel demo. This repository is intentionally scoped as a portfolio demo rather than a full production service.
+The next milestones are to finish the remaining lessons and publish the Vercel demo. This repository is intentionally scoped as a portfolio demo rather than a full production service.
