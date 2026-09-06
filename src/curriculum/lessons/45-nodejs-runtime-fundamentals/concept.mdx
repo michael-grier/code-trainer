@@ -1,14 +1,235 @@
 # Node.js Runtime Fundamentals
 
-This placeholder concept page reserves the lesson slot for **Node.js Runtime Fundamentals**. The content pass will replace it with the final interview-focused MDX lesson.
+A small API serves two routes. `GET /report` sums two hundred thousand order rows and returns the totals. `GET /health` does no work at all: it answers `ok` so the load balancer knows the process is alive, and on a quiet server it takes about four milliseconds. Here is the whole server, written the obvious way.
 
-## What this lesson will cover
+```ts
+import { createServer } from 'node:http'
 
-- Core interview signals for node.js runtime fundamentals.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+const rows = loadRows() // 200,000 order rows, held in memory
+
+function buildReport() {
+  // Plain loops on the main thread: no I/O, no await, just arithmetic.
+  let total = 0
+  for (let pass = 0; pass < 2500; pass++) {
+    for (const row of rows) total += row.total
+  }
+  return { rowCount: rows.length, total }
+}
+
+createServer((req, res) => {
+  if (req.url === '/report') {
+    res.end(JSON.stringify(buildReport()))
+    return
+  }
+  if (req.url === '/health') {
+    res.end('ok')
+    return
+  }
+  res.statusCode = 404
+  res.end('not found')
+}).listen(3000)
+```
+
+A client script times a health check, then asks for the report and, twenty milliseconds later, sends a second health check while the report is still being built.
+
+<TerminalTranscript
+  label="terminal"
+  lines={[
+    { type: 'command', text: 'node client.mjs' },
+    { type: 'output', text: '/health -> 200 in 4 ms  ok' },
+    { type: 'error', text: '/health -> 200 in 1364 ms  ok' },
+    { type: 'output', text: '/report -> 200 in 1383 ms  {"rowCount":200000,"total":249750000000}' },
+  ]}
+/>
+
+Read the middle line against what `/health` does. It runs no loop, touches no data, and returns a two-character string, yet it took 1364 milliseconds, almost exactly as long as the report it had nothing to do with. Nothing in the health handler got slower. It simply did not run until the report was finished, and a load balancer that gives a health check one second before marking the process dead would have pulled this server out of rotation for being busy. This lesson explains why one slow handler stalls every other request, what Node does to keep that from happening for most work, and the two other runtime facts that bite new server code most often: modules run once per process, and the environment is made of strings.
+
+## One thread serves every request
+
+Lesson 22 built the event loop for a script: one call stack, a queue of waiting callbacks, and a loop that runs one callback to completion before picking the next. A Node server is that same loop with a socket attached. Each incoming request becomes a callback waiting for its turn, and the loop runs the handler for one request all the way to its last line before it looks at the next one. There is exactly one JavaScript thread doing this, no matter how many requests arrive.
+
+That is the whole explanation of the opening transcript. When the second health check arrived, the loop was in the middle of `buildReport`, and nothing interrupts a running function. The request sat in the operating system's socket queue, already accepted by the network card but untouched by JavaScript, until the report's loops finished and the handler returned. Only then did the loop pick up the health request, which is why its time equals the report's remaining time plus a few milliseconds.
+
+```text
+main thread:   [ buildReport ........................ ][ /health ]
+socket queue:              ^ /health arrives here, waits
+```
+
+A single thread sounds like a weakness, and for the report it is. For almost everything else a server does, it is the design that makes Node fast, because most handlers spend nearly all their time waiting rather than computing.
+
+## Waiting is free, because I/O happens elsewhere
+
+A typical handler reads a file, queries a database, or calls another service. Each of those is **I/O**, input and output through the operating system, and each takes milliseconds during which the JavaScript thread has nothing to compute. Node's rule is that I/O never runs on the JavaScript thread. When you ask for a file, Node hands the request to the operating system, or to a small pool of helper threads it keeps for this purpose, and returns a promise immediately. The loop moves on to other requests. When the bytes arrive, the completion is queued as a callback, and the loop runs it on its next turn.
+
+You can see the handoff in a five-line script. The read is requested, the next line runs before any bytes exist, and `await` is where the function steps aside until the data comes back.
+
+```ts
+import { readFile } from 'node:fs/promises'
+
+console.log('asking for the file')
+const pending = readFile('config.json', 'utf8')
+console.log('still running, read in flight')
+const text = await pending
+console.log(`got ${text.length} characters`)
+```
+
+<TerminalTranscript
+  label="console"
+  lines={[
+    { type: 'output', text: 'asking for the file' },
+    { type: 'output', text: 'still running, read in flight' },
+    { type: 'output', text: 'got 34 characters' },
+  ]}
+/>
+
+Inside a server, that `await` is the moment the thread is handed back to the loop. A handler that awaits a database query for thirty milliseconds costs the other requests nothing during those thirty milliseconds, because the thread is running them. This is why a single Node process can hold thousands of open connections: waiting does not occupy the thread, only computing does.
+
+Node also ships synchronous versions of most I/O calls, `readFileSync` among them, and in a request handler they are a trap. `readFileSync` does the same disk read but keeps the JavaScript thread parked until the bytes arrive, so for the duration of the read it behaves exactly like the report loop: every other request waits. The synchronous forms are fine at startup, where there is nobody to keep waiting, and wrong inside any code that runs per request.
+
+The scheduling rules from lesson 22 hold unchanged on the server, including under a block. Promise reactions still drain before any timer, and a timer that came due during a long synchronous stretch runs as soon as the stretch ends, in due-time order. The first practice problem asks you to trace exactly that: a handler that schedules two timers and a promise reaction, then blocks for fifty milliseconds before finishing.
+
+## Computation has nowhere to hide
+
+Asynchronous I/O solves waiting. It does nothing for computing, because there is no operating system to hand arithmetic to. The report loop is pure computation, and no amount of `async` or `await` sprinkled around it moves it off the thread. Marking `buildReport` as `async` changes nothing: an async function still runs synchronously until its first `await`, and this one has none.
+
+The honest fix is to give the computation its own thread. Node's `worker_threads` module starts a second JavaScript thread with its own loop, and the main thread only waits for a message, which is the kind of waiting it is good at.
+
+```ts
+import { Worker } from 'node:worker_threads'
+
+function buildReport(): Promise<{ rowCount: number; total: number }> {
+  // The loops run in report-worker.mjs on another thread. Here we only
+  // wait for its message, so the main thread stays free for other requests.
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL('./report-worker.mjs', import.meta.url))
+    worker.once('message', resolve)
+    worker.once('error', reject)
+  })
+}
+```
+
+With the handler changed to `res.end(JSON.stringify(await buildReport()))`, the same client script tells a different story.
+
+<TerminalTranscript
+  label="terminal"
+  lines={[
+    { type: 'command', text: 'node client.mjs' },
+    { type: 'output', text: '/health -> 200 in 4 ms  ok' },
+    { type: 'output', text: '/health -> 200 in 3 ms  ok' },
+    { type: 'output', text: '/report -> 200 in 1452 ms  {"rowCount":200000,"total":249750000000}' },
+  ]}
+/>
+
+The report got slightly slower, since starting a worker and copying the result back cost about seventy milliseconds, and the health check during it went from 1364 milliseconds to 3. That is the trade in one line: a worker buys responsiveness for everyone else at the price of some overhead for the heavy request. For five milliseconds of computation the overhead is not worth paying, and the right move is to leave the work on the main thread. For a second of computation it is the only move that keeps the server alive.
+
+## Modules run once, and module scope is process scope
+
+The second runtime fact has nothing to do with speed. When a Node process imports a module, it runs that file once, keeps the resulting exports in a cache, and hands the same cached instance to every later importer. This is what you want for a database connection pool: one pool per process, shared by every handler. It is a disaster for anything that describes one request, because a variable at module scope lives as long as the process and is visible to every request the process ever serves.
+
+Here is the shape of the bug, reduced to two simulated requests. The handler stores the current user in a module-level variable, awaits an order lookup, and then reads the variable back to address the shipment.
+
+```ts
+let currentUser = ''
+
+async function handleRequest(userId: string) {
+  currentUser = userId
+  const orders = await loadOrders(userId)
+  console.log(`${orders[0]} sent to ${currentUser}`)
+}
+
+await Promise.all([handleRequest('ada'), handleRequest('grace')])
+```
+
+<TerminalTranscript
+  label="console"
+  lines={[
+    { type: 'error', text: 'order for ada sent to grace' },
+    { type: 'output', text: 'order for grace sent to grace' },
+  ]}
+/>
+
+Walk it with the loop in mind. Ada's handler sets `currentUser` to `ada` and awaits, which hands the thread back. Grace's handler runs next, sets `currentUser` to `grace`, and awaits. Ada's lookup finishes first, her handler resumes, and reads `currentUser`, which now says `grace`. Ada's order ships to Grace. Nothing here is a race in the threading sense, because only one function ran at a time; it is the ordinary interleaving of two handlers across an `await`, and any per-request value parked at module scope is exposed to it. The fix is to keep request data in the request: pass `userId` down as a parameter, or carry it in an object created inside the handler. Node offers `AsyncLocalStorage` for the cases where threading a value through every call is impractical, but a parameter is the right first answer and the one the third practice problem asks for.
+
+Two smaller module facts round this out. Node supports two module systems: the older CommonJS style with `require` and `module.exports`, and the standard ES module style with `import` and `export`, selected by a `.mjs` extension or `"type": "module"` in `package.json`. Every example in this lesson is an ES module. The difference is mostly syntax, with one ordering wrinkle worth knowing because it shows up in interviews: Node's `process.nextTick` queue runs before promise reactions in a CommonJS file, and after them at the top level of an ES module, where the file itself is already running inside a promise job.
+
+<TerminalTranscript
+  label="terminal"
+  lines={[
+    { type: 'command', text: 'node order.cjs' },
+    { type: 'output', text: 'request received' },
+    { type: 'output', text: 'handler finished' },
+    { type: 'output', text: 'next tick' },
+    { type: 'output', text: 'promise reaction' },
+    { type: 'output', text: 'timeout callback' },
+    { type: 'command', text: 'node order.mjs' },
+    { type: 'output', text: 'request received' },
+    { type: 'output', text: 'handler finished' },
+    { type: 'output', text: 'promise reaction' },
+    { type: 'output', text: 'next tick' },
+    { type: 'output', text: 'timeout callback' },
+  ]}
+/>
+
+The practical rule is to not write code whose correctness depends on that ordering. Promise reactions and `queueMicrotask` behave the same in both module systems and in the browser, so prefer them, and treat `nextTick` as something you read in older code rather than something you reach for.
+
+## The environment is made of strings
+
+The third fact is the smallest and causes the most production incidents. A server reads its settings from **environment variables**, values the operating system hands to the process at startup, exposed in Node as `process.env`. Every one of them is a string or `undefined`. There are no numbers and no booleans in there, however the deployment file spells them.
+
+```ts
+process.env.DEBUG = 'false'
+if (process.env.DEBUG) console.log('debug logging on')
+
+console.log(typeof process.env.PORT, process.env.PORT)
+
+process.env.PORT = '8080'
+console.log(process.env.PORT + 1)
+```
+
+<TerminalTranscript
+  label="console"
+  lines={[
+    { type: 'error', text: 'debug logging on' },
+    { type: 'output', text: 'undefined undefined' },
+    { type: 'error', text: '80801' },
+  ]}
+/>
+
+`DEBUG=false` turns debug logging on, because `'false'` is a non-empty string and non-empty strings are truthy. `PORT` is missing entirely until something sets it, and once set, adding one to it concatenates. These are lesson 31's lesson again in a new place: the environment is external data, and external data is parsed at the boundary, not trusted in the middle of the program. For a server the boundary is startup, and the right shape is one function that reads `process.env`, converts each value to its real type, applies defaults, and either returns a typed config object or reports every problem and refuses to start.
+
+```ts
+function readPort(env: Record<string, string | undefined>): number {
+  // Missing means "use the default"; present means "must be a real port".
+  if (env.PORT === undefined) return 3000
+
+  const port = Number(env.PORT)
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error('PORT must be a whole number between 1 and 65535')
+  }
+  return port
+}
+```
+
+Failing at startup is the point. A server that starts with `PORT` set to `eighty` and only discovers the problem when it tries to listen has already passed its health check in some deployment systems. A server that parses its environment first, and exits with a list of every bad variable, fails in the one place where failing is cheap. The second practice problem builds that function in full.
+
+## Common mistakes
+
+These are the runtime errors that show up most often in new server code and in interviews:
+
+- Running heavy computation on the main thread inside a handler, so one slow report makes every unrelated request wait and health checks time out.
+- Using `readFileSync` or another synchronous I/O call per request, which parks the only JavaScript thread for the whole duration of the disk or network wait.
+- Adding `async` to a function with no `await` in it and expecting the work to move off the thread. Computation stays where it is; only waiting is delegated.
+- Storing per-request data such as the current user in a module-scope variable, which every request shares and any `await` exposes.
+- Treating module-level state as per-request state in the other direction: creating a new database connection pool inside a handler instead of once at module scope.
+- Reading `process.env.DEBUG` or `process.env.PORT` as though they were a boolean and a number, when `'false'` is truthy and `'8080' + 1` is `'80801'`.
+- Discovering a bad environment variable at the first request instead of at startup, after the process has already reported itself healthy.
+- Writing code whose behavior depends on `process.nextTick` beating promise reactions, an ordering that flips between CommonJS and ES modules.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+The exercises follow the lesson's three facts in order:
+
+1. Trace a handler that schedules timers and a promise reaction, then blocks the thread, and predict what runs when the block ends.
+2. Implement the startup function that parses a server's environment into a typed config or reports every bad variable.
+3. Debug a fulfillment handler that ships one user's orders to another because it parks the current user at module scope.
+4. Explain in your own words why one blocking handler stalls a whole server, and what to do about waiting versus computing.
