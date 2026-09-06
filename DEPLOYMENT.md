@@ -88,9 +88,10 @@ Homepage URL: https://trainer.example.com
 Authorization callback URL: https://trainer.example.com/api/auth/callback/github
 ```
 
-GitHub OAuth apps accept one callback URL. Use a separate OAuth app for local
-development with `http://127.0.0.1:5173/api/auth/callback/github`. Keep the
-client secret in the Convex environment only.
+GitHub OAuth apps accept up to 10 callback URLs. Use a separate OAuth app for
+local development to keep its credentials isolated from production, with
+`http://127.0.0.1:5173/api/auth/callback/github`. Keep each client secret in
+its matching Convex environment only.
 
 Test these cases before release:
 
