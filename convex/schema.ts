@@ -7,12 +7,6 @@ import {
 } from './progressValidators'
 
 export default defineSchema({
-  authEmailRateLimits: defineTable({
-    key: v.string(),
-    count: v.number(),
-    windowStartedAt: v.number(),
-    lastSentAt: v.number(),
-  }).index('by_key', ['key']),
   authRequestRateLimits: defineTable({
     key: v.string(),
     count: v.number(),

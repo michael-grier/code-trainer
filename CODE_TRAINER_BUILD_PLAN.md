@@ -65,7 +65,7 @@ Use these exact choices unless explicitly changed later:
 - `@monaco-editor/react`
 - Sucrase
 - `@fontsource-variable/geist`
-- Better Auth and `@convex-dev/better-auth` for passwordless authentication
+- Better Auth and `@convex-dev/better-auth` for GitHub authentication
 - Convex through `convex` for authenticated progress persistence and sync
 - ESLint flat config with TypeScript, React Hooks, and React Refresh plugins
 
@@ -464,7 +464,7 @@ Use defensive parsing when loading from `localStorage`. If persisted data is inv
 
 ## 8.1 Authentication, Cloud Sync, and Deployment
 
-Use Better Auth email OTP for authentication and Convex for authenticated progress persistence. Do not add passwords: the app owns the email-code configuration and session policy without owning password storage or recovery.
+Use Better Auth with GitHub OAuth for authentication and Convex for authenticated progress persistence. Do not add passwords: GitHub owns credential storage and recovery while the app owns its session policy.
 
 ### 8.1.1 Auth UX
 
@@ -502,7 +502,7 @@ On sign-out:
 Frontend requirements:
 
 - Wrap configured builds in `ConvexBetterAuthProvider` and the app-owned auth adapter.
-- Use one email-code sheet for new and returning users.
+- Use one GitHub sign-in sheet for new and returning users.
 - Keep the auth client on the browser's origin and proxy `/api/auth/*` to Convex.
 - Offer current-device and all-device sign-out controls.
 - Keep session credentials in host-only `HttpOnly` cookies, never browser storage.
@@ -514,7 +514,7 @@ VITE_CONVEX_URL
 VITE_CONVEX_SITE_URL
 ```
 
-`SITE_URL`, `BETTER_AUTH_SECRET`, `RESEND_API_KEY`, and `AUTH_EMAIL_FROM` belong in Convex environment settings. Never expose them through a `VITE_` variable.
+`SITE_URL`, `BETTER_AUTH_SECRET`, `GITHUB_CLIENT_ID`, and `GITHUB_CLIENT_SECRET` belong in Convex environment settings. Never expose them through a `VITE_` variable.
 
 ### 8.1.3 Convex Integration
 
@@ -613,15 +613,15 @@ Recommended deployment model:
 
 - Frontend host for the Vite app with a same-origin `/api/auth/*` reverse proxy.
 - Convex deployment for Better Auth, progress functions, and data.
-- Resend account with a verified sender for one-time codes.
+- GitHub OAuth app with the production origin and callback URL.
 
 Deployment documentation must list required environment variables and setup steps:
 
 - Convex client and site URLs in the frontend environment.
-- Better Auth secret, exact public site origin, Resend key, and sender in Convex.
+- Better Auth secret, exact public site origin, and GitHub OAuth credentials in Convex.
 - A first-party auth rewrite that preserves cookies and overwrites client IP headers.
 - Session lifetime, revocation, abuse limits, secret rotation, and rollback.
-- Local Better Auth, Resend, and Convex setup.
+- Separate local GitHub OAuth app plus Better Auth and Convex setup.
 
 ## 9. Guided Path and Access Rules
 
@@ -1628,7 +1628,7 @@ Acceptance criteria:
 
 Tasks:
 
-- Configure Better Auth email-code authentication.
+- Configure Better Auth GitHub authentication.
 - Configure Convex project files.
 - Add the Convex Better Auth component and auth provider configuration.
 - Implement Convex schema for user progress and user settings.
@@ -1943,7 +1943,7 @@ Tasks:
 - Manually test representative problems of each kind.
 - Test progress persistence.
 - Test guest progress.
-- Test email-code sign-in, session persistence, and sign-out.
+- Test GitHub sign-in, session persistence, and sign-out.
 - Test guest-to-cloud progress merge.
 - Test authenticated progress sync across reloads.
 - Test sync failure/retry UI.
@@ -2075,7 +2075,7 @@ Deliverables:
 
 Owns:
 
-- Better Auth email-code setup.
+- Better Auth GitHub OAuth setup.
 - Convex setup.
 - Convex schema and progress functions.
 - Better Auth/Convex integration.
@@ -2336,7 +2336,7 @@ Mitigation:
 
 Mitigation:
 
-- Keep the custom surface small by using Better Auth's email-code and session primitives with Convex.
+- Keep the custom surface small by using Better Auth's GitHub OAuth and session primitives with Convex.
 - Keep the backend limited to user progress and settings.
 - Keep the curriculum static in the frontend.
 - Document required environment variables and provider setup.
@@ -2375,7 +2375,7 @@ The app is done when:
 - TypeScript code execution works in a Web Worker.
 - Guest progress persists to localStorage.
 - Authenticated progress syncs to Convex.
-- Email-code sign-in, session persistence, current-device sign-out, and all-device sign-out work.
+- GitHub sign-in, session persistence, current-device sign-out, and all-device sign-out work.
 - Guest progress merges into cloud progress after sign-in.
 - Authenticated progress is not exposed as guest progress after sign-out.
 - Sync status and retry behavior work.

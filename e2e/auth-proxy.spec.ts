@@ -80,3 +80,22 @@ test('restores the persistent auth cookie after a browser restart', async ({
     await rm(profilePath, { force: true, recursive: true })
   }
 })
+
+test('shows a safe GitHub callback error and restores the original route', async ({
+  page,
+}) => {
+  const returnTo = encodeURIComponent('/progress?track=backend#cloud')
+
+  await page.goto(
+    `/progress?track=backend&githubAuthError=1&githubAuthReturnTo=${returnTo}&error=access_denied`,
+  )
+
+  await expect(
+    page.getByRole('heading', { name: 'Your work can follow you' }),
+  ).toBeVisible()
+  await expect(page.getByRole('alert')).toHaveText(
+    'GitHub sign-in did not finish. You can keep learning locally and retry later.',
+  )
+  await expect(page).toHaveURL(`${appUrl}/progress?track=backend#cloud`)
+  await expect(page.getByText('access_denied')).toHaveCount(0)
+})

@@ -1,5 +1,9 @@
 # Clerk replacement implementation plan
 
+> Historical implementation record: this plan documents the original email-code
+> replacement. The active app now uses GitHub OAuth; see `DEPLOYMENT.md` and
+> `CODE_TRAINER_BUILD_PLAN.md` for the current authentication contract.
+
 Status: implementation in progress, Phases 0 through 2 complete; Phases 3 and 4 implemented pending non-production integration verification
 Last updated: 2026-09-04
 

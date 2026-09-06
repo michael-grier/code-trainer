@@ -4,7 +4,7 @@
 
 Code Trainer is a browser-based interview practice app for intermediate full-stack TypeScript developers. Short MDX lessons lead into coding, debugging, refactoring, React, tracing, written, and system design exercises.
 
-This is a work-in-progress portfolio project. Of the 60 planned lessons, 46 are available and the other 14 are clearly marked "Coming soon." Guest progress works without an account and stays in the current browser. Optional passwordless accounts sync progress across devices through Convex.
+This is a work-in-progress portfolio project. Of the 60 planned lessons, 46 are available and the other 14 are clearly marked "Coming soon." Guest progress works without an account and stays in the current browser. Optional GitHub accounts sync progress across devices through Convex.
 
 ## What works today
 
@@ -13,7 +13,7 @@ This is a work-in-progress portfolio project. Of the 60 planned lessons, 46 are 
 - Automated tests, static checks, and type checks for problems with deterministic answers
 - Structured reference and rubric reviews for written and design work
 - Local progress, drafts, completion tracking, and a recommended next lesson
-- Passwordless email-code accounts with cross-device progress sync
+- GitHub sign-in with cross-device progress sync
 - Responsive navigation, keyboard focus states, and light and dark themes
 
 The exercise runtime stays in the browser. Web Workers isolate code and type-checking work from the interface, while Sucrase and the TypeScript compiler handle submitted code.
@@ -27,7 +27,7 @@ bun install
 bun run dev:vite
 ```
 
-Open [http://localhost:5173](http://localhost:5173).
+Open [http://127.0.0.1:5173](http://127.0.0.1:5173).
 
 Use `bun run dev:all` to start Vite and `convex dev` together. Convex uses the selected development deployment, which may be local or cloud. See [DEPLOYMENT.md](DEPLOYMENT.md) for backend variables and deployment setup.
 
@@ -35,7 +35,7 @@ Use `bun run dev:all` to start Vite and `convex dev` together. Convex uses the s
 
 | Command | Purpose |
 | --- | --- |
-| `bun run dev:vite` | Start the frontend at `http://localhost:5173` |
+| `bun run dev:vite` | Start the frontend at `http://127.0.0.1:5173` |
 | `bun run dev:convex` | Watch backend changes against the selected Convex development deployment |
 | `bun run dev:all` | Start Vite and `convex dev` together |
 | `bun run test` | Run the Vitest suite |

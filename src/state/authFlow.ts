@@ -1,17 +1,30 @@
 import { AuthActionError } from '@/state/authContext'
 
-export type AuthErrorAction = 'send' | 'verify' | 'signout'
+export type AuthErrorAction = 'signin' | 'signout'
 
-export function normalizeEmail(email: string) {
-  return email.trim().toLowerCase()
-}
+export const GITHUB_AUTH_ERROR_QUERY_PARAM = 'githubAuthError'
+export const GITHUB_AUTH_RETURN_TO_QUERY_PARAM = 'githubAuthReturnTo'
+export const GITHUB_SIGN_IN_ERROR_MESSAGE =
+  'GitHub sign-in did not finish. You can keep learning locally and retry later.'
 
-export function normalizeEmailCode(code: string) {
-  return code.replace(/[\s-]/g, '')
-}
+/** Builds same-origin success and error destinations for the GitHub round trip. */
+export function getGitHubAuthRedirects(currentUrl: URL) {
+  const returnPath = `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`
+  const errorCallbackUrl = new URL(currentUrl)
 
-export function getCountdownSeconds(deadline: number, now = Date.now()) {
-  return Math.max(0, Math.ceil((deadline - now) / 1_000))
+  // Better Auth appends its error query after this URL, so keep the fragment
+  // inside returnTo and restore it after the callback instead.
+  errorCallbackUrl.hash = ''
+  errorCallbackUrl.searchParams.set(GITHUB_AUTH_ERROR_QUERY_PARAM, '1')
+  errorCallbackUrl.searchParams.set(
+    GITHUB_AUTH_RETURN_TO_QUERY_PARAM,
+    returnPath,
+  )
+
+  return {
+    callbackURL: returnPath,
+    errorCallbackURL: errorCallbackUrl.toString(),
+  }
 }
 
 export async function getSignOutReadiness(
@@ -46,25 +59,13 @@ export function getAuthErrorMessage(
   error: AuthActionError,
   action: AuthErrorAction,
 ) {
-  if (error.code === 'INVALID_OTP') {
-    return 'That code does not match. Check the email and try again.'
-  }
-  if (error.code === 'OTP_EXPIRED') {
-    return 'That code expired. Request a new code to continue.'
-  }
-  if (error.code === 'TOO_MANY_ATTEMPTS') {
-    return 'Too many attempts. Request a new code to continue.'
-  }
   if (error.status === 429) {
     return error.retryAfterSeconds
       ? `Request limit reached. Try again in ${error.retryAfterSeconds} seconds.`
       : 'Request limit reached. Please wait before trying again.'
   }
-  if (action === 'send') {
-    return 'Email could not be sent. You can keep learning locally and retry later.'
-  }
-  if (action === 'verify') {
-    return error.message
+  if (action === 'signin') {
+    return GITHUB_SIGN_IN_ERROR_MESSAGE
   }
   return 'Sign-out did not finish. Your account session is still active.'
 }

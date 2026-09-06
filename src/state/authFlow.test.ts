@@ -3,24 +3,22 @@ import { describe, expect, it } from 'vitest'
 import { AuthActionError } from '@/state/authContext'
 import {
   getAuthErrorMessage,
-  getCountdownSeconds,
+  getGitHubAuthRedirects,
   getSignOutReadiness,
-  normalizeEmail,
-  normalizeEmailCode,
   toAuthActionError,
 } from '@/state/authFlow'
 
-describe('email-code auth helpers', () => {
-  it('normalizes email and paste-friendly codes at the request boundary', () => {
-    expect(normalizeEmail('  Learner@Example.COM ')).toBe(
-      'learner@example.com',
-    )
-    expect(normalizeEmailCode('12 34-56 78')).toBe('12345678')
-  })
-
-  it('rounds the resend countdown up and never shows a negative value', () => {
-    expect(getCountdownSeconds(61_001, 1_000)).toBe(61)
-    expect(getCountdownSeconds(1_000, 1_001)).toBe(0)
+describe('auth helpers', () => {
+  it('preserves the current route through a GitHub OAuth error callback', () => {
+    expect(
+      getGitHubAuthRedirects(
+        new URL('https://trainer.example.com/progress?track=backend#cloud'),
+      ),
+    ).toEqual({
+      callbackURL: '/progress?track=backend#cloud',
+      errorCallbackURL:
+        'https://trainer.example.com/progress?track=backend&githubAuthError=1&githubAuthReturnTo=%2Fprogress%3Ftrack%3Dbackend%23cloud',
+    })
   })
 
   it('maps unknown provider failures to a safe public fallback', () => {
@@ -33,30 +31,24 @@ describe('email-code auth helpers', () => {
     )
   })
 
-  it('presents stable OTP and rate-limit recovery messages', () => {
+  it('presents stable sign-in and rate-limit recovery messages', () => {
     expect(
       getAuthErrorMessage(
-        new AuthActionError('provider detail', { code: 'INVALID_OTP' }),
-        'verify',
+        new AuthActionError('private provider detail'),
+        'signin',
       ),
-    ).toBe('That code does not match. Check the email and try again.')
+    ).toBe(
+      'GitHub sign-in did not finish. You can keep learning locally and retry later.',
+    )
     expect(
       getAuthErrorMessage(
         new AuthActionError('provider detail', {
           status: 429,
           retryAfterSeconds: 42,
         }),
-        'send',
+        'signin',
       ),
     ).toBe('Request limit reached. Try again in 42 seconds.')
-    expect(
-      getAuthErrorMessage(
-        new AuthActionError('provider detail'),
-        'send',
-      ),
-    ).toBe(
-      'Email could not be sent. You can keep learning locally and retry later.',
-    )
   })
 
   it('requires a completed flush before ordinary sign-out continues', async () => {
