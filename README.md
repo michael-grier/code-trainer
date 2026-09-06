@@ -27,7 +27,7 @@ bun install
 bun run dev:vite
 ```
 
-Open [http://localhost:5173](http://localhost:5173).
+Open [http://127.0.0.1:5173](http://127.0.0.1:5173).
 
 Use `bun run dev:all` to start Vite and `convex dev` together. Convex uses the selected development deployment, which may be local or cloud. See [DEPLOYMENT.md](DEPLOYMENT.md) for backend variables and deployment setup.
 
@@ -35,7 +35,7 @@ Use `bun run dev:all` to start Vite and `convex dev` together. Convex uses the s
 
 | Command | Purpose |
 | --- | --- |
-| `bun run dev:vite` | Start the frontend at `http://localhost:5173` |
+| `bun run dev:vite` | Start the frontend at `http://127.0.0.1:5173` |
 | `bun run dev:convex` | Watch backend changes against the selected Convex development deployment |
 | `bun run dev:all` | Start Vite and `convex dev` together |
 | `bun run test` | Run the Vitest suite |

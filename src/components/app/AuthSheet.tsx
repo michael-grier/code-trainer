@@ -7,6 +7,7 @@ import {
   UserRound,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -18,7 +19,13 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet'
 import { AuthActionError, useAppAuth } from '@/state/authContext'
-import { getAuthErrorMessage, getSignOutReadiness } from '@/state/authFlow'
+import {
+  getAuthErrorMessage,
+  getSignOutReadiness,
+  GITHUB_AUTH_ERROR_QUERY_PARAM,
+  GITHUB_AUTH_RETURN_TO_QUERY_PARAM,
+  GITHUB_SIGN_IN_ERROR_MESSAGE,
+} from '@/state/authFlow'
 import { summarizeProgress, type ProgressSummary } from '@/state/cloudProgress'
 import {
   useProgress,
@@ -35,6 +42,8 @@ type SheetStep =
 export function AuthSheet() {
   const auth = useAppAuth()
   const progress = useProgress()
+  const location = useLocation()
+  const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [step, setStep] = useState<SheetStep>('signin')
   const [error, setError] = useState<string>()
@@ -67,6 +76,48 @@ export function AuthSheet() {
     setStep('progress')
     setError(undefined)
   }, [hasHandoff])
+
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search)
+
+    if (searchParams.get(GITHUB_AUTH_ERROR_QUERY_PARAM) !== '1') {
+      return
+    }
+
+    const returnTo = searchParams.get(GITHUB_AUTH_RETURN_TO_QUERY_PARAM)
+    searchParams.delete(GITHUB_AUTH_ERROR_QUERY_PARAM)
+    searchParams.delete(GITHUB_AUTH_RETURN_TO_QUERY_PARAM)
+    searchParams.delete('error')
+    searchParams.delete('error_description')
+
+    let recoveryLocation = {
+      pathname: location.pathname,
+      search: searchParams.size > 0 ? `?${searchParams.toString()}` : '',
+      hash: location.hash,
+    }
+
+    if (returnTo) {
+      try {
+        const returnUrl = new URL(returnTo, window.location.origin)
+
+        // Treat the callback query as untrusted and never navigate off-origin.
+        if (returnUrl.origin === window.location.origin) {
+          recoveryLocation = {
+            pathname: returnUrl.pathname,
+            search: returnUrl.search,
+            hash: returnUrl.hash,
+          }
+        }
+      } catch {
+        // A malformed return path falls back to the cleaned current route.
+      }
+    }
+
+    navigate(recoveryLocation, { replace: true })
+    setStep('signin')
+    setError(GITHUB_SIGN_IN_ERROR_MESSAGE)
+    setOpen(true)
+  }, [location.hash, location.pathname, location.search, navigate])
 
   const handleOpenChange = (nextOpen: boolean) => {
     if (nextOpen) {

@@ -19,7 +19,7 @@ import {
   AuthContext,
   type AppAuth,
 } from '@/state/authContext'
-import { toAuthActionError } from '@/state/authFlow'
+import { getGitHubAuthRedirects, toAuthActionError } from '@/state/authFlow'
 import {
   resolveAppAuthState,
   type AppUser,
@@ -101,11 +101,10 @@ export function AppAuthProvider({ children }: { children: ReactNode }) {
   )
 
   const signInWithGitHub = useCallback(async () => {
-    const returnPath = `${window.location.pathname}${window.location.search}${window.location.hash}`
+    const redirects = getGitHubAuthRedirects(new URL(window.location.href))
     const result = await authClient.signIn.social({
       provider: 'github',
-      callbackURL: returnPath,
-      errorCallbackURL: returnPath,
+      ...redirects,
     })
 
     if (result.error) {
