@@ -33,40 +33,16 @@ function loadFunction(code: string, functionName: string) {
   return candidate as (...args: unknown[]) => unknown
 }
 
-describe('nodejs runtime fundamentals lesson', () => {
-  it('progresses from the blocked trace through config and the leak to review', () => {
+describe('http apis and request lifecycle lesson', () => {
+  it('progresses from routing through the retry-safe create to the stage-order fix and review', () => {
     expect(
       lesson.problems.map((problem) => `${problem.id}:${problem.kind}`),
     ).toEqual([
-      'blocked-handler-trace:trace',
-      'read-server-config:code',
-      'fix-shared-request-state:debug',
-      'blocking-handler-review:written',
+      'match-route:code',
+      'create-order-idempotent:code',
+      'fix-update-stage-order:debug',
+      'timeout-and-idempotency-review:written',
     ])
-  })
-
-  it('gives the trace problem answerable structured questions', () => {
-    const trace = lesson.problems.find((problem) => problem.kind === 'trace')
-
-    if (trace?.kind !== 'trace') {
-      throw new Error('expected a trace problem')
-    }
-
-    expect(trace.questions.length).toBeGreaterThanOrEqual(3)
-    expect(trace.explanation.length).toBeGreaterThan(100)
-
-    for (const question of trace.questions) {
-      if (question.type === 'output-order') {
-        expect(new Set(question.expected).size).toBe(question.expected.length)
-        for (const line of question.expected) {
-          expect(question.options).toContain(line)
-        }
-      }
-
-      if (question.type === 'multiple-choice') {
-        expect(question.options).toContain(question.answer)
-      }
-    }
   })
 
   it('shapes every runnable problem for the runner', () => {

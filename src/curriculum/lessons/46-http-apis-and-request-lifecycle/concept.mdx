@@ -1,14 +1,202 @@
 # HTTP APIs and Request Lifecycle
 
-This placeholder concept page reserves the lesson slot for **HTTP APIs and Request Lifecycle**. The content pass will replace it with the final interview-focused MDX lesson.
+Lesson 43 ended with a warning it left for this track to handle: a client that retries a request that changes things risks doing it twice. Here is what that looks like from both sides. A checkout endpoint, `POST /orders`, charges the card and saves the order, which takes about three hundred milliseconds. The client uses the retry rules from lesson 43: give up on a request after one hundred milliseconds, wait, try once more, then show an error.
 
-## What this lesson will cover
+```ts
+// Server: the handler behind POST /orders.
+const order = await chargeAndSave(body) // about 300 ms
+send(201, { order })
+```
 
-- Core interview signals for http apis and request lifecycle.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+```ts
+// Client: one attempt, with the timeout from lesson 24.
+const response = await fetch('/orders', {
+  method: 'POST',
+  body: JSON.stringify({ sku: 'mug-blue', quantity: 1 }),
+  signal: AbortSignal.timeout(100),
+})
+```
+
+The two logs, interleaved in the order the lines were printed:
+
+<TerminalTranscript
+  label="terminal"
+  lines={[
+    { type: 'output', text: 'client: attempt 1 timed out after 100 ms, retrying in 400 ms' },
+    { type: 'output', text: 'server: created order 1' },
+    { type: 'output', text: 'client: attempt 2 timed out after 100 ms, retrying in 400 ms' },
+    { type: 'output', text: 'server: created order 2' },
+    { type: 'error', text: 'client: giving up, showing "checkout failed, please try again"' },
+    { type: 'error', text: 'client: GET /orders -> 2 orders' },
+  ]}
+/>
+
+Read the last two lines together. The customer saw "checkout failed" and was charged twice. Neither side did anything strange: the client timed out, as it was told to, and the server finished the work it was given, as it should. What went wrong is that "the request timed out" and "the request did nothing" are not the same statement. A timeout means the client stopped waiting for the answer, and says nothing about whether the server acted. When the client tried again, the server had no way to recognize the second request as the first one, so it did the work again.
+
+This lesson is about the trip a request takes through a server, stage by stage, and how each stage decides to continue or stop. The duplicate order is fixed by adding one stage just before the handler, and the rest of the lesson builds the whole pipeline so the fix lands somewhere sensible.
+
+## A request is a pipeline of decisions
+
+Everything a server does with a request happens in a fixed order, and the order is not arbitrary. Each stage either passes the request to the next one or stops with a status code, and the stages that can reject cheaply come before the stages that do work.
+
+```text
+raw bytes -> route -> authenticate -> authorize -> parse body -> handle -> respond
+              404/405     401           403         400/413      2xx/409
+```
+
+Reading left to right: routing decides which handler the method and path name, and stops with 404 or 405 if none does. Authentication establishes who is asking, or stops with 401 when nobody can be established. Authorization decides whether that person may do this, and stops with 403. Parsing turns the body's bytes into a typed value or stops with 400 for a malformed body and 413 for one too large. Only then does the handler run, the one stage that changes the world, and the response is built once from whatever it returns. Lesson 48 takes the two auth stages apart in detail; this lesson concentrates on the stages around them and on the order itself.
+
+The order rule is easy to state and easy to violate: **decide, then act**. Anything that might reject the request runs before anything that changes state. When a handler updates a record field by field and validates afterward, a bad request leaves a half-applied record behind, which is the bug in the third practice problem. When a handler charges the card before checking that the caller is allowed to, the 403 arrives after the money has moved. Every stage that can say no goes first.
+
+## Routing: which handler, and what to say when none fits
+
+A route is a method plus a path pattern, like `GET /invoices/:id`, exactly the shape lesson 47 built. Routing compares the request's method and path against the list and picks the first match. The interesting part is what to answer when nothing matches, because there are two different kinds of nothing. If no pattern matches the path at all, the resource does not exist: 404. If a pattern matches the path but not the method, the resource exists and the caller used the wrong verb: 405 Method Not Allowed, with an `Allow` header listing the methods that would have worked. A client that sends `DELETE /invoices/42` and gets 404 will conclude the invoice is gone; a 405 with `Allow: GET, PATCH` tells it the truth.
+
+The path segments a pattern captures, `:id` above, arrive as strings, because a URL is text. `'42'` is not `42`, and `'abc'` matches `:id` just as happily. Lesson 31's rule applies at this stage as much as at any other: a captured parameter is external data, and turning `'42'` into a positive whole number, or rejecting it with 400, is the handler's first job. The first practice problem builds the matcher, including the 404 versus 405 decision.
+
+## The body is bytes until you parse it
+
+A request body does not arrive as a value. It arrives as a sequence of chunks over a socket, and the server sees them one at a time, which is why Node hands you the request as a stream you read with `for await`. Two things can go wrong before the body is even a string, and each has its own status.
+
+```ts
+async function readJsonBody(
+  req: IncomingMessage,
+  limitBytes: number,
+): Promise<{ ok: true; value: unknown } | { ok: false; status: 400 | 413 }> {
+  const chunks: Buffer[] = []
+  let received = 0
+
+  for await (const chunk of req) {
+    // Count as the bytes arrive, so a 2 GB body is refused after 16 KB
+    // instead of being buffered in full and then rejected.
+    received += chunk.length
+    if (received > limitBytes) return { ok: false, status: 413 }
+    chunks.push(chunk)
+  }
+
+  try {
+    return { ok: true, value: JSON.parse(Buffer.concat(chunks).toString('utf8')) }
+  } catch {
+    // Not JSON at all. That is the caller's mistake, never a server failure.
+    return { ok: false, status: 400 }
+  }
+}
+```
+
+Note the return type. Even a successful parse produces `unknown`, because `JSON.parse` proves the text was JSON and nothing more. Whether the value has a `sku` and a positive `quantity` is a separate check, the shape validation lesson 31 built, and it runs next, producing a typed value or a 400 that names every problem. Two probes against the checkout server show the byte-level stages doing their jobs:
+
+<TerminalTranscript
+  label="http"
+  lines={[
+    { type: 'command', text: 'POST /orders   body: {"sku": "mug-blue", "quantity": ' },
+    { type: 'error', text: '400 Bad Request' },
+    { type: 'output', text: '{"error":{"code":"malformed_json","message":"malformed json"}}' },
+    { type: 'command', text: 'POST /orders   body: 20 KB of "x"' },
+    { type: 'error', text: '413 Payload Too Large' },
+    { type: 'output', text: '{"error":{"code":"payload_too_large","message":"payload too large"}}' },
+  ]}
+/>
+
+Both failures use the one error shape from lesson 47, and both stop the pipeline before the handler runs. The size limit deserves a sentence of its own, because it is a limit on memory, not on politeness: a server that buffers whatever it is sent can be taken down by one client with a large file, and the check has to happen while the chunks arrive, not after.
+
+## The handler acts once, and the response is built once
+
+With routing, auth, and parsing done, the handler receives typed inputs and does the one thing the request asked for. The lesson 47 discipline of writing handlers as pure functions pays off here: a handler that takes the current state and the parsed request and returns the new state plus a `{ status, body }` can be tested without a server, and its stage order is visible in the code. Here is the update handler from the third practice problem in its correct order, reduced to its skeleton.
+
+```ts
+export function applyInvoiceUpdate(
+  invoices: Invoice[],
+  id: number,
+  patch: Record<string, unknown>,
+): UpdateResponse {
+  // Look up first: everything after this needs the invoice to exist.
+  const invoice = invoices.find((candidate) => candidate.id === id)
+  if (!invoice) return notFound(id)
+
+  // Business rules that reject go next. 409 says the request was fine
+  // but the resource's current state forbids it.
+  if (invoice.status === 'paid') return conflict(id)
+
+  // Validate the whole patch into a separate object before touching anything.
+  const changes = validatePatch(patch)
+  if (!changes.ok) return badRequest(changes.errors)
+
+  // Only now change state, and build the new list rather than editing the old.
+  const updated = { ...invoice, ...changes.value }
+  return {
+    status: 200,
+    body: { invoice: updated },
+    invoices: invoices.map((candidate) => (candidate.id === id ? updated : candidate)),
+  }
+}
+```
+
+Two status codes appear here that lesson 47 did not need. **409 Conflict** means the request was well-formed and the caller was allowed to make it, but the resource's current state makes it impossible: changing a paid invoice, joining a club twice, creating a username that exists. It is a 4xx because retrying the same request will fail the same way, and it is distinct from 400 because nothing about the request itself was wrong. The other is 405, from the routing section. Both are honest answers to questions that 200 and 500 would lie about.
+
+## Retries, and the stage that recognizes a repeat
+
+Now back to the duplicate order. The client cannot fix this alone, because it cannot know whether a timed-out request reached the server. The fix has to be on the server, and it is a stage that runs once the body has been read, before it is validated and before the handler: **idempotency keys**. The client generates a unique key per operation, not per attempt, and sends it as an `Idempotency-Key` header on every attempt of that operation. The server stores the response it produced under that key and, when the same key arrives again, replays the stored response instead of running the handler.
+
+```ts
+export function createOrder(state: OrderState, request: OrderRequest) {
+  const key = request.headers['idempotency-key']
+  if (!key) return reply(400, 'Idempotency-Key header is required')
+
+  // A key the server has seen means this is a retry of finished work.
+  // Replay the answer; do not do the work again.
+  const stored = state.replies[key]
+  if (stored) return { response: stored, state }
+
+  const order = validateOrder(request.body)
+  if (!order.ok) return reply(400, order.message)
+
+  const created = { id: state.orders.length + 1, ...order.value }
+  const response = { status: 201, body: { order: created } }
+  return {
+    response,
+    state: {
+      orders: [...state.orders, created],
+      replies: { ...state.replies, [key]: response },
+    },
+  }
+}
+```
+
+The same client run against a server with this stage in place:
+
+<TerminalTranscript
+  label="terminal"
+  lines={[
+    { type: 'output', text: 'client: attempt 1 timed out after 100 ms, retrying in 400 ms' },
+    { type: 'output', text: 'server: created order 1' },
+    { type: 'output', text: 'server: replayed reply for key chk_7f3a' },
+    { type: 'output', text: 'client: attempt 2 -> 201, order 1 confirmed' },
+    { type: 'output', text: 'client: GET /orders -> 1 orders' },
+  ]}
+/>
+
+Attempt 1 still times out and the server still creates order 1, because nothing can un-send a request. The difference is attempt 2: it carries the same key, the server finds the stored reply and returns it in a millisecond, well inside the timeout, and the customer sees the confirmation for the one order that exists. The stored reply is returned for a repeated key no matter what body accompanies it, which is why the replay check runs before validation: the work is already done, and the only honest answer is the one it produced.
+
+This is what makes a `POST` safely retryable, and it closes lesson 47's warning that creation is the one operation a client cannot blindly repeat. It is not free. The server needs somewhere to keep keys and replies, usually with an expiry so the store does not grow forever. Keys must be scoped to the caller, so one user's key cannot replay another user's order. And a retry that arrives while the first attempt is still in flight finds no stored reply yet; production implementations mark a key as in progress when work begins and answer the overlapping retry with 409 or by waiting, a detail the practice version leaves out. Those costs are why idempotency keys belong on the endpoints where a duplicate is expensive, checkout and payments first, rather than on every route.
+
+## Common mistakes
+
+These are the lifecycle errors that show up most often in real services and in interviews:
+
+- Assuming a timed-out request did nothing, so the client retries a `POST` and the server does the work twice.
+- Putting the idempotency key on each attempt instead of on the operation, which gives every retry a fresh key and defeats the whole mechanism.
+- Answering 404 when the path exists but the method does not, so a client concludes the resource is gone instead of learning which methods it supports.
+- Treating a captured path parameter as a number because the route named it `:id`, when every URL segment is a string until the handler parses it.
+- Buffering the whole body before checking its size, so the memory limit is enforced only after the memory has been spent.
+- Trusting `JSON.parse` as validation, when a successful parse proves the text was JSON and nothing about its shape.
+- Applying a patch field by field and validating afterward, so a rejected request leaves a half-updated record behind.
+- Reporting a state conflict, like editing a paid invoice, as 400 or 500 instead of 409, hiding the fact that the request was fine and the resource was not.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+The exercises walk the pipeline from front to back:
+
+1. Implement the route matcher, including path parameters and the 404 versus 405 decision.
+2. Implement the idempotent create handler that replays a stored reply for a repeated key and creates an order for a new one.
+3. Debug an update handler that changes the record before validating the patch and crashes on a missing invoice.
+4. Explain in your own words why a timeout is not a "no", and where the idempotency stage belongs in the pipeline.
