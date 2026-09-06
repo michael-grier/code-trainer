@@ -24,11 +24,11 @@ A client script walks through it: an anonymous read, a wrong password, Ada signi
     { type: 'command', text: 'POST /login {"username":"ada","password":"wrong password"}' },
     { type: 'output', text: '401  {"error":{"code":"invalid_credentials","message":"wrong username or password"}}' },
     { type: 'command', text: 'POST /login {"username":"ada","password":"correct horse"}' },
-    { type: 'output', text: '200  Set-Cookie: session=2fb0029ed09f...' },
+    { type: 'output', text: '200  Set-Cookie: session=2fb0029ed09f...; HttpOnly; SameSite=Lax; Path=/' },
     { type: 'command', text: 'GET /invoices/1 as ada' },
     { type: 'output', text: '200  {"invoice":{"id":1,"ownerId":"ada","total":1800,"status":"sent"}}' },
     { type: 'command', text: 'POST /login {"username":"grace","password":"battery staple"}' },
-    { type: 'output', text: '200  Set-Cookie: session=d25ca30e868a...' },
+    { type: 'output', text: '200  Set-Cookie: session=d25ca30e868a...; HttpOnly; SameSite=Lax; Path=/' },
     { type: 'command', text: 'GET /invoices/1 as grace' },
     { type: 'error', text: '200  {"invoice":{"id":1,"ownerId":"ada","total":1800,"status":"sent"}}' },
   ]}
@@ -163,5 +163,5 @@ The exercises follow the two stages in order, then the rule that connects them:
 
 1. Implement the authentication stage that turns a Cookie header and a session store into a user or a 401 with the right code.
 2. Implement the authorization guard for invoices, including the 404-versus-403 decision.
-3. Debug a delete handler that trusts identity claims in the request body and swaps its 401 and 403.
+3. Debug a delete handler that trusts identity claims in the request body and answers refusals with the wrong status codes.
 4. Explain in your own words the difference between the two questions, and why the second must be asked per resource with identity taken only from the session.
