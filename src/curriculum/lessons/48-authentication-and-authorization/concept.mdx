@@ -1,14 +1,167 @@
 # Authentication and Authorization
 
-This placeholder concept page reserves the lesson slot for **Authentication and Authorization**. The content pass will replace it with the final interview-focused MDX lesson.
+Lesson 47's invoicing tool had a security finding: one route returned any user's invoices to any logged-in caller. Here is that bug, small enough to run. Invoice 1 belongs to Ada, invoice 2 belongs to Grace, and reading an invoice requires signing in first. The handler checks for a session and, finding one, returns the invoice.
 
-## What this lesson will cover
+```ts
+if (req.method === 'GET' && match) {
+  const session = currentUser(req) // looks up the session cookie
+  if (!session) return send(401, { error: { code: 'unauthenticated', message: 'sign in to continue' } })
 
-- Core interview signals for authentication and authorization.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+  const invoice = invoices.find((candidate) => candidate.id === Number(match[1]))
+  if (!invoice) return send(404, { error: { code: 'not_found', message: `invoice ${match[1]} not found` } })
+
+  return send(200, { invoice })
+}
+```
+
+A client script walks through it: an anonymous read, a wrong password, Ada signing in and reading her invoice, then Grace signing in and reading Ada's.
+
+<TerminalTranscript
+  label="http"
+  lines={[
+    { type: 'command', text: 'GET /invoices/1 as nobody' },
+    { type: 'output', text: '401  {"error":{"code":"unauthenticated","message":"sign in to continue"}}' },
+    { type: 'command', text: 'POST /login {"username":"ada","password":"wrong password"}' },
+    { type: 'output', text: '401  {"error":{"code":"invalid_credentials","message":"wrong username or password"}}' },
+    { type: 'command', text: 'POST /login {"username":"ada","password":"correct horse"}' },
+    { type: 'output', text: '200  Set-Cookie: session=2fb0029ed09f...; HttpOnly; SameSite=Lax; Path=/' },
+    { type: 'command', text: 'GET /invoices/1 as ada' },
+    { type: 'output', text: '200  {"invoice":{"id":1,"ownerId":"ada","total":1800,"status":"sent"}}' },
+    { type: 'command', text: 'POST /login {"username":"grace","password":"battery staple"}' },
+    { type: 'output', text: '200  Set-Cookie: session=d25ca30e868a...; HttpOnly; SameSite=Lax; Path=/' },
+    { type: 'command', text: 'GET /invoices/1 as grace' },
+    { type: 'error', text: '200  {"invoice":{"id":1,"ownerId":"ada","total":1800,"status":"sent"}}' },
+  ]}
+/>
+
+Everything up to the last line is correct. Strangers are turned away, a wrong password is refused, and Ada sees her own invoice. Then Grace, who signed in with her own valid password and her own valid session, reads Ada's invoice, and the server hands it over because Grace passed the only check it had. The handler asked "who is this?" and got a true answer. It never asked "may this person see invoice 1?", and those are different questions with different answers. This lesson is about keeping them apart: how a server establishes who is calling, how it decides what that caller may do, and why the second question has to be asked for every resource, not just at the door.
+
+## Two questions, two stages
+
+**Authentication** is establishing identity: turning a request into a known user, or refusing to. **Authorization** is deciding permission: whether that known user may perform this action on this resource. In lesson 46's pipeline they are consecutive stages with different stop codes. Authentication fails with **401**, which the standard calls "Unauthorized" but means "I do not know who you are"; the fix is to sign in. Authorization fails with **403 Forbidden**, which means "I know exactly who you are, and the answer is no"; signing in again will not help.
+
+The opener's handler had an authentication stage and no authorization stage. That is the most common shape of this bug, because authentication is easy to centralize, one check at the front of every route, while authorization depends on the specific resource being asked for. Lesson 44 made the point from the browser's side: the client may hide the button, but the server must decide the action, because the client is the one place the user can edit. This lesson is that decision, written on the server.
+
+## Proving identity
+
+Identity starts with a credential, most often a password, and the first rule is that the server never stores it. It stores a **hash**: the output of a deliberately slow one-way function applied to the password and a random **salt**, a per-user value that makes identical passwords hash differently. Verifying a login recomputes the hash from the submitted password and the stored salt and compares the two.
+
+```ts
+import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
+
+function hashPassword(password: string): string {
+  // A fresh salt per user, stored next to the hash so it can be reused to verify.
+  const salt = randomBytes(16).toString('hex')
+  return `${salt}:${scryptSync(password, salt, 32).toString('hex')}`
+}
+
+function verifyPassword(password: string, stored: string): boolean {
+  const [salt, hash] = stored.split(':')
+  // Constant-time comparison: a plain === leaks how many leading bytes matched.
+  return timingSafeEqual(scryptSync(password, salt, 32), Buffer.from(hash, 'hex'))
+}
+```
+
+<TerminalTranscript
+  label="console"
+  lines={[
+    { type: 'output', text: '370bfe221f91faee:be08bf45d613f0b675fad85126b8651082777fc973e15e3f9efb4a7069eefa9b' },
+    { type: 'output', text: 'true false' },
+  ]}
+/>
+
+The first line is what the database holds for the password `correct horse`: a salt, a colon, and 32 bytes of hash. The second line verifies the right password and then `correct horse!`, which differs by one character and fails. If the database leaks, the attacker gets these strings and has to guess passwords one slow hash at a time. `scrypt` is built into Node; `bcrypt` and `argon2` are the other standard choices. Plain `sha256` is not, because it is fast, and fast is exactly what a password hash must not be.
+
+A verified password is a one-time event, and the client cannot resend it with every request. So the server issues a **session**: a long random id, stored server-side in a map from id to user, and handed to the browser in a cookie. The `Set-Cookie` lines in the opener are this step, and the cookie is marked `HttpOnly` for the reason lesson 44 gave, so that a script injected into the page cannot read it. From then on, every request carries the cookie, and the authentication stage is a lookup:
+
+```ts
+function authenticate(
+  sessions: Record<string, Session>,
+  headers: Record<string, string>,
+  now: number,
+): AuthResult {
+  // The Cookie header is one string: "theme=dark; session=2fb0...". Find ours.
+  const pair = (headers.cookie ?? '')
+    .split(';')
+    .map((entry) => entry.trim())
+    .find((entry) => entry.startsWith('session='))
+  const sessionId = pair?.slice('session='.length) ?? ''
+  if (sessionId === '') return { ok: false, status: 401, code: 'missing_session' }
+
+  // A forged or long-deleted id is simply not in the store.
+  const session = sessions[sessionId]
+  if (session === undefined) return { ok: false, status: 401, code: 'unknown_session' }
+  if (session.expiresAt <= now) return { ok: false, status: 401, code: 'expired_session' }
+
+  return { ok: true, user: { id: session.userId, role: session.role } }
+}
+```
+
+Three different failures, one status. A missing cookie, an unknown id, and an expired session are all 401, because the answer to each is the same: sign in. The `code` field tells the client and the logs which one happened. Note what the function returns on success: a `User` value that only this function produces. Lesson 30 called this a signature that carries proof, and it applies here exactly. A handler declared as taking a `User` cannot be reached by a request that did not pass authentication, because nothing else in the program knows how to make one.
+
+Sessions have one well-known alternative. A **token** such as a JWT packs the user's identity into a signed string that the client sends in an `Authorization: Bearer` header, and the server verifies the signature instead of looking anything up. That saves the store and the lookup, which matters when many services need to authenticate the same request. It costs revocation: a session can be deleted from the store the moment a user signs out or is banned, but a signed token stays valid until it expires, unless the server keeps a list of revoked ones, which is a session store by another name. For a single application, sessions are the simpler and more controllable default.
+
+## Deciding permission, per resource
+
+Now the missing stage. The question "may Grace read invoice 1?" cannot be answered without invoice 1 in hand, because the answer depends on its `ownerId`. That is why authorization resists being one check at the front: it is **object-level**, made after the resource is loaded and before the handler acts. Roles add a coarser layer. An accountant may read every invoice and void any of them, an admin may do anything, and a member is limited to what they own. The clean shape is one pure function that takes the caller, the action, and the resource, and returns a decision, run before the handler on every route that touches an invoice.
+
+```ts
+function authorizeInvoice(user: User, action: Action, invoice: Invoice): Decision {
+  if (user.role === 'admin') return { allowed: true }
+
+  const isOwner = invoice.ownerId === user.id
+  const canRead = isOwner || user.role === 'accountant'
+
+  // Someone who may not read the invoice must not learn that it exists.
+  if (!canRead) return { allowed: false, status: 404 }
+  if (action === 'read') return { allowed: true }
+
+  // From here the caller knows the invoice exists, so a refusal is honest: 403.
+  if (action === 'void') {
+    return user.role === 'accountant' ? { allowed: true } : { allowed: false, status: 403 }
+  }
+  return isOwner ? { allowed: true } : { allowed: false, status: 403 }
+}
+```
+
+The two refusal codes encode a judgment worth making explicit. When Grace, a member, asks for Ada's invoice, a 403 would tell her that invoice 1 exists and belongs to someone else, which is itself a small leak, and a patient attacker can walk ids and map the whole table from 403s alone. So a caller who could not read the resource gets 404, the same answer they would get for an id that was never issued. When Ada asks to void her own invoice, she already knows it exists, and 403 tells her the truth: that action needs a role she does not have. The rule is: hide existence from callers who could not read; refuse honestly otherwise. With the guard in place, the opener's last exchange becomes:
+
+<TerminalTranscript
+  label="http"
+  lines={[
+    { type: 'command', text: 'GET /invoices/1 as grace' },
+    { type: 'output', text: '404  {"error":{"code":"not_found","message":"invoice 1 not found"}}' },
+  ]}
+/>
+
+One more rule, and it is the one that turns a correct guard into a useless one. The `user` passed to the guard must come from the authentication stage, never from the request. A request body that says `{ "userId": "ada" }` or a header that says `x-user-id: ada` is a claim, and lesson 44's trust boundary applies to claims about identity more than to anything else: the client can write whatever it likes there. Identity is what the session store says about the cookie. The third practice problem is a delete handler that lets the body's claims override the session, and the fix is to stop reading them at all.
+
+## Cookies bring one more attacker
+
+Lesson 44 deferred a cookie problem to this track, and this is the place for it. Browsers attach cookies to every request for a site automatically, including requests a different site caused. A page on another domain can contain a form that posts to your `DELETE`-equivalent endpoint, and if the user is signed in, the browser sends their session cookie along. That is **cross-site request forgery**: the attacker never learns the cookie, but borrows it. The modern defense is in the `Set-Cookie` line from the opener: `SameSite=Lax` tells the browser not to attach the cookie to cross-site `POST` requests, and current browsers default to it. Applications that must support older clients add a **CSRF token**, a random value the page embeds in its forms and the server checks against the session, which an attacker's page cannot know. Tokens sent in an `Authorization` header do not have this problem, because the browser never attaches them automatically, which is the one place they are strictly safer than cookies.
+
+## What the discipline costs
+
+Authorization done per resource costs a load before the decision, which is one more query on every route, and the 404-for-hidden rule costs support engineers some confusion when a user reports "not found" for something that exists. Role systems grow: three roles today become permissions per action tomorrow, and the guard function gets longer. The session store is a lookup per request and a table to expire. All of these are cheaper than the finding in the opener, and the way to keep them small is the shape this lesson used: one authenticate function that is the only source of `User`, one guard function per resource type that every route calls, and status codes that tell the truth without telling too much.
+
+## Common mistakes
+
+These are the auth errors that show up most often in reviews and in interviews:
+
+- Checking that the caller is signed in and treating that as permission, so any authenticated user can read any resource by changing an id.
+- Reading the caller's identity or role from the request body or a custom header, when both are claims the client wrote.
+- Returning 403 when the caller was not authenticated, or 401 when they were, so clients cannot tell "sign in" from "not allowed."
+- Answering 403 for a resource the caller should not know exists, which lets an attacker map ids that belong to other users.
+- Storing passwords with a fast hash like sha256, or with no salt, so a leaked table can be cracked in bulk.
+- Comparing hashes or tokens with `===`, which leaks timing information about how many bytes matched.
+- Putting session tokens in `localStorage` or in a cookie without `HttpOnly`, where an injected script can read them.
+- Forgetting that cookies travel automatically, so a state-changing endpoint without `SameSite` or a CSRF token can be driven from another site.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+The exercises follow the two stages in order, then the rule that connects them:
+
+1. Implement the authentication stage that turns a Cookie header and a session store into a user or a 401 with the right code.
+2. Implement the authorization guard for invoices, including the 404-versus-403 decision.
+3. Debug a delete handler that trusts identity claims in the request body and answers refusals with the wrong status codes.
+4. Explain in your own words the difference between the two questions, and why the second must be asked per resource with identity taken only from the session.
