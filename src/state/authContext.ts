@@ -2,11 +2,6 @@ import { createContext, useContext } from 'react'
 
 import type { AppAuthSnapshot } from '@/state/authState'
 
-export type VerifyCodeInput = {
-  email: string
-  code: string
-}
-
 export class AuthActionError extends Error {
   readonly code?: string
   readonly status?: number
@@ -25,8 +20,7 @@ export class AuthActionError extends Error {
 }
 
 export type AppAuth = AppAuthSnapshot & {
-  requestCode: (email: string) => Promise<void>
-  verifyCode: (input: VerifyCodeInput) => Promise<void>
+  signInWithGitHub: () => Promise<void>
   signOut: () => Promise<void>
   signOutAllDevices: () => Promise<void>
 }

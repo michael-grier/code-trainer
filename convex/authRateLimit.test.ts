@@ -1,8 +1,15 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { decideAuthRequestRateLimit } from './authRateLimit'
+import {
+  createPrivateAuthKey,
+  decideAuthRequestRateLimit,
+} from './authRateLimit'
 
 const rule = { now: 10_000, windowSeconds: 60, max: 3 }
+
+afterEach(() => {
+  vi.unstubAllEnvs()
+})
 
 describe('auth request rate limiting', () => {
   it('counts requests atomically within the active window', () => {
@@ -56,5 +63,16 @@ describe('auth request rate limiting', () => {
       retryAfter: null,
       next: { count: 1, lastRequest: 10_000 },
     })
+  })
+
+  it('stores a stable secret-keyed digest instead of the request identifier', async () => {
+    vi.stubEnv('BETTER_AUTH_SECRET', 'test-secret-with-at-least-32-characters')
+
+    const first = await createPrivateAuthKey('github:203.0.113.12')
+    const second = await createPrivateAuthKey('github:203.0.113.12')
+
+    expect(first).toBe(second)
+    expect(first).toMatch(/^[a-f0-9]{64}$/)
+    expect(first).not.toContain('203.0.113.12')
   })
 })

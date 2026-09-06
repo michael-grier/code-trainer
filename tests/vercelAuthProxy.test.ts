@@ -17,7 +17,7 @@ describe('Vercel auth proxy', () => {
     })
     upstreamHeaders.append(
       'set-cookie',
-      'code_trainer.session=abc; HttpOnly; Secure; SameSite=Strict; Path=/',
+      'code_trainer.state=abc; HttpOnly; Secure; SameSite=Lax; Path=/',
     )
     upstreamHeaders.append(
       'set-cookie',
@@ -34,7 +34,7 @@ describe('Vercel auth proxy', () => {
 
     const response = await proxyAuthRequest(
       new Request(
-        'https://trainer.example.com/api/auth?__auth_path=sign-in/email-otp&returnTo=%2Fprogress',
+        'https://trainer.example.com/api/auth?__auth_path=sign-in/social&returnTo=%2Fprogress',
         {
           method: 'POST',
           headers: {
@@ -45,14 +45,14 @@ describe('Vercel auth proxy', () => {
             'x-real-ip': '198.51.100.41',
             'x-vercel-forwarded-for': '203.0.113.12',
           },
-          body: '{"email":"learner@example.com"}',
+          body: '{"provider":"github"}',
         },
       ),
     )
 
     expect(response).toBe(upstreamResponse)
     expect(response.headers.getSetCookie()).toEqual([
-      'code_trainer.session=abc; HttpOnly; Secure; SameSite=Strict; Path=/',
+      'code_trainer.state=abc; HttpOnly; Secure; SameSite=Lax; Path=/',
       'code_trainer.preference=compact; Secure; SameSite=Strict; Path=/',
     ])
     expect(fetchMock).toHaveBeenCalledOnce()
@@ -61,12 +61,13 @@ describe('Vercel auth proxy', () => {
     const headers = new Headers(init?.headers)
 
     expect(url.toString()).toBe(
-      'https://demo.convex.site/api/auth/sign-in/email-otp?returnTo=%2Fprogress',
+      'https://demo.convex.site/api/auth/sign-in/social?returnTo=%2Fprogress',
     )
     expect(init?.method).toBe('POST')
     expect(new TextDecoder().decode(init?.body as ArrayBuffer)).toBe(
-      '{"email":"learner@example.com"}',
+      '{"provider":"github"}',
     )
+    expect(init?.redirect).toBe('manual')
     expect(headers.get('cookie')).toBe('code_trainer.session=abc')
     expect(headers.get('origin')).toBe('https://trainer.example.com')
     expect(headers.get('host')).toBeNull()

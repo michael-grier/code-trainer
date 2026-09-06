@@ -1,22 +1,15 @@
 import {
   CircleCheck,
+  Github,
   LoaderCircle,
   LogIn,
-  ShieldCheck,
   TriangleAlert,
   UserRound,
 } from 'lucide-react'
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type FormEvent,
-} from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import {
   Sheet,
   SheetContent,
@@ -25,11 +18,7 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet'
 import { AuthActionError, useAppAuth } from '@/state/authContext'
-import {
-  getAuthErrorMessage,
-  getCountdownSeconds,
-  getSignOutReadiness,
-} from '@/state/authFlow'
+import { getAuthErrorMessage, getSignOutReadiness } from '@/state/authFlow'
 import { summarizeProgress, type ProgressSummary } from '@/state/cloudProgress'
 import {
   useProgress,
@@ -38,9 +27,7 @@ import {
 } from '@/state/progressContext'
 
 type SheetStep =
-  | 'email'
-  | 'code'
-  | 'loading'
+  | 'signin'
   | 'progress'
   | 'account'
   | 'signout-warning'
@@ -49,14 +36,10 @@ export function AuthSheet() {
   const auth = useAppAuth()
   const progress = useProgress()
   const [open, setOpen] = useState(false)
-  const [step, setStep] = useState<SheetStep>('email')
-  const [email, setEmail] = useState('')
-  const [code, setCode] = useState('')
+  const [step, setStep] = useState<SheetStep>('signin')
   const [error, setError] = useState<string>()
   const [isWorking, setIsWorking] = useState(false)
-  const [resendAt, setResendAt] = useState(0)
   const [signOutEverywhere, setSignOutEverywhere] = useState(false)
-  const resendSeconds = useCountdown(resendAt)
   const deviceSummary = useMemo(
     () => summarizeProgress(progress.state),
     [progress.state],
@@ -70,7 +53,6 @@ export function AuthSheet() {
 
   const closeSheet = useCallback(() => {
     setOpen(false)
-    setCode('')
     setError(undefined)
     setIsWorking(false)
     setSignOutEverywhere(false)
@@ -86,29 +68,11 @@ export function AuthSheet() {
     setError(undefined)
   }, [hasHandoff])
 
-  useEffect(() => {
-    if (!open || step !== 'loading') {
-      return
-    }
-
-    if (progress.handoff) {
-      setStep('progress')
-      return
-    }
-
-    if (auth.status === 'failed' || progress.syncStatus === 'failed') {
-      setError('You are signed in, but cloud progress could not reconnect yet.')
-      return
-    }
-
-    if (auth.status === 'authenticated' && progress.syncStatus === 'synced') {
-      closeSheet()
-    }
-  }, [auth.status, closeSheet, open, progress.handoff, progress.syncStatus, step])
-
   const handleOpenChange = (nextOpen: boolean) => {
     if (nextOpen) {
-      setStep(progress.handoff ? 'progress' : hasKnownUser ? 'account' : 'email')
+      setStep(
+        progress.handoff ? 'progress' : hasKnownUser ? 'account' : 'signin',
+      )
       setError(undefined)
       setOpen(true)
       return
@@ -117,48 +81,17 @@ export function AuthSheet() {
     closeSheet()
   }
 
-  const requestCode = async (event?: FormEvent) => {
-    event?.preventDefault()
+  const signInWithGitHub = async () => {
     setError(undefined)
     setIsWorking(true)
 
     try {
-      await auth.requestCode(email)
-      setResendAt(Date.now() + 60_000)
-      setStep('code')
-    } catch (requestError) {
-      const authError = toAuthActionError(requestError)
-
-      if (authError.retryAfterSeconds) {
-        setResendAt(Date.now() + authError.retryAfterSeconds * 1_000)
-      }
-      setError(getAuthErrorMessage(authError, 'send'))
+      await auth.signInWithGitHub()
+    } catch (signInError) {
+      setError(getAuthErrorMessage(toAuthActionError(signInError), 'signin'))
     } finally {
       setIsWorking(false)
     }
-  }
-
-  const verifyCode = async (event: FormEvent) => {
-    event.preventDefault()
-    setError(undefined)
-    setIsWorking(true)
-
-    try {
-      await auth.verifyCode({ email, code })
-      setStep('loading')
-    } catch (verifyError) {
-      setError(getAuthErrorMessage(toAuthActionError(verifyError), 'verify'))
-    } finally {
-      setIsWorking(false)
-    }
-  }
-
-  const resendCode = async () => {
-    if (resendSeconds > 0) {
-      return
-    }
-
-    await requestCode()
   }
 
   const moveAndContinue = async () => {
@@ -211,12 +144,6 @@ export function AuthSheet() {
     }
   }
 
-  const changeEmail = () => {
-    setCode('')
-    setError(undefined)
-    setStep('email')
-  }
-
   return (
     <Sheet onOpenChange={handleOpenChange} open={open}>
       <SheetTrigger asChild>
@@ -241,32 +168,14 @@ export function AuthSheet() {
       </SheetTrigger>
       <SheetContent className="left-auto right-0 w-full max-w-none border-l border-r-0 bg-card text-card-foreground shadow-2xl sm:max-w-[28rem]">
         <div className="min-h-0 flex-1 overflow-y-auto">
-          {step === 'email' && (
-            <EmailStep
+          {step === 'signin' && (
+            <GitHubStep
               deviceSummary={deviceSummary}
-              email={email}
               error={error}
               isWorking={isWorking}
               onClose={closeSheet}
-              onEmailChange={setEmail}
-              onSubmit={requestCode}
+              onSignIn={() => void signInWithGitHub()}
             />
-          )}
-          {step === 'code' && (
-            <CodeStep
-              code={code}
-              email={email}
-              error={error}
-              isWorking={isWorking}
-              onChangeCode={setCode}
-              onChangeEmail={changeEmail}
-              onResend={() => void resendCode()}
-              onSubmit={verifyCode}
-              resendSeconds={resendSeconds}
-            />
-          )}
-          {step === 'loading' && (
-            <LoadingStep error={error} onClose={closeSheet} />
           )}
           {step === 'progress' && progress.handoff && (
             <ProgressStep
@@ -301,171 +210,70 @@ export function AuthSheet() {
   )
 }
 
-function EmailStep({
+function GitHubStep({
   deviceSummary,
-  email,
   error,
   isWorking,
   onClose,
-  onEmailChange,
-  onSubmit,
+  onSignIn,
 }: {
   deviceSummary: ProgressSummary
-  email: string
   error?: string
   isWorking: boolean
   onClose: () => void
-  onEmailChange: (email: string) => void
-  onSubmit: (event: FormEvent) => Promise<void>
+  onSignIn: () => void
 }) {
   return (
-    <form className="p-6" onSubmit={(event) => void onSubmit(event)}>
-      <Badge variant="muted">{summaryLabel(deviceSummary, 'On this device')}</Badge>
-      <SheetTitle className="mt-5 text-2xl tracking-tight">
-        Carry this progress with you
-      </SheetTitle>
-      <SheetDescription className="mt-2 leading-6">
-        Enter your email and we will send one sign-in code. Every lesson stays
-        available without an account.
-      </SheetDescription>
-      <label className="mt-7 block text-sm font-medium" htmlFor="auth-email">
-        Email
-      </label>
-      <Input
-        autoComplete="email"
-        autoFocus
-        className="mt-2"
-        id="auth-email"
-        onChange={(event) => onEmailChange(event.target.value)}
-        placeholder="you@example.com"
-        required
-        type="email"
-        value={email}
-      />
-      <InlineError message={error} />
-      <Button className="mt-4 w-full" disabled={isWorking} type="submit">
-        {isWorking && <LoaderCircle className="size-4 animate-spin" />}
-        Email me a code
-      </Button>
-      <Button className="mt-2 w-full" onClick={onClose} type="button" variant="ghost">
-        Not now
-      </Button>
-    </form>
-  )
-}
-
-function CodeStep({
-  code,
-  email,
-  error,
-  isWorking,
-  onChangeCode,
-  onChangeEmail,
-  onResend,
-  onSubmit,
-  resendSeconds,
-}: {
-  code: string
-  email: string
-  error?: string
-  isWorking: boolean
-  onChangeCode: (code: string) => void
-  onChangeEmail: () => void
-  onResend: () => void
-  onSubmit: (event: FormEvent) => Promise<void>
-  resendSeconds: number
-}) {
-  return (
-    <form onSubmit={(event) => void onSubmit(event)}>
-      <StepRail />
-      <div className="p-6">
-        <SheetTitle className="text-2xl tracking-tight">Enter your code</SheetTitle>
+    <div className="flex min-h-full flex-col">
+      <div className="p-6 pt-14">
+        <SheetTitle className="text-2xl tracking-tight">
+          Your work can follow you
+        </SheetTitle>
         <SheetDescription className="mt-2 leading-6">
-          Sent to <span className="font-medium text-foreground">{email}</span>.{' '}
-          <button
-            className="rounded-sm text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={onChangeEmail}
-            type="button"
-          >
-            Change email
-          </button>
+          Keep learning as a guest, or connect GitHub and use the same progress
+          on another device.
         </SheetDescription>
-        <label className="mt-6 block text-sm font-medium" htmlFor="auth-code">
-          8-digit code
-        </label>
-        <Input
-          aria-describedby="auth-code-help"
-          autoComplete="one-time-code"
-          autoFocus
-          className="mt-2 h-12 text-center text-xl tracking-[0.35em]"
-          id="auth-code"
-          inputMode="numeric"
-          onChange={(event) =>
-            onChangeCode(event.target.value.replace(/\D/g, '').slice(0, 8))
-          }
-          pattern="[0-9]{8}"
-          required
-          value={code}
-        />
-        <InlineError message={error} />
-        <Button
-          className="mt-4 w-full"
-          disabled={isWorking || code.length !== 8}
-          type="submit"
-        >
-          {isWorking && <LoaderCircle className="size-4 animate-spin" />}
-          Verify code
-        </Button>
-        <div className="mt-5 flex items-start gap-3 border-t pt-5" id="auth-code-help">
-          <ShieldCheck className="mt-0.5 size-4 shrink-0 text-primary" />
-          <div>
-            <p className="text-sm font-medium">This browser will remember you</p>
+        <div className="mt-7 overflow-hidden rounded-lg border">
+          <SummaryRow
+            detail="Available without an account"
+            label="On this device"
+            summary={deviceSummary}
+          />
+          <div className="border-t bg-muted/50 p-4">
+            <p className="text-sm font-medium">After sign-in</p>
             <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              The 30-day session renews while you are active. On a shared
-              computer, use private browsing or sign out when finished.
+              Choose whether to move this work or keep the progress already
+              saved to your account.
             </p>
           </div>
         </div>
+        <InlineError message={error} />
         <Button
-          className="mt-4 w-full text-xs"
-          disabled={isWorking || resendSeconds > 0}
-          onClick={onResend}
+          autoFocus
+          className="mt-6 w-full"
+          disabled={isWorking}
+          onClick={onSignIn}
+          type="button"
+        >
+          {isWorking ? (
+            <LoaderCircle className="size-4 animate-spin" />
+          ) : (
+            <Github aria-hidden="true" className="size-4" />
+          )}
+          Connect GitHub
+        </Button>
+        <Button
+          className="mt-2 w-full"
+          onClick={onClose}
           type="button"
           variant="ghost"
         >
-          {resendSeconds > 0
-            ? `Resend available in ${resendSeconds} seconds`
-            : 'Send a new code'}
-        </Button>
-      </div>
-    </form>
-  )
-}
-
-function LoadingStep({ error, onClose }: { error?: string; onClose: () => void }) {
-  return (
-    <div className="p-8">
-      <div className="flex items-start gap-4">
-        <LoaderCircle className="mt-0.5 size-6 shrink-0 animate-spin text-primary" />
-        <div>
-          <SheetTitle>Reconnecting cloud progress</SheetTitle>
-          <SheetDescription className="mt-1">
-            Local work remains available while the secure session is checked.
-          </SheetDescription>
-        </div>
-      </div>
-      <div className="mt-8 grid gap-3" aria-hidden="true">
-        <div className="h-14 animate-pulse rounded-lg bg-muted" />
-        <div className="h-24 animate-pulse rounded-lg bg-muted" />
-      </div>
-      <InlineError message={error} />
-      {error && (
-        <Button className="mt-4 w-full" onClick={onClose} type="button" variant="outline">
           Keep learning locally
         </Button>
-      )}
-      <p className="mt-5 text-xs text-muted-foreground">
-        Checking session · Refreshing access · Loading progress
+      </div>
+      <p className="mt-auto border-t p-6 text-xs leading-5 text-muted-foreground">
+        GitHub provides your name and email. Code Trainer never asks for
+        repository access.
       </p>
     </div>
   )
@@ -484,7 +292,7 @@ function ProgressStep({
 }) {
   return (
     <div>
-      <StepRail progress />
+      <StepRail />
       <div className="p-6">
         <SheetTitle className="text-2xl tracking-tight">Choose what follows you</SheetTitle>
         <SheetDescription className="mt-2 leading-6">
@@ -628,15 +436,13 @@ function SignOutWarning({
   )
 }
 
-function StepRail({ progress = false }: { progress?: boolean }) {
+function StepRail() {
   return (
     <div className="border-b p-6">
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <RailDone label="Email" />
+        <RailDone label="GitHub" />
         <span className="h-px flex-1 bg-primary" />
-        {progress ? <RailDone label="Code" /> : <RailCurrent label="2" name="Code" />}
-        <span className={`h-px flex-1 ${progress ? 'bg-primary' : 'bg-border'}`} />
-        {progress ? <RailCurrent label="3" name="Progress" /> : <RailFuture label="3" name="Progress" />}
+        <RailCurrent label="2" name="Progress" />
       </div>
     </div>
   )
@@ -664,27 +470,25 @@ function RailCurrent({ label, name }: { label: string; name: string }) {
   )
 }
 
-function RailFuture({ label, name }: { label: string; name: string }) {
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <span className="grid size-5 place-items-center rounded-full border">{label}</span>
-      {name}
-    </span>
-  )
-}
-
 function SummaryRow({
   className = '',
+  detail,
   label,
   summary,
 }: {
   className?: string
+  detail?: string
   label: string
   summary: ProgressSummary
 }) {
   return (
     <div className={`flex items-center justify-between gap-4 p-4 text-sm ${className}`}>
-      <span>{label}</span>
+      <div>
+        <span>{label}</span>
+        {detail && (
+          <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
+        )}
+      </div>
       <strong className="text-right">{summaryLabel(summary)}</strong>
     </div>
   )
@@ -769,25 +573,4 @@ function toAuthActionError(error: unknown) {
   return error instanceof AuthActionError
     ? error
     : new AuthActionError('The request could not be completed.')
-}
-
-function useCountdown(deadline: number) {
-  const [seconds, setSeconds] = useState(0)
-
-  useEffect(() => {
-    const update = () => {
-      setSeconds(getCountdownSeconds(deadline))
-    }
-
-    update()
-
-    if (deadline <= Date.now()) {
-      return
-    }
-
-    const timer = window.setInterval(update, 1_000)
-    return () => window.clearInterval(timer)
-  }, [deadline])
-
-  return seconds
 }

@@ -18,13 +18,8 @@ import {
   AuthActionError,
   AuthContext,
   type AppAuth,
-  type VerifyCodeInput,
 } from '@/state/authContext'
-import {
-  normalizeEmail,
-  normalizeEmailCode,
-  toAuthActionError,
-} from '@/state/authFlow'
+import { toAuthActionError } from '@/state/authFlow'
 import {
   resolveAppAuthState,
   type AppUser,
@@ -40,8 +35,7 @@ export function UnconfiguredAuthProvider({ children }: { children: ReactNode }) 
   const value = useMemo<AppAuth>(
     () => ({
       status: 'unconfigured',
-      requestCode: unavailable,
-      verifyCode: unavailable,
+      signInWithGitHub: unavailable,
       signOut: unavailable,
       signOutAllDevices: unavailable,
     }),
@@ -106,42 +100,18 @@ export function AppAuthProvider({ children }: { children: ReactNode }) {
     [previousUser?.id, rawSessionUserId, refetchSession],
   )
 
-  const requestCode = useCallback(async (email: string) => {
-    const result = await authClient.emailOtp.sendVerificationOtp({
-      email: normalizeEmail(email),
-      type: 'sign-in',
+  const signInWithGitHub = useCallback(async () => {
+    const returnPath = `${window.location.pathname}${window.location.search}${window.location.hash}`
+    const result = await authClient.signIn.social({
+      provider: 'github',
+      callbackURL: returnPath,
+      errorCallbackURL: returnPath,
     })
 
     if (result.error) {
-      throw toAuthActionError(result.error, 'We could not send a sign-in code.')
+      throw toAuthActionError(result.error, 'GitHub sign-in could not start.')
     }
   }, [])
-
-  const verifyCode = useCallback(
-    async ({ email, code }: VerifyCodeInput) => {
-      const normalizedCode = normalizeEmailCode(code)
-
-      if (!/^\d{8}$/.test(normalizedCode)) {
-        throw new AuthActionError('Enter the 8-digit code from your email.', {
-          code: 'INVALID_CODE_FORMAT',
-          status: 400,
-        })
-      }
-
-      const result = await authClient.signIn.emailOtp({
-        email: normalizeEmail(email),
-        otp: normalizedCode,
-      })
-
-      if (result.error) {
-        throw toAuthActionError(result.error, 'That sign-in code did not work.')
-      }
-
-      setIsRemoteSignOutPending(false)
-      await refetchSession()
-    },
-    [refetchSession],
-  )
 
   const signOut = useCallback(async () => {
     const userId = rawSessionUserId
@@ -179,12 +149,11 @@ export function AppAuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AppAuth>(
     () => ({
       ...snapshot,
-      requestCode,
-      verifyCode,
+      signInWithGitHub,
       signOut,
       signOutAllDevices,
     }),
-    [requestCode, signOut, signOutAllDevices, snapshot, verifyCode],
+    [signInWithGitHub, signOut, signOutAllDevices, snapshot],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

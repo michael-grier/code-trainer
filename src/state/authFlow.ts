@@ -1,18 +1,6 @@
 import { AuthActionError } from '@/state/authContext'
 
-export type AuthErrorAction = 'send' | 'verify' | 'signout'
-
-export function normalizeEmail(email: string) {
-  return email.trim().toLowerCase()
-}
-
-export function normalizeEmailCode(code: string) {
-  return code.replace(/[\s-]/g, '')
-}
-
-export function getCountdownSeconds(deadline: number, now = Date.now()) {
-  return Math.max(0, Math.ceil((deadline - now) / 1_000))
-}
+export type AuthErrorAction = 'signin' | 'signout'
 
 export async function getSignOutReadiness(
   flushProgress: () => Promise<boolean>,
@@ -46,25 +34,13 @@ export function getAuthErrorMessage(
   error: AuthActionError,
   action: AuthErrorAction,
 ) {
-  if (error.code === 'INVALID_OTP') {
-    return 'That code does not match. Check the email and try again.'
-  }
-  if (error.code === 'OTP_EXPIRED') {
-    return 'That code expired. Request a new code to continue.'
-  }
-  if (error.code === 'TOO_MANY_ATTEMPTS') {
-    return 'Too many attempts. Request a new code to continue.'
-  }
   if (error.status === 429) {
     return error.retryAfterSeconds
       ? `Request limit reached. Try again in ${error.retryAfterSeconds} seconds.`
       : 'Request limit reached. Please wait before trying again.'
   }
-  if (action === 'send') {
-    return 'Email could not be sent. You can keep learning locally and retry later.'
-  }
-  if (action === 'verify') {
-    return error.message
+  if (action === 'signin') {
+    return 'GitHub sign-in did not start. You can keep learning locally and retry later.'
   }
   return 'Sign-out did not finish. Your account session is still active.'
 }
