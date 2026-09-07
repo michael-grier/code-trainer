@@ -1,10 +1,10 @@
 # Caching and Rate Limiting
 
-The invoice list from lesson 48 got slow once the query grew, so someone added a cache in front of it. The route is `GET /me/invoices`: it authenticates the session, loads that user's invoices, and returns them. Ada owns invoice 1 and Grace owns invoice 2. The cache stores each answer for five seconds under the key `invoices`.
+The invoice list from lesson 48 got slow once the query grew, so someone added a cache in front of it. The route is `GET /me/invoices`: it authenticates the session, loads that user's invoices, and returns them. Ada owns invoice 1 and Grace owns invoice 2. The cache stores each answer under the key `invoices`, recording an expiry five seconds out that nothing ever reads.
 
 ```ts
 const hit = cache.get('invoices')
-if (hit && hit.expiresAt > Date.now()) return send(200, { invoices: hit.value, source: 'cache' })
+if (hit) return send(200, { invoices: hit.value, source: 'cache' })
 
 const value = await loadInvoices(user) // about 300 ms
 cache.set('invoices', { value, expiresAt: Date.now() + 5000 })
@@ -23,7 +23,7 @@ Ada asks for her invoices, and a moment later Grace asks for hers.
   ]}
 />
 
-Grace received Ada's invoice, marked `source: cache` so there is no doubt where it came from. Lesson 48 built the authentication and the ownership check, both ran, and both were bypassed anyway, because the cache sat in front of them with a key that did not say whose invoices it held. The first request to arrive filled the entry, and for the next five seconds every user on the site saw Ada's finances. This lesson is about the two tools that protect a slow or expensive origin, caches and rate limits, and about the ways each one quietly changes what the system promises.
+Grace received Ada's invoice, marked `source: cache` so there is no doubt where it came from. Lesson 48 built the authentication and the ownership check, both ran, and both were bypassed anyway, because the cache sat in front of them with a key that did not say whose invoices it held. The first request to arrive filled the entry, and every user on the site saw Ada's finances until the process restarted, because the expiry was written down and never checked. This lesson is about the two tools that protect a slow or expensive origin, caches and rate limits, and about the ways each one quietly changes what the system promises.
 
 ## A cache is a copy, and the key is the contract
 

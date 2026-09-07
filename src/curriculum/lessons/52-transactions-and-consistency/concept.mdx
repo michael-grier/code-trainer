@@ -145,7 +145,7 @@ If another handler committed first, the version is already 2, the update affects
 
 ## Serializable, and the retry that comes with it
 
-PostgreSQL also offers the strictest isolation level, `SERIALIZABLE`, which promises that the outcome of concurrent transactions equals some one-at-a-time ordering of them. Under it the opener's two sessions cannot both succeed; the database detects that B's write depends on a read that A invalidated and aborts B.
+PostgreSQL also offers the strictest isolation level, `SERIALIZABLE`, which promises that the outcome of concurrent transactions equals some one-at-a-time ordering of them. Under it the opener's two sessions cannot both succeed; B's transaction took its snapshot before A committed, so when B tries to update a row A has changed since then, the database refuses rather than let B overwrite a version it never saw, and aborts B.
 
 <TerminalTranscript
   label="psql, two sessions"

@@ -95,7 +95,7 @@ The arithmetic inside the backfill deserves its own attention, because a data mi
     { type: 'command', text: '-- session 1: a report holds the table for four seconds' },
     { type: 'command', text: '-- session 2, half a second later: ALTER TABLE orders ADD COLUMN note text;' },
     { type: 'command', text: "-- session 3, half a second after that: SELECT count(*) FROM orders WHERE customer_id = 7;" },
-    { type: 'error', text: 'alter: Time: 3542.571 ms' },
+    { type: 'output', text: 'alter: Time: 3542.571 ms' },
     { type: 'error', text: 'read:  Time: 3062.655 ms' },
   ]}
 />
