@@ -1,14 +1,153 @@
 # Caching and Rate Limiting
 
-This placeholder concept page reserves the lesson slot for **Caching and Rate Limiting**. The content pass will replace it with the final interview-focused MDX lesson.
+The invoice list from lesson 48 got slow once the query grew, so someone added a cache in front of it. The route is `GET /me/invoices`: it authenticates the session, loads that user's invoices, and returns them. Ada owns invoice 1 and Grace owns invoice 2. The cache stores each answer for five seconds under the key `invoices`.
 
-## What this lesson will cover
+```ts
+const hit = cache.get('invoices')
+if (hit && hit.expiresAt > Date.now()) return send(200, { invoices: hit.value, source: 'cache' })
 
-- Core interview signals for caching and rate limiting.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+const value = await loadInvoices(user) // about 300 ms
+cache.set('invoices', { value, expiresAt: Date.now() + 5000 })
+return send(200, { invoices: value, source: 'origin' })
+```
+
+Ada asks for her invoices, and a moment later Grace asks for hers.
+
+<TerminalTranscript
+  label="http"
+  lines={[
+    { type: 'command', text: 'GET /me/invoices as ada' },
+    { type: 'output', text: '200 {"invoices":[{"id":1,"total":1800}],"source":"origin"}' },
+    { type: 'command', text: 'GET /me/invoices as grace' },
+    { type: 'error', text: '200 {"invoices":[{"id":1,"total":1800}],"source":"cache"}' },
+  ]}
+/>
+
+Grace received Ada's invoice, marked `source: cache` so there is no doubt where it came from. Lesson 48 built the authentication and the ownership check, both ran, and both were bypassed anyway, because the cache sat in front of them with a key that did not say whose invoices it held. The first request to arrive filled the entry, and for the next five seconds every user on the site saw Ada's finances. This lesson is about the two tools that protect a slow or expensive origin, caches and rate limits, and about the ways each one quietly changes what the system promises.
+
+## A cache is a copy, and the key is the contract
+
+A **cache** stores the answer to an expensive question so the next identical question can be answered without asking again. The word that matters is identical. The **cache key** is how the cache decides two questions are the same, so it has to include every input the answer depends on. The invoice list depends on which user is asking, so the user must be in the key. Anything left out of the key becomes a way for one caller's answer to reach another.
+
+```ts
+const key = `invoices:${user}`
+```
+
+<TerminalTranscript
+  label="http"
+  lines={[
+    { type: 'command', text: 'GET /me/invoices as ada' },
+    { type: 'output', text: '200 {"invoices":[{"id":1,"total":1800}],"source":"origin"}' },
+    { type: 'command', text: 'GET /me/invoices as grace' },
+    { type: 'output', text: '200 {"invoices":[{"id":2,"total":250}],"source":"origin"}' },
+  ]}
+/>
+
+The same rule covers more than users. A list filtered by status depends on the status parameter, so the parameter is in the key. A response that differs by locale or by API version carries those in the key too. A useful habit is to write the key as the full question: `invoices:ada:status=sent:page=2`. It is also lesson 46's routing lesson from the other side: the pieces that made the request distinct to the router make it distinct to the cache.
+
+## Staleness is the price, and TTL is how you set it
+
+A cached answer is a copy of the truth at some past moment. If Ada pays invoice 1 two seconds after the cache filled, the cached list still says it is unpaid for three more seconds. That gap is **staleness**, and every cache has it. The **time to live**, or TTL, is how long an entry may be served before it is treated as missing, and choosing it is a judgment about how wrong the system can afford to be. A product catalog can be minutes stale; an account balance a few seconds at most; the result of a payment, never, which means the payment result should not be cached at all.
+
+When staleness is unacceptable but the read is still too slow, the answer is **invalidation**: the code that changes the data also removes the cache entries that depended on it. Marking an invoice paid deletes `invoices:ada`. The cost is that every write path must know every key that could be affected, which is easy for one key and hard for a list filtered ten ways. Lesson 39 met this same tradeoff on the client, where a snapshot of server state ages and has to be refreshed or invalidated; the server-side cache is that snapshot one hop closer to the database, and the same questions apply. The first practice problem repairs the opener's cache read so the key includes the user and an expired entry counts as a miss.
+
+## When the cache empties, everyone misses at once
+
+A cache also changes how load reaches the origin. Under a warm cache, one request in a thousand touches the database. When an entry expires, or the cache restarts, every request in flight misses at the same instant, and every one of them runs the expensive query. Fifty concurrent requests for Ada's invoices against an empty cache:
+
+<TerminalTranscript
+  label="terminal"
+  lines={[
+    { type: 'output', text: '-- stampede: 50 requests for ada at once, cache empty' },
+    { type: 'error', text: 'db reads: 50' },
+  ]}
+/>
+
+Fifty identical queries for one answer. This is a **cache stampede**, and on a popular key it is how a cache expiry takes down the database the cache was protecting. The fix is to notice that the first miss has already started the work and make the other forty-nine wait for that result instead of starting their own. Keep one in-flight promise per key; a miss that finds one awaits it.
+
+```ts
+let pending = inFlight.get(key)
+if (!pending) {
+  // First miss for this key: start the load and publish the promise so
+  // later misses join it instead of querying again.
+  pending = loadInvoices(user).then((value) => {
+    cache.set(key, { value, expiresAt: Date.now() + 5000 })
+    inFlight.delete(key)
+    return value
+  })
+  inFlight.set(key, pending)
+}
+const value = await pending
+```
+
+<TerminalTranscript
+  label="terminal"
+  lines={[
+    { type: 'output', text: '-- stampede: 50 requests for ada at once, cache empty' },
+    { type: 'output', text: 'db reads: 1' },
+  ]}
+/>
+
+One query, fifty answers. Two companions to this technique are worth knowing. Adding a little random jitter to each TTL keeps entries that were filled together from expiring together. And serving a slightly stale entry while refreshing it in the background, often called stale-while-revalidate, turns the expiry cliff into a gentle slope, at the cost of one more window of staleness.
+
+## Rate limits protect the origin from callers
+
+Caches reduce the load a given request causes. **Rate limiting** bounds how many requests a caller may make, and it exists for three reasons: to keep one client, buggy or hostile, from consuming the capacity everyone shares; to keep costs bounded when each request costs money; and to make abuse expensive. A limited request is answered with **429 Too Many Requests** and a `Retry-After` header saying how long to wait, which is the signal lesson 43's retry logic treated as "slow down" rather than "give up."
+
+The limit needs a key too, and the same reasoning applies. For signed-in callers the key is the user id from lesson 48's session, never anything the client claims. For anonymous endpoints such as login itself, the key is the client address, with the understanding that many users can share one address behind a corporate network. Limits are usually layered: a generous one per user for ordinary traffic, a strict one per address on login to slow password guessing, and a global one to protect the database no matter who is asking.
+
+## Counting per window lets twice the limit through
+
+The obvious way to count is per fixed window: one counter per minute, reset on the minute. It fails at the boundary. A client that sends its whole allowance in the last second of one minute and again in the first second of the next has sent double the limit in two seconds, and the counter never noticed.
+
+<TerminalTranscript
+  label="console"
+  lines={[
+    { type: 'command', text: '-- limit 100 per minute; 150 requests at t=59s, 150 more at t=60s' },
+    { type: 'error', text: 'allowed 200 requests within 1 second' },
+  ]}
+/>
+
+The **token bucket** fixes the boundary by not having one. A bucket holds up to `capacity` tokens and refills continuously at `refillPerSecond`. Each request costs tokens; if enough are present it is allowed and they are spent, otherwise it is refused, and the shortfall divided by the refill rate is the honest `Retry-After`. The capacity sets how big a burst is allowed; the refill rate sets the sustained throughput. Between requests nothing runs: the bucket computes how many tokens arrived since it last looked.
+
+```ts
+// Refill for the time elapsed since the last request, never above capacity.
+tokens = Math.min(capacity, tokens + (now - lastAt) * refillPerSecond)
+lastAt = now
+
+if (cost <= tokens) {
+  tokens -= cost
+  return { allowed: true, retryAfterSeconds: 0 }
+}
+return { allowed: false, retryAfterSeconds: Math.ceil((cost - tokens) / refillPerSecond) }
+```
+
+With capacity 100 and a refill of about 1.7 per second, the boundary trick sends 100 requests and then finds an empty bucket, and no arrangement of timing gets more than the refill rate through over any span longer than the initial burst. The second practice problem implements this bucket as a pure function over a list of timestamped requests.
+
+## State that must be shared
+
+Both tools keep state, and lesson 45 explained where a `Map` at module scope lives: in one process. A cache in one process is fine, since a miss only costs a query. A rate limiter in one process is a bug. Six instances behind a load balancer each keep their own bucket, so a caller limited to 100 requests gets 600, and the strict limit on login is six times looser than anyone believes. Rate-limit state has to live somewhere every instance reads, usually a shared store such as Redis with an atomic increment or a small script for the bucket update, so that concurrent requests on different instances cannot both spend the last token. That shared store is itself a network call on every request, which is the cost of a limit that is actually enforced.
+
+The same question decides where a cache lives. A per-process cache is simple and cannot be invalidated from another instance, so an invoice paid through instance two stays cached on instance five until its TTL runs out. A shared cache is invalidated once for everyone and adds a network hop to every hit. The third practice problem asks you to make these choices for the book club API, endpoint by endpoint.
+
+## Common mistakes
+
+These are the caching and limiting errors that show up most often in incidents and in design interviews:
+
+- Building a cache key from the route alone, so a response that depends on the user or a parameter is served to callers it does not belong to.
+- Caching a response that must never be stale, such as a payment result or an authorization decision, because the route was slow.
+- Picking a TTL by habit instead of by asking how wrong the data may be, and then invalidating nothing on writes.
+- Letting every request that misses run the origin query, so an expiry on a popular key stampedes the database.
+- Counting requests per fixed window and allowing double the limit across a window boundary.
+- Keying the rate limit on something the client controls, such as a header it sends, instead of the authenticated user or the address.
+- Keeping limiter state in one process, so each instance behind the load balancer enforces its own copy of the limit.
+- Returning 429 without `Retry-After`, so well-behaved clients cannot back off correctly and retry blindly instead.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+The exercises follow the lesson from the opener's key to the limiter and the plan:
+
+1. Debug the cached invoice read so the key includes the user and an expired entry is a miss.
+2. Implement a token bucket that decides a sequence of timestamped requests and reports how long a refused caller should wait.
+3. Design the caching and rate-limiting plan for the book club API, endpoint by endpoint, including where the state lives.
+4. Explain in your own words why the opener leaked one user's data to another and why a fixed window is not a rate limit.
