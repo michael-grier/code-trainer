@@ -1,14 +1,167 @@
 # Indexes and Query Performance
 
-This placeholder concept page reserves the lesson slot for **Indexes and Query Performance**. The content pass will replace it with the final interview-focused MDX lesson.
+An activity feed shows a customer their twenty most recent events. The table holds a million rows, the query is four lines, and on the developer's laptop with a few thousand rows it always came back instantly.
 
-## What this lesson will cover
+```sql
+SELECT id, kind, created_at
+FROM events
+WHERE customer_id = 4242
+ORDER BY created_at DESC
+LIMIT 20;
+```
 
-- Core interview signals for indexes and query performance.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+Prefixing a query with `EXPLAIN ANALYZE` makes PostgreSQL run it and report the plan it chose along with the real time each step took. Here is the plan against the million-row table, trimmed to the lines that matter.
+
+<TerminalTranscript
+  label="psql"
+  lines={[
+    { type: 'command', text: 'EXPLAIN ANALYZE SELECT id, kind, created_at FROM events WHERE customer_id = 4242 ORDER BY created_at DESC LIMIT 20;' },
+    { type: 'output', text: ' Limit  (actual time=27.151..32.949 rows=20 loops=1)' },
+    { type: 'output', text: '   ->  Sort  (actual time=24.267..24.268 rows=8 loops=3)' },
+    { type: 'output', text: '         Sort Key: created_at DESC' },
+    { type: 'error', text: '         ->  Parallel Seq Scan on events  (actual time=1.330..24.187 rows=9 loops=3)' },
+    { type: 'output', text: '               Filter: (customer_id = 4242)' },
+    { type: 'error', text: '               Rows Removed by Filter: 333324' },
+    { type: 'output', text: ' Execution Time: 32.967 ms' },
+  ]}
+/>
+
+Read the plan from the innermost line outward, because that is the order the work happens. `Seq Scan` means the database read the table from beginning to end. Three parallel workers each examined a third of it and threw away 333,324 rows apiece to find the 28 that belong to customer 4242. Those 28 were then sorted by date, and the top 20 were kept. Thirty-three milliseconds for one feed load sounds tolerable until the feed is the most requested page in the product and every load reads a million rows to return twenty. This lesson is about the structure that fixes it, the plan output that tells you whether it did, and the cost that comes with it.
+
+## An index is a sorted copy of one column
+
+Without help, the only way to find every row where `customer_id = 4242` is to look at every row, because rows sit in the table in no particular order. An **index** is a separate structure the database maintains alongside the table: a copy of one or more columns kept in sorted order, with each entry pointing back at its row. Nearly every index you will create is a **B-tree**, a balanced tree over the sorted values, and the property that matters is that finding a value in it takes a number of steps proportional to the logarithm of the row count rather than to the row count itself. For a million rows that is around twenty comparisons instead of a million.
+
+```sql
+CREATE INDEX events_customer_id_idx ON events (customer_id);
+```
+
+<TerminalTranscript
+  label="psql"
+  lines={[
+    { type: 'output', text: ' Limit  (actual time=0.191..0.199 rows=20 loops=1)' },
+    { type: 'output', text: '   ->  Sort  (actual time=0.189..0.193 rows=20 loops=1)' },
+    { type: 'output', text: '         Sort Key: created_at DESC' },
+    { type: 'output', text: '         ->  Bitmap Heap Scan on events  (actual time=0.098..0.165 rows=28 loops=1)' },
+    { type: 'output', text: '               ->  Bitmap Index Scan on events_customer_id_idx  (actual time=0.083..0.084 rows=28 loops=1)' },
+    { type: 'output', text: '                     Index Cond: (customer_id = 4242)' },
+    { type: 'output', text: ' Execution Time: 0.233 ms' },
+  ]}
+/>
+
+The same query, the same result, 140 times faster. The innermost step is now an `Index Scan` with an `Index Cond`, meaning the database went to the index, found the 28 entries for 4242, and fetched only those rows. Nothing was removed by a filter, because nothing irrelevant was read. The `Sort` is still there, though: the index found the right rows, but they came out in index order, not date order, so the database still had to sort them.
+
+## Column order in a composite index
+
+An index can cover several columns, and the order you list them in decides which queries it can serve. A **composite index** on `(customer_id, created_at)` is sorted first by customer, and within each customer by date. For customer 4242, all of that customer's entries sit together in the index, already in date order, which is exactly the shape the feed query asks for.
+
+```sql
+DROP INDEX events_customer_id_idx;
+CREATE INDEX events_customer_created_idx ON events (customer_id, created_at DESC);
+```
+
+<TerminalTranscript
+  label="psql"
+  lines={[
+    { type: 'output', text: ' Limit  (actual time=0.023..0.049 rows=20 loops=1)' },
+    { type: 'output', text: '   ->  Index Scan using events_customer_created_idx on events  (actual time=0.022..0.046 rows=20 loops=1)' },
+    { type: 'output', text: '         Index Cond: (customer_id = 4242)' },
+    { type: 'output', text: ' Execution Time: 0.064 ms' },
+  ]}
+/>
+
+The `Sort` step is gone. The index walk produces rows in the requested order, so the `LIMIT` can stop after twenty entries without ever seeing the other eight. From 33 milliseconds to 0.06 is roughly five hundred times, and the difference between the two indexed plans, 0.23 versus 0.06, is entirely the sort that the column order made unnecessary.
+
+The rule that governs which queries a composite index can serve is called the **leftmost prefix** rule, and it follows from how the index is sorted. The index is ordered by its first column, then by its second within equal values of the first, and so on. A query can use it only if it constrains the columns from the left without skipping: equality on the first column, then equality or a range on the second, and so on. Once a column is used for a range, later columns are no longer in a useful order. A query that filters only on `created_at` cannot use the index at all, because entries for a given date are scattered across every customer.
+
+<TerminalTranscript
+  label="psql"
+  lines={[
+    { type: 'command', text: "EXPLAIN ANALYZE SELECT count(*) FROM events WHERE created_at >= '2026-08-01';" },
+    { type: 'error', text: '   ->  Parallel Seq Scan on events  (actual time=0.013..35.633 rows=38838 loops=3)' },
+    { type: 'output', text: "         Filter: (created_at >= '2026-08-01 00:00:00+00'::timestamp with time zone)" },
+    { type: 'output', text: ' Execution Time: 47.465 ms' },
+  ]}
+/>
+
+The index on `(customer_id, created_at)` exists and contains `created_at`, and the planner ignored it, because the query supplies nothing for the first column. The first practice problem asks you to apply the leftmost-prefix rule: given a set of indexes and a query's equality, range, and ordering columns, which index can serve it and how far does it reach.
+
+## Queries that hide the column from the index
+
+An index sorts the values that are actually stored. A query that compares something computed from the column, rather than the column itself, is comparing values the index has never seen, and the planner falls back to a scan. The two commonest forms are a function wrapped around the column and a pattern with a wildcard at the front.
+
+<TerminalTranscript
+  label="psql"
+  lines={[
+    { type: 'command', text: "EXPLAIN ANALYZE SELECT id FROM events WHERE email = 'user123@example.com';" },
+    { type: 'output', text: '   ->  Bitmap Index Scan on events_email_idx  (actual time=0.040..0.041 rows=19 loops=1)' },
+    { type: 'output', text: ' Execution Time: 0.082 ms' },
+    { type: 'command', text: "EXPLAIN ANALYZE SELECT id FROM events WHERE lower(email) = 'user123@example.com';" },
+    { type: 'error', text: '   ->  Parallel Seq Scan on events  (actual time=32.092..149.592 rows=6 loops=3)' },
+    { type: 'output', text: "         Filter: (lower(email) = 'user123@example.com'::text)" },
+    { type: 'error', text: ' Execution Time: 160.095 ms' },
+    { type: 'command', text: "EXPLAIN ANALYZE SELECT count(*) FROM events WHERE email LIKE '%123@example.com';" },
+    { type: 'error', text: '   ->  Parallel Seq Scan on events  (actual time=0.139..49.474 rows=327 loops=3)' },
+    { type: 'output', text: ' Execution Time: 58.450 ms' },
+  ]}
+/>
+
+Wrapping the column in `lower()` turned a 0.08 millisecond lookup into 160 milliseconds, two thousand times slower, and the results were identical because the stored emails are already lowercase. The index holds `email`, not `lower(email)`, so the planner cannot use it. The same happens with `date(created_at) = '2026-08-01'`: the index holds timestamps, not dates. The fix is to move the computation to the other side of the comparison, where it applies to the value rather than the column. Lowercase the search term in application code and compare `email = $1`. Turn a day into a half-open range, `created_at >= $1 AND created_at < $2`, where the second value is the next day. Both compare the raw column, both use the index, and the second practice problem has you repair a query builder that gets both wrong. When the computation genuinely must happen on the column side, PostgreSQL can index the expression itself with `CREATE INDEX ... ON events (lower(email))`, at the cost of another index to maintain.
+
+A `LIKE` pattern beginning with `%` has no prefix to look up, so a B-tree ordered by full values cannot help; searching within strings needs a different kind of index entirely, and a pattern that begins with literal text is the only kind a plain B-tree can serve.
+
+## Indexes that do not pay for themselves
+
+Two more plans round out the judgment. The first is an index on a column with few distinct values. `kind` takes four values, so any one of them matches a quarter of the table.
+
+<TerminalTranscript
+  label="psql"
+  lines={[
+    { type: 'command', text: "CREATE INDEX events_kind_idx ON events (kind);" },
+    { type: 'command', text: "EXPLAIN ANALYZE SELECT count(*) FROM events WHERE kind = 'login';" },
+    { type: 'output', text: '   ->  Parallel Bitmap Heap Scan on events  (actual time=4.739..25.028 rows=55516 loops=3)' },
+    { type: 'output', text: '         Heap Blocks: exact=4337' },
+    { type: 'output', text: '         ->  Bitmap Index Scan on events_kind_idx  (rows=166549 loops=1)' },
+    { type: 'output', text: ' Execution Time: 39.841 ms' },
+  ]}
+/>
+
+The planner used the index, and it barely mattered: 166,549 index entries pointed at 4,337 separate blocks of the table, nearly all of it, and the query took 40 milliseconds against 47 for a plain scan. An index earns its keep by excluding most of the table. This property is called **selectivity**, and a column that splits a million rows four ways has almost none. The index costs the same to maintain as a useful one and returns almost nothing.
+
+That maintenance cost is the second plan, and it is not shown by `EXPLAIN` because it lands on writes rather than reads. Every index is a second copy of its columns that must be updated on every insert, update, and delete of the table. The same 100,000-row insert, run once with three secondary indexes in place and once with only the primary key:
+
+<TerminalTranscript
+  label="psql"
+  lines={[
+    { type: 'command', text: 'INSERT INTO events ... 100000 rows;   -- with 3 secondary indexes' },
+    { type: 'error', text: 'Time: 901.288 ms' },
+    { type: 'command', text: 'INSERT INTO events ... 100000 rows;   -- primary key only' },
+    { type: 'output', text: 'Time: 438.620 ms' },
+  ]}
+/>
+
+Three indexes doubled the write time, and each also takes disk space comparable to the columns it copies. An index is a bet that the reads it speeds up will outweigh the writes it slows down. For the feed query, one composite index turns the hottest read in the product from 33 milliseconds into 0.06, and that is a bet worth taking. For `kind`, the index slows every write and speeds nothing, and it should not exist. The third practice problem asks you to make these bets for the book club's actual workload, and to name the index you would refuse to create.
+
+Two structures come with indexes for free and should be counted before adding any. A primary key is enforced with a unique index, so lookups by id are already fast. A `UNIQUE` constraint is also an index, so the `customers.email` constraint from lesson 50 already makes login-by-email a single index lookup. Foreign key columns, by contrast, get no index automatically, and the child-side lookups a join performs, every `WHERE club_id = $1`, are the commonest missing index in real schemas.
+
+## Common mistakes
+
+These are the performance errors that show up most often in production incidents and in interviews:
+
+- Testing against a few thousand rows where every plan is fast, and discovering the sequential scan on the million-row production table.
+- Putting a composite index's columns in the order they were thought of, rather than equality columns first and the range or sort column last, so the leftmost-prefix rule leaves the sort in place.
+- Expecting an index on `(customer_id, created_at)` to help a query that filters only on `created_at`.
+- Wrapping an indexed column in a function such as `lower()` or `date()` in the `WHERE` clause, which hides the column from its index.
+- Searching with `LIKE '%term%'` and expecting a B-tree to help, when only a pattern with a literal prefix can use one.
+- Indexing a column with a handful of distinct values, paying the write cost for an index that excludes almost nothing.
+- Forgetting that foreign key columns are not indexed automatically, so every child lookup in a join scans the child table.
+- Adding indexes without reading `EXPLAIN ANALYZE` before and after, so nobody knows whether the new index is used or merely maintained.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+The exercises follow the lesson from the planner's rule to the judgment call:
+
+1. Implement the index chooser that applies the leftmost-prefix rule to a query's equality, range, and ordering columns.
+2. Debug a search query builder that wraps indexed columns in `lower()` and `date()`, and rewrite its filters so the indexes apply.
+3. Design the indexes for the book club's workload, counting the ones the schema's keys already provide and refusing one that would not pay.
+4. Explain in your own words why the opener took 33 milliseconds, how column order removed the sort, and what every index costs.
