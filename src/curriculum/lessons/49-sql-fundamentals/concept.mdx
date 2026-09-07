@@ -1,14 +1,246 @@
 # SQL Fundamentals
 
-This placeholder concept page reserves the lesson slot for **SQL Fundamentals**. The content pass will replace it with the final interview-focused MDX lesson.
+The invoicing tool from lesson 47 needs a customer statement: for each customer, how much has been invoiced and how much has been paid. The data is three tables. Ada has one invoice for 1800, paid in two installments of 1000 and 800. Grace has two invoices, one for 250 with a 100 payment against it and one for 900 whose status has not been set yet. Linus is a customer with no invoices at all.
 
-## What this lesson will cover
+```sql
+CREATE TABLE customers (id serial PRIMARY KEY, name text NOT NULL);
+CREATE TABLE invoices (
+  id serial PRIMARY KEY,
+  customer_id int NOT NULL REFERENCES customers(id),
+  total int NOT NULL,
+  status text,
+  created_at date NOT NULL,
+  due_date date NOT NULL
+);
+CREATE TABLE payments (
+  id serial PRIMARY KEY,
+  invoice_id int NOT NULL REFERENCES invoices(id),
+  amount int NOT NULL
+);
+```
 
-- Core interview signals for sql fundamentals.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+The obvious report joins the three tables together and sums the two money columns per customer.
+
+```sql
+SELECT c.name, SUM(i.total) AS invoiced, SUM(p.amount) AS paid
+FROM customers c
+JOIN invoices i ON i.customer_id = c.id
+JOIN payments p ON p.invoice_id = i.id
+GROUP BY c.name
+ORDER BY c.name;
+```
+
+<TerminalTranscript
+  label="psql"
+  lines={[
+    { type: 'output', text: ' name  | invoiced | paid ' },
+    { type: 'output', text: '-------+----------+------' },
+    { type: 'error', text: ' Ada   |     3600 | 1800' },
+    { type: 'output', text: ' Grace |      250 |  100' },
+    { type: 'output', text: '(2 rows)' },
+  ]}
+/>
+
+Check each row against the data. Ada has one invoice for 1800, and the report says 3600. Grace has two invoices worth 1150, and the report says 250. Linus is missing entirely. Only the `paid` column is right. Nothing in the query is a typo; every clause does exactly what it says. The report is wrong because of what joining and grouping actually do to rows, and the rest of this lesson builds that model precisely enough that you can predict the 3600 before running the query. Every transcript here is real output from PostgreSQL 16, and the practice problems build the query logic in plain TypeScript so the runtime can grade it.
+
+## A query describes a result table
+
+A **relational database** stores data in tables: named columns, one row per record, one value per cell. A SQL query does not fetch records one at a time; it describes a new table built from existing ones, and the database works out how to produce it. The core clauses each transform the table in a fixed order, and knowing that order explains most of SQL's surprises.
+
+```text
+FROM (and JOIN)   which rows to start from
+WHERE             keep only rows that pass a test
+GROUP BY          collapse rows into groups
+HAVING            keep only groups that pass a test
+SELECT            choose and compute the output columns
+ORDER BY          sort the result
+LIMIT             cut it to a page
+```
+
+`SELECT` is written first but runs near the end, which is why a column alias defined in `SELECT` cannot be used in `WHERE`: when `WHERE` runs, the alias does not exist yet. A query that reads Grace's invoices, newest first, walks the whole pipeline on one table:
+
+```sql
+SELECT id, total, status
+FROM invoices
+WHERE customer_id = 2
+ORDER BY created_at DESC
+LIMIT 20;
+```
+
+<TerminalTranscript
+  label="psql"
+  lines={[
+    { type: 'output', text: ' id | total | status ' },
+    { type: 'output', text: '----+-------+--------' },
+    { type: 'output', text: '  3 |   900 | ' },
+    { type: 'output', text: '  2 |   250 | sent' },
+    { type: 'output', text: '(2 rows)' },
+  ]}
+/>
+
+Invoice 3's status shows as blank. That blank is not an empty string; it is `NULL`, and it comes back later in the lesson with consequences.
+
+## Joins multiply rows
+
+A **join** combines two tables by pairing rows that satisfy a condition. `JOIN invoices i ON i.customer_id = c.id` produces one output row for every customer-invoice pair where the ids match. The rule that matters is about counts: a join produces one row per *matching pair*, not one row per row of the left table. If one customer matches two invoices, that customer appears twice. If one invoice matches two payments, that invoice appears twice. Run the opener's `FROM` and `JOIN` clauses without the grouping and the multiplication is visible:
+
+```sql
+SELECT c.name, i.id AS invoice, i.total, p.amount
+FROM customers c
+JOIN invoices i ON i.customer_id = c.id
+JOIN payments p ON p.invoice_id = i.id
+ORDER BY c.name, i.id, p.id;
+```
+
+<TerminalTranscript
+  label="psql"
+  lines={[
+    { type: 'output', text: ' name  | invoice | total | amount ' },
+    { type: 'output', text: '-------+---------+-------+--------' },
+    { type: 'error', text: ' Ada   |       1 |  1800 |   1000' },
+    { type: 'error', text: ' Ada   |       1 |  1800 |    800' },
+    { type: 'output', text: ' Grace |       2 |   250 |    100' },
+    { type: 'output', text: '(3 rows)' },
+  ]}
+/>
+
+There is the 3600. Invoice 1 has two payments, so it appears in two rows, and each row carries its full `total` of 1800. Summing the column adds 1800 twice. This is called **fan-out**: a join to a table with several matching rows repeats the parent's columns once per match, and any aggregate over the parent's columns is inflated by the match count. The `paid` column was correct only because payments are the innermost table, the one that fans out, so each payment appears exactly once.
+
+The transcript also explains the two missing rows. Grace's 900 invoice has no payments, so it matches nothing in `payments` and the inner join drops it, which is why Grace's total shows 250 instead of 1150. Linus has no invoices, so he matches nothing in `invoices` and disappears at the first join. A plain `JOIN`, also called an **inner join**, keeps only rows with a match on both sides. A **`LEFT JOIN`** keeps every row from the left table and fills the right side's columns with `NULL` when nothing matches, which is what a report that must list every customer needs.
+
+## Grouping collapses rows, and fan-out gets baked in
+
+`GROUP BY c.name` takes the joined rows and collapses them into one output row per distinct name. Inside each group, aggregate functions like `SUM`, `COUNT`, `MIN`, and `AVG` fold the group's rows into one value. Every output column must be either a grouping column or an aggregate, because after collapsing there is no single value for anything else. The trouble in the opener is that grouping ran on rows that were already fanned out, so `SUM(i.total)` summed a repeated column.
+
+The fix is to aggregate each table at its own grain before joining. Payments are summed per invoice in a subquery, so each invoice meets at most one payment row. Then customers are left-joined to invoices and to those per-invoice sums, so no customer and no unpaid invoice is dropped. `COALESCE(x, 0)` replaces a `NULL` sum with 0 for customers who have nothing.
+
+```sql
+SELECT
+  c.name,
+  COALESCE(SUM(i.total), 0) AS invoiced,
+  COALESCE(SUM(pay.paid), 0) AS paid
+FROM customers c
+LEFT JOIN invoices i ON i.customer_id = c.id
+LEFT JOIN (
+  -- One row per invoice, so joining it cannot repeat the invoice's total.
+  SELECT invoice_id, SUM(amount) AS paid
+  FROM payments
+  GROUP BY invoice_id
+) pay ON pay.invoice_id = i.id
+GROUP BY c.name
+ORDER BY c.name;
+```
+
+<TerminalTranscript
+  label="psql"
+  lines={[
+    { type: 'output', text: ' name  | invoiced | paid ' },
+    { type: 'output', text: '-------+----------+------' },
+    { type: 'output', text: ' Ada   |     1800 | 1800' },
+    { type: 'output', text: ' Grace |     1150 |  100' },
+    { type: 'output', text: ' Linus |        0 |    0' },
+    { type: 'output', text: '(3 rows)' },
+  ]}
+/>
+
+Every number now matches the data, and Linus is present with zeros. The general habit: before writing `SUM` over a joined column, ask which table fans out and whether the column being summed belongs to a table on the repeated side. If it does, aggregate first, join second.
+
+Filtering groups uses `HAVING`, which runs after `GROUP BY` and can therefore see aggregates, where `WHERE` cannot. Customers with at least two invoices:
+
+```sql
+SELECT c.name, COUNT(i.id) AS invoices
+FROM customers c
+LEFT JOIN invoices i ON i.customer_id = c.id
+GROUP BY c.name
+HAVING COUNT(i.id) >= 2
+ORDER BY c.name;
+```
+
+<TerminalTranscript
+  label="psql"
+  lines={[
+    { type: 'output', text: ' name  | invoices ' },
+    { type: 'output', text: '-------+----------' },
+    { type: 'output', text: ' Grace |        2' },
+    { type: 'output', text: '(1 row)' },
+  ]}
+/>
+
+`COUNT(i.id)` rather than `COUNT(*)` matters here: for Linus the left join produces one row whose `i.id` is `NULL`, and `COUNT(column)` skips `NULL`s, giving 0, while `COUNT(*)` would count the row and report 1 invoice he does not have.
+
+## NULL is not a value
+
+`NULL` means "unknown," and SQL takes that literally. A comparison with `NULL` does not produce true or false; it produces `NULL`, a third truth value, and `WHERE` keeps only rows whose condition is true. So a filter that seems to say "everything except paid invoices" quietly drops every invoice whose status is not set.
+
+```sql
+SELECT count(*) FROM invoices;
+SELECT count(*) FROM invoices WHERE status <> 'paid';
+SELECT count(*) FROM invoices WHERE status <> 'paid' OR status IS NULL;
+SELECT NULL = NULL AS eq, NULL <> 'paid' AS ne, NULL IS NULL AS isnull;
+```
+
+<TerminalTranscript
+  label="psql"
+  lines={[
+    { type: 'output', text: ' count ' },
+    { type: 'output', text: '     3' },
+    { type: 'error', text: ' count ' },
+    { type: 'error', text: '     1' },
+    { type: 'output', text: ' count ' },
+    { type: 'output', text: '     2' },
+    { type: 'output', text: ' eq | ne | isnull ' },
+    { type: 'output', text: '    |    | t' },
+  ]}
+/>
+
+Three invoices exist, one is paid, so "not paid" should be two. The plain `<>` filter returns one, because for invoice 3 the test `NULL <> 'paid'` is `NULL`, not true, and the row is dropped. The last line shows the machinery: `NULL = NULL` and `NULL <> 'paid'` both come back blank, which is `NULL`, and only `IS NULL` yields a real `t`. The rules that follow are short. Test for missing values with `IS NULL` and `IS NOT NULL`, never with `=`. When a filter excludes values from a nullable column, decide explicitly whether unknown rows belong in the result and say so with `OR status IS NULL`. And be careful with `NOT IN`: if the list contains a `NULL`, `NOT IN` returns `NULL` for every row and the query returns nothing at all.
+
+## Values travel as parameters, never as text
+
+The last fundamental is not about results but about safety, and it is lesson 44's trust boundary meeting lesson 46's pipeline. Query text is a program the database runs. If a value from a request is pasted into that text, the request author is writing part of the program. A status filter built as `"WHERE status = '" + status + "'"` becomes something else entirely when `status` is `paid' OR '1'='1`. This is **SQL injection**, and it is still one of the most common ways applications leak their whole database.
+
+The fix is structural. Every database driver accepts the query text and the values separately: the text contains numbered **placeholders** such as `$1` and `$2`, and the values travel alongside in an array. The database binds each value to its slot as data, so a quote inside a value is just a quote. A list filter uses an array parameter and `= ANY($2)` or `<> ALL($2)` rather than building a comma-separated list by hand.
+
+```ts
+function buildInvoiceListQuery(filters: { customerId?: number; status?: string }) {
+  const where: string[] = []
+  const values: (string | number)[] = []
+
+  // Each filter pushes its value first, then names the slot it just took.
+  if (filters.customerId !== undefined) {
+    values.push(filters.customerId)
+    where.push(`customer_id = $${values.length}`)
+  }
+  if (filters.status !== undefined) {
+    values.push(filters.status)
+    where.push(`status = $${values.length}`)
+  }
+
+  const clause = where.length > 0 ? ` WHERE ${where.join(' AND ')}` : ''
+  return { text: `SELECT id, total, status FROM invoices${clause}`, values }
+}
+```
+
+The only strings that ever enter the text are ones the code itself wrote: column names, operators, keywords. Anything the caller supplied sits in `values`. When a caller can choose a column, for sorting for example, the code maps the caller's choice onto an allowlist of column names it wrote, exactly as lesson 47's `sort` parameter did, because a column name cannot be a placeholder. The first practice problem builds this function in full.
+
+## Common mistakes
+
+These are the SQL errors that show up most often in real reports and in interviews:
+
+- Summing a parent table's column after joining a child table with several matching rows, so the total is multiplied by the match count.
+- Using an inner join for a report that must list every customer, so anyone without a match silently vanishes.
+- Filtering a nullable column with `<>` or `NOT IN` and assuming rows with `NULL` are included, when the comparison yields `NULL` and drops them.
+- Testing for missing values with `= NULL`, which is never true, instead of `IS NULL`.
+- Using `COUNT(*)` on a left-joined table, which counts the `NULL` row produced for a parent with no children as one child.
+- Putting an aggregate in `WHERE`, or trying to use a `SELECT` alias there, forgetting that `WHERE` runs before grouping and before `SELECT`.
+- Pasting request values into query text, which hands the caller a slice of the program.
+- Building a list filter by joining quoted strings by hand instead of passing an array parameter to `= ANY($n)`.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+The exercises move from safe query construction to the semantics that made the opener wrong:
+
+1. Implement the parameterized query builder for the invoice list, with filters, an allowlisted sort, and a limit.
+2. Implement the customer summary in TypeScript with `LEFT JOIN` and `GROUP BY` semantics: every customer present, zeros where nothing matched.
+3. Debug an overdue-invoice query builder that pastes values into text and drops invoices whose status is `NULL`.
+4. Explain in your own words why the opener reported 3600 and dropped Linus, and how you would rewrite it.
