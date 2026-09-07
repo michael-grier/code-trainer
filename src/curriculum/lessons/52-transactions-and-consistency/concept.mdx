@@ -1,14 +1,187 @@
 # Transactions and Consistency
 
-This placeholder concept page reserves the lesson slot for **Transactions and Consistency**. The content pass will replace it with the final interview-focused MDX lesson.
+A prepaid account holds 100 credits. The withdrawal handler is the obvious three steps: read the balance, check that it covers the amount, write the new balance.
 
-## What this lesson will cover
+```ts
+async function withdraw(accountId: string, amount: number) {
+  const current = await readBalance(accountId)
+  if (current < amount) throw new Error('insufficient funds')
+  await writeBalance(accountId, current - amount)
+}
+```
 
-- Core interview signals for transactions and consistency.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+The account belongs to Ada, Grace is authorized to spend from it too, and each asks for 80 at the same moment. Here are the two database sessions, run side by side against PostgreSQL 16 with a one-second pause between each session's read and write so the interleaving is visible. The account starts at 100.
+
+<TerminalTranscript
+  label="psql, two sessions"
+  lines={[
+    { type: 'output', text: 'A reads     | 100' },
+    { type: 'output', text: 'B reads     | 100' },
+    { type: 'output', text: 'A committed |  20' },
+    { type: 'error', text: 'B committed |  20' },
+    { type: 'command', text: "SELECT balance FROM accounts WHERE id = 'ada';" },
+    { type: 'error', text: '      20' },
+  ]}
+/>
+
+Read the final balance against what happened. Two withdrawals of 80 each succeeded, 160 credits left the account, and the balance went from 100 to 20. Eighty credits were spent and never recorded. Neither session did anything wrong by its own lights: each read 100, checked that 100 covers 80, and wrote 20. The mistake is between them. Session B read the balance before session A wrote, so B's check was against a number that was already out of date, and B's write then overwrote A's. This is a **lost update**, and it is the bug this lesson is about: what a transaction guarantees, what it does not guarantee by default, and the three ways to make two concurrent handlers agree on one number.
+
+## A transaction is all or nothing
+
+A **transaction** is a group of statements the database runs as one unit: either every statement's effect becomes permanent together at `COMMIT`, or none of them does, at `ROLLBACK` or on any failure in between. That property is **atomicity**, and it exists because most real changes are several statements that only make sense together. A transfer debits one account and credits another. Run as two separate statements, a crash between them loses money.
+
+<TerminalTranscript
+  label="psql"
+  lines={[
+    { type: 'command', text: "UPDATE accounts SET balance = balance - 30 WHERE id = 'ada';" },
+    { type: 'output', text: 'UPDATE 1' },
+    { type: 'error', text: '-- the process crashes here, before the credit runs' },
+    { type: 'command', text: 'SELECT id, balance FROM accounts ORDER BY id;' },
+    { type: 'error', text: ' ada   |      70' },
+    { type: 'output', text: ' grace |      50' },
+  ]}
+/>
+
+Ada lost 30 and nobody gained it. Inside a transaction the same sequence cannot end there. If the credit fails, or matches no row, or the handler decides anything is wrong, `ROLLBACK` undoes the debit as if it had never run.
+
+<TerminalTranscript
+  label="psql"
+  lines={[
+    { type: 'command', text: 'BEGIN;' },
+    { type: 'command', text: "UPDATE accounts SET balance = balance - 30 WHERE id = 'ada';" },
+    { type: 'output', text: 'UPDATE 1' },
+    { type: 'command', text: "UPDATE accounts SET balance = balance + 30 WHERE id = 'nobody';" },
+    { type: 'error', text: 'UPDATE 0' },
+    { type: 'command', text: 'ROLLBACK;' },
+    { type: 'command', text: 'SELECT id, balance FROM accounts ORDER BY id;' },
+    { type: 'output', text: ' ada   |     100' },
+    { type: 'output', text: ' grace |      50' },
+  ]}
+/>
+
+The `UPDATE 0` is the tell: the credit found no account called `nobody`, which is not an error to the database but is one to the application, and the handler answers by rolling back. The rule that follows is the first of the lesson: every multi-statement change runs inside one transaction, and the handler commits only after checking that each statement did what it expected. A statement that affects zero rows when it should have affected one is a failure, even though nothing threw.
+
+The database's constraints from lesson 50 also live inside this boundary. If any statement in the transaction violates a `CHECK` or a foreign key, the whole transaction is marked failed and the only way out is `ROLLBACK`, which is exactly what atomicity promises.
+
+## Atomic is not the same as isolated
+
+The opener's two withdrawals were each atomic. Each session began, read, wrote, and committed cleanly, and the balance still ended up wrong, because atomicity says nothing about what two transactions see of each other. That is **isolation**, and by default PostgreSQL provides a level called **read committed**: each statement sees the data as of the moment it runs, including other sessions' committed changes, but a transaction is not protected from other sessions changing rows it has already read. Session B read 100 legitimately, because A had not committed yet, and nothing stopped B from acting on that stale read a second later.
+
+Watch the two writes to see the failure precisely. Both were `UPDATE accounts SET balance = 20`, because both handlers computed the new balance in application code from the value they had read. The second write did not know the first had happened. Three techniques fix this, and they are the substance of the lesson.
+
+## Fix one: lock the row you are about to change
+
+`SELECT ... FOR UPDATE` reads a row and locks it until the transaction ends. Any other transaction that tries to lock or update the same row waits. Session B's read now cannot begin until A has committed, so B sees A's result.
+
+```sql
+BEGIN;
+SELECT balance FROM accounts WHERE id = 'ada' FOR UPDATE;  -- waits if A holds the lock
+-- application checks the balance it actually got
+UPDATE accounts SET balance = balance - 80 WHERE id = 'ada';
+COMMIT;
+```
+
+<TerminalTranscript
+  label="psql, two sessions"
+  lines={[
+    { type: 'output', text: 'A reads     | 100' },
+    { type: 'output', text: 'A committed |  20' },
+    { type: 'output', text: 'B reads     |  20        -- B waited here until A committed' },
+    { type: 'error', text: 'ERROR:  new row for relation "accounts" violates check constraint "accounts_balance_check"' },
+    { type: 'error', text: 'DETAIL:  Failing row contains (ada, -60, 1).' },
+    { type: 'command', text: "SELECT balance FROM accounts WHERE id = 'ada';" },
+    { type: 'output', text: '      20' },
+  ]}
+/>
+
+B's read moved to after A's commit, and it saw 20. In this run B's handler then tried to withdraw anyway, and the `CHECK (balance >= 0)` from lesson 50 refused the row, rolling B back; a correct handler compares the 20 it read against the 80 it wants and rejects the withdrawal itself, with a 409 in lesson 46's vocabulary, before issuing the update. Either way the balance is 20 and exactly one withdrawal happened. This is **pessimistic locking**: assume a conflict and take the lock first. It is simple and correct, and its cost is waiting. Every handler touching the same row queues behind the lock holder, so a transaction that holds locks while it calls a payment provider or sends an email holds up everyone.
+
+Locks also introduce the one failure that has no fix except retry. If session one locks Ada then Grace, while session two locks Grace then Ada, each waits for the other forever. PostgreSQL detects this and kills one of them.
+
+<TerminalTranscript
+  label="psql, two sessions"
+  lines={[
+    { type: 'error', text: 'ERROR:  deadlock detected' },
+    { type: 'error', text: 'DETAIL:  Process 478 waits for ShareLock on transaction 802; blocked by process 479.' },
+    { type: 'output', text: 'HINT:  See server log for query details.' },
+  ]}
+/>
+
+The killed transaction is rolled back and must be retried; the other proceeds. The prevention is to lock rows in one agreed order everywhere, for instance by account id, so two transfers between the same pair of accounts always queue instead of crossing.
+
+## Fix two: let the database do the arithmetic
+
+The lost update needed a stale read to act on. A single statement that both checks and changes the row leaves nothing to go stale, because the database evaluates the condition and applies the change atomically on the current row.
+
+```sql
+UPDATE accounts SET balance = balance - 80 WHERE id = 'ada' AND balance >= 80;
+```
+
+<TerminalTranscript
+  label="psql"
+  lines={[
+    { type: 'command', text: "UPDATE accounts SET balance = balance - 80 WHERE id = 'ada' AND balance >= 80;" },
+    { type: 'output', text: 'UPDATE 1' },
+    { type: 'command', text: "UPDATE accounts SET balance = balance - 80 WHERE id = 'ada' AND balance >= 80;" },
+    { type: 'error', text: 'UPDATE 0' },
+    { type: 'command', text: "SELECT balance FROM accounts WHERE id = 'ada';" },
+    { type: 'output', text: '      20' },
+  ]}
+/>
+
+The first withdrawal affects one row. The second finds no row where the balance still covers 80, affects zero rows, and the handler reads that `UPDATE 0` as "insufficient funds." No lock is held across application code, no value is computed from a stale read, and two concurrent runs of the same statement cannot both succeed because the database serializes writes to a single row. When the whole decision can be expressed in the statement, this is the cheapest correct fix.
+
+## Fix three: version the row and check on write
+
+Many decisions cannot fit in one `UPDATE`: the handler needs to read several rows, call a rule engine, or show the user a form and come back later. **Optimistic concurrency** handles those. Each row carries a `version` number. The handler reads the row and its version, does its work, and writes with a condition that the version has not moved, bumping it at the same time.
+
+```sql
+UPDATE accounts
+SET balance = 20, version = version + 1
+WHERE id = 'ada' AND version = 1;   -- the version the handler read
+```
+
+If another handler committed first, the version is already 2, the update affects zero rows, and this handler knows its read was stale. It re-reads and decides again, or reports a conflict to the user. Nothing waits and nothing deadlocks, which is why this is the usual choice for web forms and APIs where a conflict is rare and the cost of a retry is small. The cost is that the handler must handle the `UPDATE 0` case every time, and that under heavy contention most attempts fail and retry. The second practice problem has you implement the version check as a pure function that applies a batch of writes and reports which ones conflicted.
+
+## Serializable, and the retry that comes with it
+
+PostgreSQL also offers the strictest isolation level, `SERIALIZABLE`, which promises that the outcome of concurrent transactions equals some one-at-a-time ordering of them. Under it the opener's two sessions cannot both succeed; B's transaction took its snapshot before A committed, so when B tries to update a row A has changed since then, the database refuses rather than let B overwrite a version it never saw, and aborts B.
+
+<TerminalTranscript
+  label="psql, two sessions"
+  lines={[
+    { type: 'command', text: 'BEGIN ISOLATION LEVEL SERIALIZABLE;' },
+    { type: 'output', text: 'A reads     | 100' },
+    { type: 'output', text: 'B reads     | 100' },
+    { type: 'output', text: 'A committed |  20' },
+    { type: 'error', text: 'ERROR:  could not serialize access due to concurrent update' },
+  ]}
+/>
+
+The error carries SQLSTATE `40001`, and like a deadlock it means "nothing is wrong with your data, try the whole transaction again." A transaction under this level must therefore be written inside a retry loop, and the loop has to be selective: a serialization failure or a deadlock is retryable, while a constraint violation such as a duplicate key is not, because the same request will fail the same way every time. Lesson 43 drew that line for HTTP retries and it is the same line here. The third practice problem is a retry loop that gets it wrong in both directions.
+
+## What each fix costs
+
+Row locks are easy to reason about and make waiting the cost, which is fine for short transactions and dangerous for ones that do I/O while holding the lock. Single-statement conditional updates are the cheapest and correct whenever the rule fits in SQL, and they should be the first thing you reach for. Versioned rows cost a column and a retry path in every handler, and win when conflicts are rare and transactions span user interaction. Serializable isolation costs retries under contention and some throughput, and buys correctness for patterns too tangled to lock by hand. In every case the transaction should be as short as possible: open it after the slow external work, commit as soon as the writes are done, and never hold one open across a network call you do not control.
+
+## Common mistakes
+
+These are the consistency errors that show up most often in production incidents and in interviews:
+
+- Reading a value, deciding in application code, and writing the result back, so two concurrent handlers both act on the same stale read and one update is lost.
+- Running a multi-statement change without a transaction, so a crash or a failed second statement leaves money debited and never credited.
+- Treating `UPDATE 0` as success because nothing threw, when a statement that should have changed one row changed none.
+- Holding a row lock while calling a payment provider or sending an email, so every other handler on that row waits on a network you do not control.
+- Locking rows in whatever order the request happened to name them, so two transfers between the same accounts deadlock.
+- Retrying every database error, including constraint violations that will fail identically on every attempt.
+- Not retrying serialization failures and deadlocks, and surfacing to the user an error that a second attempt would have cleared.
+- Assuming the default isolation level protects a read-then-write sequence, when read committed only promises that each statement sees committed data.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+The exercises follow the lesson from the failure to the fixes and the retry that supports them:
+
+1. Trace two concurrent withdrawals through their reads and writes and predict the final balance.
+2. Implement optimistic concurrency as a pure function that applies versioned writes and reports conflicts.
+3. Debug a transaction retry loop that retries the wrong errors and never gives up.
+4. Explain in your own words why both withdrawals succeeded and which fix you would choose for a prepaid account.

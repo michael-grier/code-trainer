@@ -1,14 +1,142 @@
 # Migrations and Data Evolution
 
-This placeholder concept page reserves the lesson slot for **Migrations and Data Evolution**. The content pass will replace it with the final interview-focused MDX lesson.
+The shop from lesson 50 stores order totals as a decimal number of dollars, and lesson 52 argued for integer cents. The change looks like one line of SQL and one line of application code: rename the column, update the query. The team ships both together. The migration runs first, and it succeeds.
 
-## What this lesson will cover
+<TerminalTranscript
+  label="psql"
+  lines={[
+    { type: 'command', text: 'ALTER TABLE orders RENAME COLUMN total TO total_cents;' },
+    { type: 'output', text: 'ALTER TABLE' },
+  ]}
+/>
 
-- Core interview signals for migrations and data evolution.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+Two seconds later, before the new application code has finished rolling out, the old code that is still running serves a request.
+
+<TerminalTranscript
+  label="psql, as the running application"
+  lines={[
+    { type: 'command', text: 'SELECT id, total FROM orders WHERE customer_id = 7 ORDER BY created_at DESC LIMIT 1;' },
+    { type: 'error', text: 'ERROR:  column "total" does not exist' },
+    { type: 'command', text: 'INSERT INTO orders (customer_id, total) VALUES (7, 19.99);' },
+    { type: 'error', text: 'ERROR:  column "total" of relation "orders" does not exist' },
+  ]}
+/>
+
+Every read and every write of an order fails until the last old instance is replaced, and if the new code has a bug and has to be rolled back, the old code comes back to a column that no longer exists. Nothing about the SQL was wrong. The mistake is the assumption that the schema and the code change at the same instant. They never do. A deploy replaces instances one at a time over seconds or minutes, so for that window old code and new code run side by side against one database, and the schema has to satisfy both. This lesson is about making changes in an order that survives that window, doing them without locking the table, and keeping a way back.
+
+## Migrations are versioned, ordered, and forward-only
+
+A **migration** is a script that changes the schema or the data, kept in the repository next to the code that needs it, numbered so that every environment applies the same changes in the same order. The database keeps a table of which versions have run, and the migration tool compares that table with the scripts in the folder before running anything. That comparison has three failure modes worth catching before a single statement executes: two scripts claiming the same version, an applied version whose script has vanished from the folder, and a script whose version is lower than one already applied, which means someone merged an old branch after a newer migration ran. The first practice problem is that check.
+
+Migrations are also forward-only in practice. A script that adds a column can be paired with one that drops it, but a script that dropped a column cannot bring the data back, and a "down" migration that runs against production is an untested script running under pressure. The reliable way to undo a migration is to write the next forward migration that reverses it, tested like any other, which is only possible if the previous step left the old shape available to return to. That constraint drives the whole pattern that follows.
+
+## Expand, migrate, contract
+
+The rename failed because it was one step that removed the old shape and introduced the new one at the same moment. The fix is to split it into three deploys, each of which leaves the database compatible with both the code before it and the code after it.
+
+```text
+expand     add total_cents alongside total; deploy code that writes both, reads total
+migrate    backfill total_cents from total; deploy code that reads total_cents
+contract   deploy code that stops writing total; drop total
+```
+
+**Expand** adds the new column without touching the old one, so old code keeps working untouched. New code writes both columns on every insert and update and still reads the old one. **Migrate** fills the new column for every existing row, then switches reads to it; at this point every row has both values and either code version is correct. **Contract** stops writing the old column and, once no running code mentions it, drops it. Each step is its own deploy, and at every point a rollback to the previous code version works because the schema it expects is still there. The lesson's design problem asks you to plan this for the rename in the opener and to say what breaks if two of the steps are merged.
+
+## Adding a column safely
+
+The expand step sounds harmless, and the obvious statement fails.
+
+<TerminalTranscript
+  label="psql"
+  lines={[
+    { type: 'command', text: 'ALTER TABLE orders ADD COLUMN total_cents int NOT NULL;' },
+    { type: 'error', text: 'ERROR:  column "total_cents" of relation "orders" contains null values' },
+    { type: 'command', text: 'ALTER TABLE orders ADD COLUMN total_cents int;' },
+    { type: 'output', text: 'ALTER TABLE' },
+    { type: 'output', text: 'Time: 1.112 ms' },
+  ]}
+/>
+
+A `NOT NULL` column has no value for the two hundred thousand rows that already exist, so the database refuses. The column has to arrive nullable, or with a constant `DEFAULT` that every existing row takes instantly, and only after the backfill can it be made `NOT NULL`. Notice the timing on the nullable version: one millisecond for a table of two hundred thousand rows, because PostgreSQL records the new column in the catalog without rewriting any row. Adding a column with a constant default is just as fast. Adding one whose default is computed per row, such as `now()`, rewrites the whole table, and on a large table that is minutes with the table locked.
+
+## Backfilling in batches
+
+The migrate step fills the new column from the old one. One statement would do it, and one statement is the wrong tool on a big table: `UPDATE orders SET total_cents = round(total * 100)` holds a lock on every row it touches until it commits, writes a full copy of every row, and if it fails at row 190,000 it rolls back all of it. A backfill runs in bounded batches, each its own transaction, each idempotent so that rerunning after a crash skips finished rows.
+
+<TerminalTranscript
+  label="psql"
+  lines={[
+    { type: 'command', text: 'UPDATE orders SET total_cents = round(total * 100) WHERE id BETWEEN 1 AND 50000 AND total_cents IS NULL;' },
+    { type: 'output', text: 'UPDATE 50000' },
+    { type: 'command', text: 'UPDATE orders SET total_cents = round(total * 100) WHERE id BETWEEN 50001 AND 100000 AND total_cents IS NULL;' },
+    { type: 'output', text: 'UPDATE 50000' },
+    { type: 'output', text: '... two more batches ...' },
+    { type: 'command', text: 'SELECT count(*) AS still_null FROM orders WHERE total_cents IS NULL;' },
+    { type: 'output', text: '          0' },
+    { type: 'command', text: 'ALTER TABLE orders ALTER COLUMN total_cents SET NOT NULL;' },
+    { type: 'output', text: 'ALTER TABLE' },
+    { type: 'command', text: 'SELECT id, total, total_cents FROM orders WHERE id IN (1, 99) ORDER BY id;' },
+    { type: 'output', text: '  1 |  1.00 |         100' },
+    { type: 'output', text: ' 99 |  1.98 |         198' },
+  ]}
+/>
+
+The `AND total_cents IS NULL` is what makes each batch safe to repeat, and the count of remaining nulls is the check before tightening the constraint. The backfill runs while the application keeps writing, which is why the expand step had new code writing both columns: rows inserted during the backfill already have `total_cents`, and the batches skip them.
+
+The arithmetic inside the backfill deserves its own attention, because a data migration that is slightly wrong is worse than one that fails. Here the database did the multiplication with `numeric`, which is exact. A backfill written in application code does it in floating point, and `19.99 * 100` in JavaScript is `1998.9999999999998`. Truncating that gives 1998 cents, one cent short on every such order, silently, across the whole table. Rounding gives 1999. The second practice problem is a backfill transform with exactly that bug, and a second one: it turns an unknown total into zero dollars, inventing a fact the data never held.
+
+## The lock you did not know you took
+
+`ALTER TABLE` needs an exclusive lock on the table, and it waits politely for any transaction already using the table to finish. The trap is what happens behind it: every new query on the table queues behind the waiting `ALTER`, even ordinary reads, because they cannot be granted a lock while a stronger one is waiting ahead of them. A single long-running report, or one forgotten open transaction, turns a one-millisecond schema change into an outage.
+
+<TerminalTranscript
+  label="psql, three sessions"
+  lines={[
+    { type: 'command', text: '-- session 1: a report holds the table for four seconds' },
+    { type: 'command', text: '-- session 2, half a second later: ALTER TABLE orders ADD COLUMN note text;' },
+    { type: 'command', text: "-- session 3, half a second after that: SELECT count(*) FROM orders WHERE customer_id = 7;" },
+    { type: 'output', text: 'alter: Time: 3542.571 ms' },
+    { type: 'error', text: 'read:  Time: 3062.655 ms' },
+  ]}
+/>
+
+The read is an indexed count that normally takes a millisecond. It waited three seconds, not for the report, but for the `ALTER` that was itself waiting for the report. In production that read is every request the application serves. The defense is to refuse to wait: set a `lock_timeout` on the migration session, so that if the lock is not available within a second the migration fails instead of queueing the whole application behind it, and the tool retries later.
+
+<TerminalTranscript
+  label="psql, same three sessions"
+  lines={[
+    { type: 'command', text: "SET lock_timeout = '1s';" },
+    { type: 'command', text: 'ALTER TABLE orders ADD COLUMN note text;' },
+    { type: 'error', text: 'ERROR:  canceling statement due to lock timeout' },
+    { type: 'output', text: 'alter: Time: 1000.665 ms' },
+    { type: 'output', text: 'read:  Time: 518.585 ms' },
+  ]}
+/>
+
+The migration gave up after one second, the read behind it ran as soon as the `ALTER` was gone, and nothing was harmed; the migration reruns when the report is finished. The same thinking applies to indexes: a plain `CREATE INDEX` locks the table against writes for the whole build, while `CREATE INDEX CONCURRENTLY` builds in the background and lets writes continue, at the price of taking longer and needing to be run outside a transaction.
+
+## What the discipline costs
+
+Three deploys where one would do, a column that exists twice for a while, application code that writes both, and a backfill script with its own batching and idempotency. That is real work, and for a table with a hundred rows in a system deployed by stopping the server, the single-step rename is fine. The discipline pays for itself the first time a change has to coexist with running code or has to be undone. The rule to carry: a migration must be safe to run while the previous version of the code is still serving traffic, must be safe to run twice, and must leave a schema the previous code could still use until the contract step deliberately removes it.
+
+## Common mistakes
+
+These are the migration errors that show up most often in incidents and in design interviews:
+
+- Renaming or dropping a column in the same deploy as the code change, so old instances fail during the rollout and a rollback returns to a schema that no longer exists.
+- Adding a `NOT NULL` column without a default to a populated table, or with a computed default that rewrites every row under a lock.
+- Backfilling a large table in one statement, locking every row until commit and rolling back everything on a late failure.
+- Writing a backfill that is not idempotent, so a rerun after a crash double-applies or fails on rows already done.
+- Converting money in floating point and truncating, so 19.99 becomes 1998 cents across the whole table.
+- Replacing unknown values with zero during a data migration, inventing facts the source never held.
+- Running `ALTER TABLE` without a lock timeout, so one long transaction queues every request behind the migration.
+- Trusting a "down" migration to undo a destructive change in production instead of keeping the old shape until a forward migration removes it.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+The exercises follow the lesson from the tool's first check to the plan for the opener:
+
+1. Implement the migration-run planner that orders pending scripts and rejects duplicate, missing, and out-of-order versions.
+2. Debug a backfill transform that truncates floating-point cents and invents zeros for unknown totals.
+3. Design the expand, migrate, contract plan for renaming the total column under rolling deploys, including locks and rollback.
+4. Explain in your own words why a schema change must survive old and new code running together, and why rollback is a forward migration.
