@@ -49,7 +49,7 @@ CREATE INDEX events_customer_id_idx ON events (customer_id);
   ]}
 />
 
-The same query, the same result, 140 times faster. The innermost step is now an `Index Scan` with an `Index Cond`, meaning the database went to the index, found the 28 entries for 4242, and fetched only those rows. Nothing was removed by a filter, because nothing irrelevant was read. The `Sort` is still there, though: the index found the right rows, but they came out in index order, not date order, so the database still had to sort them.
+The same query, the same result, 140 times faster. The innermost step is now a `Bitmap Index Scan` with an `Index Cond`, meaning the database went to the index and found the 28 entries for 4242; the `Bitmap Heap Scan` above it then fetched only those rows from the table. Nothing was removed by a filter, because nothing irrelevant was read. The `Sort` is still there, though: the index found the right rows, but they came out in index order, not date order, so the database still had to sort them.
 
 ## Column order in a composite index
 
@@ -72,7 +72,7 @@ CREATE INDEX events_customer_created_idx ON events (customer_id, created_at DESC
 
 The `Sort` step is gone. The index walk produces rows in the requested order, so the `LIMIT` can stop after twenty entries without ever seeing the other eight. From 33 milliseconds to 0.06 is roughly five hundred times, and the difference between the two indexed plans, 0.23 versus 0.06, is entirely the sort that the column order made unnecessary.
 
-The rule that governs which queries a composite index can serve is called the **leftmost prefix** rule, and it follows from how the index is sorted. The index is ordered by its first column, then by its second within equal values of the first, and so on. A query can use it only if it constrains the columns from the left without skipping: equality on the first column, then equality or a range on the second, and so on. Once a column is used for a range, later columns are no longer in a useful order. A query that filters only on `created_at` cannot use the index at all, because entries for a given date are scattered across every customer.
+The rule that governs which queries a composite index can serve is called the **leftmost prefix** rule, and it follows from how the index is sorted. The index is ordered by its first column, then by its second within equal values of the first, and so on. A query can use it only if it constrains the columns from the left without skipping: equality on the first column, then equality or a range on the second, and so on. Once a column is used for a range, later columns are no longer in a useful order. A query that filters only on `created_at` gets nothing useful from the index, because entries for a given date are scattered across every customer: the database could check the condition against every index entry, but that reads the whole index instead of a slice of it, and the planner usually prefers to read the table.
 
 <TerminalTranscript
   label="psql"
@@ -84,7 +84,7 @@ The rule that governs which queries a composite index can serve is called the **
   ]}
 />
 
-The index on `(customer_id, created_at)` exists and contains `created_at`, and the planner ignored it, because the query supplies nothing for the first column. The first practice problem asks you to apply the leftmost-prefix rule: given a set of indexes and a query's equality, range, and ordering columns, which index can serve it and how far does it reach.
+The index on `(customer_id, created_at)` exists and contains `created_at`, and the planner chose a table scan anyway, because with nothing for the first column the index cannot narrow the search. The first practice problem asks you to apply the leftmost-prefix rule as a simplified planner would: given a set of indexes and a query's equality, range, and ordering columns, which index can narrow the search and how many of its columns help.
 
 ## Queries that hide the column from the index
 
@@ -106,9 +106,9 @@ An index sorts the values that are actually stored. A query that compares someth
   ]}
 />
 
-Wrapping the column in `lower()` turned a 0.08 millisecond lookup into 160 milliseconds, two thousand times slower, and the results were identical because the stored emails are already lowercase. The index holds `email`, not `lower(email)`, so the planner cannot use it. The same happens with `date(created_at) = '2026-08-01'`: the index holds timestamps, not dates. The fix is to move the computation to the other side of the comparison, where it applies to the value rather than the column. Lowercase the search term in application code and compare `email = $1`. Turn a day into a half-open range, `created_at >= $1 AND created_at < $2`, where the second value is the next day. Both compare the raw column, both use the index, and the second practice problem has you repair a query builder that gets both wrong. When the computation genuinely must happen on the column side, PostgreSQL can index the expression itself with `CREATE INDEX ... ON events (lower(email))`, at the cost of another index to maintain.
+Wrapping the column in `lower()` turned a 0.08 millisecond lookup into 160 milliseconds, two thousand times slower, and the results were identical because the stored emails are already lowercase. The index holds `email`, not `lower(email)`, so the planner cannot use it. The same happens with `date(created_at) = '2026-08-01'`: the index holds timestamps, not dates. The fix is to move the computation to the other side of the comparison, where it applies to the value rather than the column. Lowercase the search term in application code and compare `email = $1`. Turn a day into a half-open range, `created_at >= $1 AND created_at < $2`, binding midnight UTC of the day and of the next day as full instants such as `2026-08-01T00:00:00Z`; a bare `2026-08-01` would be read in the session's time zone and could select the wrong day. Both compare the raw column, both use the index, and the second practice problem has you repair a query builder that gets both wrong. When the computation genuinely must happen on the column side, PostgreSQL can index the expression itself with `CREATE INDEX ... ON events (lower(email))`, at the cost of another index to maintain.
 
-A `LIKE` pattern beginning with `%` has no prefix to look up, so a B-tree ordered by full values cannot help; searching within strings needs a different kind of index entirely, and a pattern that begins with literal text is the only kind a plain B-tree can serve.
+A `LIKE` pattern beginning with `%` has no prefix to look up, so a B-tree ordered by full values cannot help; searching within strings needs a different kind of index entirely. A pattern that begins with literal text can use a B-tree, with one condition: under PostgreSQL's default language-aware collation the index must be created with `text_pattern_ops`, as in `CREATE INDEX ... ON events (email text_pattern_ops)`, so that its order matches byte-by-byte prefix comparison. With that index the same prefix search that scanned a million rows in 50 milliseconds becomes an index scan in 0.1.
 
 ## Indexes that do not pay for themselves
 

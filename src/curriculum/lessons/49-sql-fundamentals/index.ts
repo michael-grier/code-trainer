@@ -257,9 +257,12 @@ console.log(buildOverdueQuery('2026-04-01', ['paid', 'void']))
           expected: { text: overdueText, values: ['2026-04-01', ["pa'id"]] },
         },
         {
-          name: 'keeps rows whose status is NULL by testing IS NULL in the text',
-          args: ['2026-04-01', ['paid']],
-          expected: { text: overdueText, values: ['2026-04-01', ['paid']] },
+          name: 'does not hardcode the cutoff date or the excluded statuses',
+          args: ['2026-01-15', ['paid', 'void', 'draft']],
+          expected: {
+            text: overdueText,
+            values: ['2026-01-15', ['paid', 'void', 'draft']],
+          },
         },
         {
           name: 'handles an empty exclusion list',

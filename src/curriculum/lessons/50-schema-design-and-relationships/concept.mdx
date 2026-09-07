@@ -115,8 +115,10 @@ The **composite primary key** on the pair does two jobs: it identifies each row,
     { type: 'error', text: 'ERROR:  duplicate key value violates unique constraint "order_tags_pkey"' },
     { type: 'command', text: "SELECT o.id, t.name FROM orders o JOIN order_tags ot ON ot.order_id = o.id JOIN tags t ON t.id = ot.tag_id WHERE t.name = 'rush';" },
     { type: 'output', text: ' id | name ' },
+    { type: 'output', text: '----+------' },
     { type: 'output', text: '  1 | rush' },
     { type: 'output', text: '  2 | rush' },
+    { type: 'output', text: '(2 rows)' },
   ]}
 />
 
@@ -124,7 +126,15 @@ Lesson 47's book club had the same shape: a membership connects a user and a clu
 
 ## Deleting a parent is a design decision
 
-Once tables point at each other, deleting a row that other rows point at has to mean something, and the foreign key's `ON DELETE` clause is where that meaning is written. There are three useful answers. **`RESTRICT`** refuses the delete while children exist. **`CASCADE`** deletes the children too. **`SET NULL`** keeps the children and blanks their reference. The new schema uses all three, and each was chosen for a reason.
+Once tables point at each other, deleting a row that other rows point at has to mean something, and the foreign key's `ON DELETE` clause is where that meaning is written. There are three useful answers. **`RESTRICT`** refuses the delete while children exist. **`CASCADE`** deletes the children too. **`SET NULL`** keeps the children and blanks their reference. The new schema uses all three, and each was chosen for a reason. The third appears on a table not shown yet, a log of reminder emails sent about an order:
+
+```sql
+CREATE TABLE reminders (
+  id serial PRIMARY KEY,
+  order_id int REFERENCES orders(id) ON DELETE SET NULL,
+  sent_at date NOT NULL
+);
+```
 
 <TerminalTranscript
   label="psql"
@@ -137,9 +147,12 @@ Once tables point at each other, deleting a row that other rows point at has to 
     { type: 'command', text: 'SELECT count(*) FROM order_tags WHERE order_id = 1;' },
     { type: 'output', text: '     0' },
     { type: 'command', text: 'DELETE FROM orders WHERE id = 2;      -- reminders.order_id is ON DELETE SET NULL' },
+    { type: 'output', text: 'DELETE 1' },
     { type: 'command', text: 'SELECT id, order_id, sent_at FROM reminders;' },
     { type: 'output', text: ' id | order_id |  sent_at   ' },
+    { type: 'output', text: '----+----------+------------' },
     { type: 'output', text: '  1 |          | 2026-04-01' },
+    { type: 'output', text: '(1 row)' },
   ]}
 />
 

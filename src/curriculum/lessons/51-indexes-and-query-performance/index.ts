@@ -26,7 +26,7 @@ export const lesson: Lesson = {
       completionMode: 'all-tests-pass',
       title: 'Apply the leftmost-prefix rule',
       prompt:
-        'Implement `chooseIndex`. It receives the available B-tree indexes as `{ name, columns }` and a query shape `{ equals, range?, orderBy? }`: the columns compared with equality, at most one column compared with a range, and at most one ORDER BY column. For each index, count how many leading columns it can use: walk the columns from the left while each is in `equals`; then, if the next column is the `range` column, count it too and stop. The index delivers rows already sorted when the column right after the equality prefix is the `orderBy` column and either there is no range or the range column is that same column. An index with zero usable columns that is not sorted cannot be used. Choose the index with the most usable columns; on a tie prefer one that is sorted; on a further tie prefer the earlier one in the list. Return `{ index, usedColumns, sorted }`, or `{ index: null, usedColumns: 0, sorted: false }` when no index applies. Example: `chooseIndex([{ name: "by_customer", columns: ["customer_id"] }, { name: "by_customer_created", columns: ["customer_id", "created_at"] }], { equals: ["customer_id"], orderBy: "created_at" })` returns `{ index: "by_customer_created", usedColumns: 1, sorted: true }`.',
+        'Implement `chooseIndex`, a simplified planner that applies the leftmost-prefix rule. It receives the available B-tree indexes as `{ name, columns }` and a query shape `{ equals, range?, orderBy? }`: the columns compared with equality, at most one column compared with a range, and at most one ORDER BY column. For each index, count how many leading columns it can use: walk the columns from the left while each is in `equals`; then, if the next column is the `range` column, count it too and stop. The index delivers rows already sorted when the column right after the equality prefix is the `orderBy` column and either there is no range or the range column is that same column. An index with zero usable columns that is not sorted cannot narrow the search, so this selector never chooses it. Choose the index with the most usable columns; on a tie prefer one that is sorted; on a further tie prefer the earlier one in the list. Return `{ index, usedColumns, sorted }`, or `{ index: null, usedColumns: 0, sorted: false }` when no index applies. Example: `chooseIndex([{ name: "by_customer", columns: ["customer_id"] }, { name: "by_customer_created", columns: ["customer_id", "created_at"] }], { equals: ["customer_id"], orderBy: "created_at" })` returns `{ index: "by_customer_created", usedColumns: 1, sorted: true }`.',
       estimatedMinutes: 25,
       functionName: 'chooseIndex',
       starter: `type IndexDefinition = { name: string; columns: string[] }
@@ -84,7 +84,7 @@ console.log(
           },
         },
         {
-          name: 'cannot use an index whose first column is not in the query',
+          name: 'does not choose an index whose first column is not in the query',
           args: [eventIndexes, { equals: ['created_at'] }],
           expected: { index: null, usedColumns: 0, sorted: false },
         },
@@ -130,7 +130,7 @@ console.log(
       completionMode: 'all-tests-pass',
       title: 'Fix the filters that hide their columns from the index',
       prompt:
-        'buildEventSearch builds the query behind the event search screen. The events table stores every email in lowercase and has B-tree indexes on `email` and on `created_at`, yet EXPLAIN shows sequential scans for both filters. The text must start with `SELECT id, customer_id, kind, created_at FROM events`, add a WHERE clause only when a filter is present, and end with ` ORDER BY created_at DESC LIMIT 50`. When `email` is given, lowercase it in code and compare the raw column: `email = $n`. When `day` is given as "YYYY-MM-DD", compare the raw column against a half-open range: `created_at >= $n AND created_at < $n+1`, pushing the day and then the following day (also "YYYY-MM-DD") as two values. Filters appear in the order email, day, joined with " AND ", with placeholders numbered from $1 in push order. Example: `buildEventSearch({ email: "Ada@Example.com", day: "2026-08-31" })` returns `{ text: "SELECT id, customer_id, kind, created_at FROM events WHERE email = $1 AND created_at >= $2 AND created_at < $3 ORDER BY created_at DESC LIMIT 50", values: ["ada@example.com", "2026-08-31", "2026-09-01"] }`.',
+        'buildEventSearch builds the query behind the event search screen. The events table stores every email in lowercase and has B-tree indexes on `email` and on `created_at`, yet EXPLAIN shows sequential scans for both filters. The text must start with `SELECT id, customer_id, kind, created_at FROM events`, add a WHERE clause only when a filter is present, and end with ` ORDER BY created_at DESC LIMIT 50`. When `email` is given, lowercase it in code and compare the raw column: `email = $n`. When `day` is given as "YYYY-MM-DD", compare the raw column against a half-open range: `created_at >= $n AND created_at < $n+1`, pushing midnight UTC of that day and of the following day as full instants in the form "YYYY-MM-DDT00:00:00Z", so the database cannot reinterpret them in the session time zone. Filters appear in the order email, day, joined with " AND ", with placeholders numbered from $1 in push order. Example: `buildEventSearch({ email: "Ada@Example.com", day: "2026-08-31" })` returns `{ text: "SELECT id, customer_id, kind, created_at FROM events WHERE email = $1 AND created_at >= $2 AND created_at < $3 ORDER BY created_at DESC LIMIT 50", values: ["ada@example.com", "2026-08-31T00:00:00Z", "2026-09-01T00:00:00Z"] }`.',
       estimatedMinutes: 15,
       functionName: 'buildEventSearch',
       brokenCode: `type SearchFilters = { email?: string; day?: string }
@@ -168,6 +168,7 @@ console.log(buildEventSearch({ email: 'Ada@Example.com', day: '2026-08-31' }))
         'The index on email holds the stored values. What does the index hold for lower(email)?',
         'Which side of the comparison can be computed without touching the column? Lowercase the value in TypeScript instead.',
         'date(created_at) hides the timestamp column the same way. A day is the range from its midnight to the next midnight, and a range on the raw column can use the index.',
+        'Bind both ends as full UTC instants ending in Z. A bare date string is read in the session time zone, which can shift the whole day.',
         'Computing the next day needs to roll over month and year ends; Date with UTC methods handles that.',
       ],
       tests: [
@@ -184,7 +185,7 @@ console.log(buildEventSearch({ email: 'Ada@Example.com', day: '2026-08-31' }))
           args: [{ day: '2026-08-01' }],
           expected: {
             text: `${selectEvents} WHERE created_at >= $1 AND created_at < $2${orderAndLimit}`,
-            values: ['2026-08-01', '2026-08-02'],
+            values: ['2026-08-01T00:00:00Z', '2026-08-02T00:00:00Z'],
           },
         },
         {
@@ -192,7 +193,7 @@ console.log(buildEventSearch({ email: 'Ada@Example.com', day: '2026-08-31' }))
           args: [{ day: '2026-08-31' }],
           expected: {
             text: `${selectEvents} WHERE created_at >= $1 AND created_at < $2${orderAndLimit}`,
-            values: ['2026-08-31', '2026-09-01'],
+            values: ['2026-08-31T00:00:00Z', '2026-09-01T00:00:00Z'],
           },
         },
         {
@@ -200,7 +201,7 @@ console.log(buildEventSearch({ email: 'Ada@Example.com', day: '2026-08-31' }))
           args: [{ day: '2026-12-31' }],
           expected: {
             text: `${selectEvents} WHERE created_at >= $1 AND created_at < $2${orderAndLimit}`,
-            values: ['2026-12-31', '2027-01-01'],
+            values: ['2026-12-31T00:00:00Z', '2027-01-01T00:00:00Z'],
           },
         },
         {
@@ -208,7 +209,7 @@ console.log(buildEventSearch({ email: 'Ada@Example.com', day: '2026-08-31' }))
           args: [{ email: 'grace@example.com', day: '2026-08-01' }],
           expected: {
             text: `${selectEvents} WHERE email = $1 AND created_at >= $2 AND created_at < $3${orderAndLimit}`,
-            values: ['grace@example.com', '2026-08-01', '2026-08-02'],
+            values: ['grace@example.com', '2026-08-01T00:00:00Z', '2026-08-02T00:00:00Z'],
           },
         },
         {
@@ -291,11 +292,11 @@ console.log(buildEventSearch({ email: 'Ada@Example.com', day: '2026-08-31' }))
           id: 'refuses-speculative-index',
           label: 'Refuses the speculative index with a cost',
           description:
-            'Declines picks(title) because no query in the scenario uses it, names its cost (slower writes, disk, maintenance), and proposes adding it only when a measured query needs it, noting a B-tree would not serve a contains-style title search anyway.',
+            'Declines picks(title) because no query in the scenario uses it, names its cost (slower writes, disk, maintenance), and proposes adding it only when a measured query needs it, noting a B-tree would not serve a contains-style title search anyway. Full credit for the prefix-search index requires text_pattern_ops or an explicit C collation.',
         },
       ],
       referenceAnswer:
-        'Already present. Every primary key is a unique index: clubs(id) serves the club detail page, users(id) serves any lookup by user id, picks(id) exists but no listed query uses it, and memberships(user_id, club_id) is a composite index whose leftmost column is user_id. The UNIQUE constraint on users.email is also an index, so login by email is already one index lookup. The home screen lists the clubs one user belongs to, which is a filter on memberships.user_id, and the primary key\'s leftmost column serves it without a new index.\n\nTo add. The members tab filters memberships by club_id and sorts by joined_at descending: memberships (club_id, joined_at DESC), equality column first so all of one club\'s rows sit together, then the sort column so the index walk delivers them newest-first and the paginated LIMIT stops early without a Sort step, exactly the opener\'s composite index. The picks tab filters picks by club_id and orders by position: picks (club_id, position). Both are foreign key columns, which get no index automatically, and both indexes also speed up the join from clubs to its children. Club search by name prefix: clubs (name), because a LIKE with a literal prefix and no leading wildcard can use a B-tree; if the search must be case-insensitive, store a lowercased name column and index that rather than wrapping name in lower() in the query.\n\nMembers tab tradeoff. I would add the second composite index on memberships (club_id, joined_at DESC). The primary key (user_id, club_id) cannot serve a filter on club_id alone because of the leftmost-prefix rule: entries for one club are scattered across every user. Reordering the primary key to (club_id, user_id) would serve the club filter but not the joined_at sort, so the members tab would still sort thousands of rows per page, and it would break the home screen\'s user_id lookup, which would then need its own index anyway. The cost of the extra index is real, since joins and leaves happen constantly and each write now maintains two indexes on memberships, but the members tab is the second most frequent query and the alternative is a sort over thousands of rows on every page load.\n\nThe refused index. picks(title) serves nothing in the scenario. No query filters or sorts by title. It would slow every pick insert, take disk proportional to the titles, and if a title search does arrive it will almost certainly be a contains-style search, which a B-tree cannot serve regardless; that would call for a text search index designed for it. I would tell the teammate: indexes are bets placed against measured queries, not insurance, and we will add one the day EXPLAIN ANALYZE shows a slow title query, with the column order that query needs.',
+        'Already present. Every primary key is a unique index: clubs(id) serves the club detail page, users(id) serves any lookup by user id, picks(id) exists but no listed query uses it, and memberships(user_id, club_id) is a composite index whose leftmost column is user_id. The UNIQUE constraint on users.email is also an index, so login by email is already one index lookup. The home screen lists the clubs one user belongs to, which is a filter on memberships.user_id, and the primary key\'s leftmost column serves it without a new index.\n\nTo add. The members tab filters memberships by club_id and sorts by joined_at descending: memberships (club_id, joined_at DESC), equality column first so all of one club\'s rows sit together, then the sort column so the index walk delivers them newest-first and the paginated LIMIT stops early without a Sort step, exactly the opener\'s composite index. The picks tab filters picks by club_id and orders by position: picks (club_id, position). Both are foreign key columns, which get no index automatically, and both indexes also speed up the join from clubs to its children. Club search by name prefix: clubs (name text_pattern_ops), because a LIKE with a literal prefix and no leading wildcard can use a B-tree only when the index orders values byte by byte, which the default collation does not; if the search must be case-insensitive, store a lowercased name column and index that the same way rather than wrapping name in lower() in the query.\n\nMembers tab tradeoff. I would add the second composite index on memberships (club_id, joined_at DESC). The primary key (user_id, club_id) cannot serve a filter on club_id alone because of the leftmost-prefix rule: entries for one club are scattered across every user. Reordering the primary key to (club_id, user_id) would serve the club filter but not the joined_at sort, so the members tab would still sort thousands of rows per page, and it would break the home screen\'s user_id lookup, which would then need its own index anyway. The cost of the extra index is real, since joins and leaves happen constantly and each write now maintains two indexes on memberships, but the members tab is the second most frequent query and the alternative is a sort over thousands of rows on every page load.\n\nThe refused index. picks(title) serves nothing in the scenario. No query filters or sorts by title. It would slow every pick insert, take disk proportional to the titles, and if a title search does arrive it will almost certainly be a contains-style search, which a B-tree cannot serve regardless; that would call for a text search index designed for it. I would tell the teammate: indexes are bets placed against measured queries, not insurance, and we will add one the day EXPLAIN ANALYZE shows a slow title query, with the column order that query needs.',
     },
     {
       id: 'index-cost-review',
@@ -306,7 +307,7 @@ console.log(buildEventSearch({ email: 'Ada@Example.com', day: '2026-08-31' }))
         'A teammate proposes fixing slow queries across the product by adding an index on every column that appears in any WHERE clause. In your own words: why did the opener\'s feed query take 33 milliseconds, why did the single-column index leave a Sort step that the composite index removed, what does the leftmost-prefix rule say about which queries a composite index serves, what does every index cost, and why is "index every column" the wrong policy? Use the plan output and numbers from the lesson.',
       estimatedMinutes: 12,
       referenceAnswer:
-        'The feed query took 33 milliseconds because the plan was a Seq Scan: with no index on customer_id, the only way to find customer 4242\'s rows was to read all million and discard the ones that did not match, which the plan reported as 333,324 rows removed by the filter per worker. The work was proportional to the table, not to the answer.\n\nAn index on customer_id changed that to an Index Scan with an Index Cond: the B-tree found the 28 matching entries in a few comparisons and the database fetched only those rows, 0.23 milliseconds. But the plan still showed a Sort on created_at, because the index is ordered by customer_id only, so the 28 rows came out in no useful order and had to be sorted before the LIMIT. The composite index on (customer_id, created_at DESC) removed the Sort: within one customer the entries are already in date order, so the index walk produces rows newest-first and the LIMIT stops after 20. That is why the time fell again, to 0.06 milliseconds.\n\nThe leftmost-prefix rule says a composite index can serve a query only if the query constrains its columns from the left without skipping: equality on the first, then equality or a range on the next, and a sort on the column right after the equality prefix. Once a range is used, later columns are no longer useful. So (customer_id, created_at) serves "customer equals X ordered by date" and "customer equals X in a date range," but a query that filters only on created_at gets a Seq Scan, as the lesson showed at 47 milliseconds, because the first column is missing.\n\nEvery index is a second copy of its columns that must be updated on every insert, update, and delete, plus disk space. The lesson\'s 100,000-row insert took 901 milliseconds with three secondary indexes and 439 with only the primary key, roughly double. Indexing every WHERE column pays that cost for each column while buying little: an index on kind, with four distinct values, was used by the planner and still took 40 milliseconds against 47 for a scan, because it excluded almost nothing. And many WHERE clauses wrap the column in a function or a leading-wildcard LIKE, which no B-tree on that column can serve. The right policy is to read EXPLAIN ANALYZE for the queries that matter, add the specific composite index each one needs with equality columns first and the sort column last, count the indexes the primary keys and UNIQUE constraints already provide, and refuse indexes that no measured query uses.',
+        'The feed query took 33 milliseconds because the plan was a Seq Scan: with no index on customer_id, the only way to find customer 4242\'s rows was to read all million and discard the ones that did not match, which the plan reported as 333,324 rows removed by the filter per worker. The work was proportional to the table, not to the answer.\n\nAn index on customer_id changed that to an Index Scan with an Index Cond: the B-tree found the 28 matching entries in a few comparisons and the database fetched only those rows, 0.23 milliseconds. But the plan still showed a Sort on created_at, because the index is ordered by customer_id only, so the 28 rows came out in no useful order and had to be sorted before the LIMIT. The composite index on (customer_id, created_at DESC) removed the Sort: within one customer the entries are already in date order, so the index walk produces rows newest-first and the LIMIT stops after 20. That is why the time fell again, to 0.06 milliseconds.\n\nThe leftmost-prefix rule says a composite index can serve a query only if the query constrains its columns from the left without skipping: equality on the first, then equality or a range on the next, and a sort on the column right after the equality prefix. Once a range is used, later columns are no longer useful. So (customer_id, created_at) serves "customer equals X ordered by date" and "customer equals X in a date range," but a query that filters only on created_at cannot be narrowed by it, and the planner chose a Seq Scan, as the lesson showed at 47 milliseconds, because reading the whole index to check a non-leading column is no better than reading the table.\n\nEvery index is a second copy of its columns that must be updated on every insert, update, and delete, plus disk space. The lesson\'s 100,000-row insert took 901 milliseconds with three secondary indexes and 439 with only the primary key, roughly double. Indexing every WHERE column pays that cost for each column while buying little: an index on kind, with four distinct values, was used by the planner and still took 40 milliseconds against 47 for a scan, because it excluded almost nothing. And many WHERE clauses wrap the column in a function or a leading-wildcard LIKE, which no B-tree on that column can serve. The right policy is to read EXPLAIN ANALYZE for the queries that matter, add the specific composite index each one needs with equality columns first and the sort column last, count the indexes the primary keys and UNIQUE constraints already provide, and refuse indexes that no measured query uses.',
       rubric: [
         {
           id: 'seq-scan-explained',
@@ -324,7 +325,7 @@ console.log(buildEventSearch({ email: 'Ada@Example.com', day: '2026-08-31' }))
           id: 'leftmost-prefix',
           label: 'States the leftmost-prefix rule',
           description:
-            'Describes that a composite index serves queries constraining its columns from the left without gaps, that a range ends the usable prefix, and gives the created_at-only query as a case the index cannot serve.',
+            'Describes that a composite index narrows queries constraining its columns from the left without gaps, that a range ends the usable prefix, and gives the created_at-only query as a case the index cannot narrow.',
         },
         {
           id: 'write-cost-and-policy',
@@ -390,7 +391,7 @@ export function chooseIndex(
         explanation:
           'The function is the leftmost-prefix rule written as a loop. For each index it counts how many leading columns the query pins with equality, then looks at the one column after that prefix, which is the only place a range or a sort can still benefit: a range there is usable and ends the prefix, and an ORDER BY there means the index delivers rows in the requested order. Anything further right is in no useful order, so it is never examined, which is why the test with equality on a and c and a range on b counts two columns and not three. The comparison at the end encodes the planner\'s preference in miniature: more usable columns beats fewer, a sorted result breaks ties, and the earlier index wins otherwise, using strict greater-than so the first index seen is kept.',
         complexity:
-          'O(i × c) time for i indexes with up to c columns each, O(1) space. The guarantee that matters is that an index is never chosen for a query that skips its leading column.',
+          'O(i × c) time for i indexes with up to c columns each, O(1) space. The guarantee that matters is that this selector never chooses an index whose leading column the query skips, since such an index cannot narrow the search.',
       },
     ],
     'fix-index-hiding-filters': [
@@ -400,11 +401,12 @@ export function chooseIndex(
 
 type Query = { text: string; values: string[] }
 
-// The day after a "YYYY-MM-DD" date, rolling over month and year ends.
-function nextDay(day: string): string {
+// Midnight UTC of a "YYYY-MM-DD" day plus daysAhead, as a full instant such
+// as 2026-08-01T00:00:00Z. Rolls over month and year ends.
+function utcMidnight(day: string, daysAhead: number): string {
   const date = new Date(\`\${day}T00:00:00Z\`)
-  date.setUTCDate(date.getUTCDate() + 1)
-  return date.toISOString().slice(0, 10)
+  date.setUTCDate(date.getUTCDate() + daysAhead)
+  return date.toISOString().replace('.000Z', 'Z')
 }
 
 export function buildEventSearch(filters: SearchFilters): Query {
@@ -419,9 +421,10 @@ export function buildEventSearch(filters: SearchFilters): Query {
   }
 
   if (filters.day !== undefined) {
-    // A calendar day is the half-open range [midnight, next midnight).
+    // A calendar day is the half-open range [midnight, next midnight), bound
+    // as UTC instants so the session time zone cannot shift the day.
     // Comparing created_at directly lets the index on it do the work.
-    values.push(filters.day, nextDay(filters.day))
+    values.push(utcMidnight(filters.day, 0), utcMidnight(filters.day, 1))
     where.push(
       \`created_at >= $\${values.length - 1} AND created_at < $\${values.length}\`,
     )
@@ -438,7 +441,7 @@ export function buildEventSearch(filters: SearchFilters): Query {
   }
 }`,
         explanation:
-          'Both broken filters compared a computed expression against a value, and an index holds stored values, not computed ones, so the planner had to scan. The repair moves every computation to the side of the comparison that does not involve the column. Lowercasing the search term in TypeScript costs nothing and leaves email bare, so the index on email applies; the lesson\'s transcript shows the same change taking a lookup from 160 milliseconds to 0.08. The date filter is the same idea with a twist: a day is not a value the timestamp column can equal, but it is a range the column can fall inside, so the builder pushes the day and the following day and compares created_at to both. The half-open range, inclusive at the start and exclusive at the end, is what makes midnight belong to exactly one day. Rolling the next day over month and year ends is left to Date\'s UTC methods rather than string arithmetic.',
+          'Both broken filters compared a computed expression against a value, and an index holds stored values, not computed ones, so the planner had to scan. The repair moves every computation to the side of the comparison that does not involve the column. Lowercasing the search term in TypeScript costs nothing and leaves email bare, so the index on email applies; the lesson\'s transcript shows the same change taking a lookup from 160 milliseconds to 0.08. The date filter is the same idea with a twist: a day is not a value the timestamp column can equal, but it is a range the column can fall inside, so the builder pushes midnight UTC of the day and of the following day and compares created_at to both. The half-open range, inclusive at the start and exclusive at the end, is what makes midnight belong to exactly one day. The two bounds are full instants ending in Z rather than bare dates, because PostgreSQL reads a bare date compared against a timestamptz in the session time zone, and a server set to Los Angeles would select a different day than one set to UTC. Rolling the next day over month and year ends is left to Date\'s UTC methods rather than string arithmetic.',
         complexity:
           'O(1) time and space. The guarantee that matters is that every comparison in the text is against a bare indexed column, so the plans become index scans.',
       },

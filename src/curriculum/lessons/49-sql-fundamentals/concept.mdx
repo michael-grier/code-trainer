@@ -9,7 +9,8 @@ CREATE TABLE invoices (
   customer_id int NOT NULL REFERENCES customers(id),
   total int NOT NULL,
   status text,
-  created_at date NOT NULL
+  created_at date NOT NULL,
+  due_date date NOT NULL
 );
 CREATE TABLE payments (
   id serial PRIMARY KEY,
