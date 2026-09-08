@@ -42,8 +42,7 @@ export function ProgressPage() {
         <p className="mt-1 text-sm text-muted-foreground">
           {counts.completed} done · {counts.inProgress} in progress ·{' '}
           {availableLessonCount - counts.completed - counts.inProgress} remaining
-          {' · '}
-          {comingSoonLessonCount} coming soon
+          {comingSoonLessonCount > 0 && ` · ${comingSoonLessonCount} coming soon`}
         </p>
       </section>
 

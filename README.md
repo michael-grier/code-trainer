@@ -4,9 +4,9 @@
 
 Code Trainer is a browser-based interview practice app for intermediate full-stack TypeScript developers. Short MDX lessons lead into coding, debugging, refactoring, React, tracing, written, and system design exercises.
 
-This is a work-in-progress portfolio project. Of the 60 planned lessons, 46 are available and the other 14 are clearly marked "Coming soon." Guest progress works without an account and stays in the current browser. Optional GitHub accounts sync progress across devices through Convex.
+All 60 lessons are available across five tracks. Guest progress works without an account and stays in the current browser. Optional GitHub accounts sync progress across devices through Convex.
 
-## What works today
+## Features
 
 - A guided curriculum covering algorithms, JavaScript and TypeScript, frontend engineering, backend topics, testing, and system design
 - An in-browser Monaco workspace for TypeScript and React exercises
@@ -16,7 +16,7 @@ This is a work-in-progress portfolio project. Of the 60 planned lessons, 46 are 
 - GitHub sign-in with cross-device progress sync
 - Responsive navigation, keyboard focus states, and light and dark themes
 
-The exercise runtime stays in the browser. Web Workers isolate code and type-checking work from the interface, while Sucrase and the TypeScript compiler handle submitted code.
+The exercise runtime stays in the browser. Workers run inside an opaque-origin sandbox that blocks access to application storage and network requests. Sucrase transpiles submitted TypeScript and TSX for execution; a separate TypeScript compiler worker grades type fixtures.
 
 ## Run it locally
 
@@ -39,6 +39,7 @@ Use `bun run dev:all` to start Vite and `convex dev` together. Convex uses the s
 | `bun run dev:convex` | Watch backend changes against the selected Convex development deployment |
 | `bun run dev:all` | Start Vite and `convex dev` together |
 | `bun run test` | Run the Vitest suite |
+| `bun run test:e2e` | Run local Playwright browser checks; see [setup](DEPLOYMENT.md#local-checks) |
 | `bun run lint` | Run ESLint |
 | `bun run build` | Type-check and create the production build |
 | `bun run preview` | Serve the production build locally |
@@ -50,7 +51,7 @@ Use `bun run dev:all` to start Vite and `convex dev` together. Convex uses the s
 - MDX lesson content with a typed curriculum model
 - Monaco Editor, Sucrase, TypeScript, and Web Workers for browser-side exercises
 - Local storage for guest progress, plus Better Auth and Convex for account sync
-- Vitest and ESLint for automated checks
+- Vitest, Playwright, and ESLint for automated checks
 
 The main project areas are:
 
@@ -62,6 +63,8 @@ The main project areas are:
 | `src/state` | Progress, drafts, recommendations, and sync behavior |
 | `convex` | Authenticated progress persistence |
 
-## Work in progress
+## Contributor documentation
 
-The next milestones are to finish the remaining lessons and publish the Vercel demo. This repository is intentionally scoped as a portfolio demo rather than a full production service.
+- [Lesson authoring](docs/lesson-authoring.md) covers teaching conventions, problem selection, and grading requirements.
+- [Architecture](docs/architecture.md) explains the runtime and progress-sync boundaries.
+- [Deployment](DEPLOYMENT.md) covers local account sync, hosting, and release operations.

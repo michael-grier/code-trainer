@@ -11,5 +11,5 @@
 - Treat Better Auth sessions, Convex authorization, and persistence boundaries as
   explicit security boundaries.
 - Use T3 Code worktree threads for parallel work in this repo.
-- When authoring curriculum lessons, follow the lesson authoring principles in
-  `CODE_TRAINER_BUILD_PLAN.md`.
+- When authoring or reviewing curriculum lessons, read
+  [docs/lesson-authoring.md](docs/lesson-authoring.md).

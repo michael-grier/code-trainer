@@ -4,7 +4,6 @@ import { AuthButtons } from '@/components/app/AuthButtons'
 import { MobileNav } from '@/components/app/MobileNav'
 import { SyncStatus } from '@/components/app/SyncStatus'
 import { ThemeToggle } from '@/components/app/ThemeToggle'
-import { Badge } from '@/components/ui/badge'
 
 export function Header() {
   return (
@@ -17,14 +16,6 @@ export function Header() {
         >
           Code Trainer
         </Link>
-        <Badge
-          aria-label="Work in progress"
-          className="border border-border px-1.5 sm:px-2"
-          variant="muted"
-        >
-          <span className="sm:hidden">WIP</span>
-          <span className="hidden sm:inline">Work in progress</span>
-        </Badge>
         <div className="ml-auto flex items-center gap-3">
           <div className="hidden sm:block">
             <SyncStatus />
