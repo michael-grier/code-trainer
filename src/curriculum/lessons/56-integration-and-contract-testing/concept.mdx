@@ -1,14 +1,117 @@
 # Integration and Contract Testing
 
-This placeholder concept page reserves the lesson slot for **Integration and Contract Testing**. The content pass will replace it with the final interview-focused MDX lesson.
+A billing module sums a customer's outstanding orders. It asks the orders service for the customer's orders through a small client interface and adds up the totals. Lesson 55 said wiring belongs to integration tests, but the function has logic too, so it got a unit test with a hand-written fake client that answers the way the team remembers the service answering.
 
-## What this lesson will cover
+```ts
+export async function sumOutstanding(client: Client, customerId: number) {
+  const page = await client.get(`/orders?customerId=${customerId}`)
+  return page.items.reduce((sum, order) => sum + order.totalCents, 0)
+}
+```
 
-- Core interview signals for integration and contract testing.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+```ts
+const fakeClient = {
+  get: async () => ({ items: [{ id: 1, totalCents: 1800 }, { id: 2, totalCents: 250 }], nextCursor: null }),
+}
+
+test('sums the outstanding totals of a customer', async () => {
+  expect(await sumOutstanding(fakeClient, 7)).toBe(2050)
+})
+```
+
+<TerminalTranscript
+  label="test runner"
+  lines={[
+    { type: 'command', text: 'bun test unit.test.ts' },
+    { type: 'output', text: ' 1 pass' },
+    { type: 'output', text: ' 0 fail' },
+  ]}
+/>
+
+Green for months. Then the same function runs against the real orders service, started locally, through the real HTTP client.
+
+<TerminalTranscript
+  label="test runner"
+  lines={[
+    { type: 'command', text: 'bun test integration.test.ts' },
+    { type: 'error', text: "TypeError: undefined is not an object (evaluating '(await client.get(`/orders?customerId=${customerId}`)).items.reduce')" },
+    { type: 'error', text: '(fail) sums the outstanding totals against the running orders service' },
+  ]}
+/>
+
+The service answers `{ data: { items: [...], nextCursor: null } }`. It has answered that way since a change last quarter that wrapped every response in a `data` envelope, announced in a channel nobody on the billing team reads. The fake still answers `{ items: [...] }`, because a fake answers whatever its author typed. The unit test proved that `sumOutstanding` adds numbers correctly, which was never in doubt, and said nothing about the one thing that broke: whether the two sides of the boundary still agree on the shape of the message. The rest of the lesson is about testing the boundaries between modules and services, where most production failures live and where unit tests, by design, do not look.
+
+## A fake is a belief about the other side
+
+A unit test with a fake collaborator tests the code under test against the author's belief about the collaborator. When the belief is right, the test is useful. When the collaborator changes, the belief does not, and the test keeps passing against a version of the world that no longer exists. This is **test double drift**, and it is not a bug in the fake; it is what a fake is. Nothing connects it to the real service, so nothing updates it.
+
+The exposure grows with distance. A fake for a pure helper in the same file drifts rarely, because the same person changes both. A fake for another team's service drifts on that team's schedule, and the failure appears in production, not in the pull request that caused it. The question integration testing answers is: at which boundaries is a belief not good enough, and what do we run there instead?
+
+## Integration tests exercise the real boundary
+
+An **integration test** runs the code under test against a real implementation of what it depends on: a real database, a real service started for the test, the real filesystem. The point is not that more code runs; it is that the boundary is crossed for real, so a change on either side of it fails the test. The billing test above, run against the orders service started locally, is an integration test, and it is the only test in the story that told the truth.
+
+Integration tests cost more than unit tests in three currencies. They are slower, because a real database or service is slower than a returned object. They need setup, because the real thing has to be running with known data in it. And they fail for more reasons, because a network, a port, or a leftover row from a previous test can break them without any code being wrong. Those costs are why they are placed deliberately rather than everywhere: one or two per boundary, covering the contract, with the logic on each side of the boundary covered by unit tests that stay fast.
+
+Where the real dependency is too expensive or not under your control, a third-party payment provider for instance, the substitute should be a **fake with real behavior**: an in-memory implementation of the same interface that actually stores and returns data, rather than a mock that returns canned answers. A fake repository that really filters by customer catches a query-shape mistake; a mock that returns two orders no matter what was asked catches nothing. Lesson 55 warned against mocks that assert calls; the same reasoning says a fake should behave, not merely respond.
+
+## A contract is a shape both sides can check
+
+The opener's fake and the real service disagreed on a shape, and no test on either side encoded the shape. That is the gap **contract testing** fills. The **contract** is the agreed form of the messages crossing a boundary, written down as something executable: a validator, a schema, or a set of example requests and responses. The consumer tests its own code against the contract, the provider tests that its real responses satisfy the same contract, and a change that breaks one side now fails a test on the other side before anything ships.
+
+Lesson 31 already built the tool for this: parse, don't validate. A function that takes an `unknown` body and either returns typed orders or a list of exact problems is a contract in code. Used at the consumer's boundary it turns a drifted response into a clear error instead of a crash three lines later; used in the provider's test suite against real responses, it fails the moment the envelope changes.
+
+```ts
+export function parseOrdersResponse(body: unknown): ParsedOrders {
+  if (!isRecord(body)) return { ok: false, errors: ['body must be an object'] }
+  if (!isRecord(body.data)) return { ok: false, errors: ['data must be an object'] }
+  // ... every item and the cursor checked, every problem named
+}
+```
+
+Run against the real service's answer this returns the orders. Run against what the old fake answered it returns `data must be an object`, which is the whole incident in five words. The second practice problem builds this parser, and both the consumer's unit tests and the provider's integration tests would use it.
+
+Contracts have a direction. The consumer states what it needs, which is usually less than the provider sends; a consumer that reads two fields should not fail when a third appears, so the parser ignores fields it does not read. That tolerance is what lets a provider add to a response without coordinating every consumer, and it is why the contract is written from the consumer's side.
+
+## Make the boundary reachable
+
+An integration test needs to point the code at the real thing, and code that decides for itself where the real thing is cannot be pointed. This is lesson 55's seam again, one level up. A request builder that reads `process.env.ORDERS_URL` and calls `fetch` inside itself can only be tested against whatever the environment happens to say, and the sending is welded to the building. Split them: a pure function that builds the request from explicit inputs, base URL and credentials included, which unit tests pin exactly; and a thin sender that takes the request and performs the I/O, which integration tests exercise against a local service. The first practice problem is that refactor.
+
+```ts
+export function buildOrdersRequest(baseUrl: string, apiKey: string, customerId: number, cursor: string | null) {
+  const url = new URL('/orders', baseUrl)
+  url.searchParams.set('customerId', String(customerId))
+  if (cursor !== null) url.searchParams.set('cursor', cursor)
+  return { url: url.toString(), headers: { accept: 'application/json', 'x-api-key': apiKey } }
+}
+```
+
+With the base URL a parameter, the same code targets production, a staging copy, or a fake server on a local port, and the test chooses.
+
+## Where each kind of test belongs
+
+The picture that results is not a pyramid to be filled from the bottom but a set of placements. Logic inside a module gets unit tests, many and fast, against its contract. Each boundary gets an integration test or two that cross it for real, plus a contract that both sides check. The full user journey, which crosses every boundary at once, gets the end-to-end tests of the next lesson, few and expensive. A suite that is all unit tests is the opener: fast, green, and blind at the seams. A suite that is all integration tests is slow, fragile, and unable to say which of the ten things it touched broke.
+
+The discipline costs setup and time. A local orders service or a database in a container has to start before the integration tests run, test data has to be created and cleaned up per test so runs do not contaminate each other, and the contract parser is code that must be maintained as the contract evolves. Those costs are paid once per boundary. The alternative was paid in production.
+
+## Common mistakes
+
+These are the boundary-testing errors that show up most often in incidents and in interviews:
+
+- Testing a service client only against a hand-written fake, so the suite stays green while the service's response shape changes underneath it.
+- Substituting a mock that returns canned answers where a fake with real behavior would have caught the query mistake.
+- Writing no executable contract, so neither side has a test that fails when the message shape changes.
+- Making the consumer's contract as strict as the provider's full response, so any added field breaks consumers that never read it.
+- Welding the request construction to the network call and the environment, so nothing can point the code at a local service.
+- Running integration tests against shared mutable data, so tests pass alone and fail together depending on order.
+- Treating integration tests as a replacement for unit tests and losing the fast, precise failures that say which function broke.
+- Skipping the integration test because the service is slow to start, and discovering the drift in production instead.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+The exercises follow the lesson from the seam to the contract to the plan:
+
+1. Refactor the orders request builder so its base URL and credentials arrive as parameters and nothing inside it touches the environment or the network.
+2. Implement the contract parser that turns the orders service's real response into typed orders or a list of exact problems.
+3. Explain in your own words why the opener's unit test stayed green, what a contract test would have caught, and where you would place each kind of test.
+4. Design the integration and contract test plan for the billing module's boundaries, including what runs for real and what is faked with behavior.
