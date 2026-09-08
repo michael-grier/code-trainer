@@ -1,14 +1,85 @@
 # System Design Capstone
 
-This placeholder concept page reserves the lesson slot for **System Design Capstone**. The content pass will replace it with the final interview-focused MDX lesson.
+The book club app is launching. Its club list endpoint returns every club, because at the start there were forty and a page felt like premature engineering. There are now twenty thousand. Here is that endpoint under a launch-day load test: fifty concurrent clients hitting it for five seconds.
 
-## What this lesson will cover
+<TerminalTranscript
+  label="load test"
+  lines={[
+    { type: 'command', text: 'node load.mjs   # GET /clubs, 50 concurrent clients, 5 seconds' },
+    { type: 'warning', text: '370 requests in 5s at concurrency 50: 74 req/s, p50 543 ms, p99 4248 ms, 3702 KB per response, 0 errors' },
+  ]}
+/>
 
-- Core interview signals for system design capstone.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+The two latency figures are **percentiles**: p50 is the time under which half of the requests finished, and p99 is the time under which 99 of every 100 finished, so p99 shows the slowest users an average would hide. Seventy-four requests per second, and one request in a hundred waits over four seconds for a three-and-a-half-megabyte response most of which the screen never shows. The same endpoint returning a page of twenty, the shape lesson 47 gave every list:
+
+<TerminalTranscript
+  label="load test"
+  lines={[
+    { type: 'command', text: 'node load.mjs   # GET /clubs?limit=20, same load' },
+    { type: 'output', text: '35304 requests in 5s at concurrency 50: 7061 req/s, p50 6 ms, p99 20 ms, 4 KB per response, 0 errors' },
+  ]}
+/>
+
+Ninety-five times the throughput and a p99 two hundred times lower, from a decision made in a design review rather than in a profiler. That is the point of this capstone. Every lesson in the backend and production tracks was a design decision with a measurable consequence, and system design is the discipline of making those decisions on purpose, in the right order, before the load test does it for you. The lesson walks the book club through that order, then hands you a larger version of it to design yourself.
+
+## Start from the numbers
+
+A design conversation that starts with boxes and arrows produces boxes and arrows. One that starts with numbers produces a system sized for its load. The numbers are estimates, and the estimating is called back-of-envelope arithmetic because precision is not the point; being within a factor of ten is. Four inputs cover most systems: how many users are active in a day, how many requests each makes, how much bigger the peak is than the average, and how large a response is. Two more cover storage: writes per user per day and bytes per row, times how long rows are kept.
+
+```text
+requests per day  = 100,000 users × 40 requests  = 4,000,000
+average rps       = 4,000,000 / 86,400 s          ≈ 46
+peak rps          = 46 × 5                        ≈ 231
+egress per day    = 4,000,000 × 5 KB              = 20 GB
+storage per year  = 100,000 × 3 writes × 500 B × 365 ≈ 55 GB
+```
+
+A day is 86,400 seconds, which rounds to a hundred thousand for mental arithmetic. Two hundred and thirty requests per second at peak is a load one well-indexed database and a couple of application instances handle without ceremony, and 55 gigabytes a year fits on a single volume. The estimate says the book club at a hundred thousand daily users does not need sharding, a message queue, or a second region, and that knowledge is worth more than any diagram. It also says what does matter: at 5 KB a response, egress is 20 GB a day, so the 3.7 MB unpaginated response in the opener would have been 15 TB. The first practice problem is this arithmetic as a function, so the estimate is repeatable when the inputs change.
+
+## Requirements before shapes
+
+The next step is to separate what the system must do from how well it must do it. **Functional requirements** are the operations: browse clubs, join, leave, add picks, get notified. **Non-functional requirements** are the qualities: how fast, how available, how consistent, how many users, how long data is kept. Interviews and design reviews both go wrong when the second list is skipped, because every hard decision lives there. Whether the member count on a club can be a few seconds stale is a non-functional requirement, and lesson 54's caching decision depends entirely on the answer.
+
+State the assumptions you make out loud, because a design is only as good as the requirements it was built for. "I am assuming reads outnumber writes ten to one and that a member count stale by ten seconds is acceptable" is a sentence that lets a reviewer correct the premise before it becomes an architecture.
+
+## The walk, in the order the curriculum taught it
+
+With numbers and requirements in hand, the design proceeds from the outside in, and each step is a lesson you have already done.
+
+The API first, as resources and methods with honest status codes, paginated lists, and one error shape, from lesson 47; the opener is what happens when the pagination rule is skipped. The request pipeline from lesson 46, with authentication and per-resource authorization from lesson 48, and idempotency keys on the endpoints where a duplicate is expensive. The data model from lesson 50: one table per entity, foreign keys with deliberate delete behavior, a join table for memberships. Indexes from lesson 51 for the queries the API actually makes, composite where a filter and a sort travel together, and none for columns no query uses. Consistency from lesson 52 wherever two requests can race on one row: the join button uses a conditional insert or the membership table's primary key rather than a read-then-write. Then the two protective layers from lesson 54: a cache in front of the reads that dominate, keyed by every input the response depends on, with **single-flight** on expiry, lesson 54's technique of keeping one in-flight load per key so an expired popular entry costs one query rather than one per waiting request; and rate limits in shared state keyed by the authenticated user.
+
+Only after all of that do the boxes appear, and they are few: a load balancer, several stateless application instances that hold nothing per request in module scope, one primary database with a replica for reads and failover, one shared cache and limiter store. Every instance is replaceable, which is what lets lesson 53's rolling deploys and lesson 57's per-run test environments work.
+
+## Reliability is a set of specific promises
+
+A design is not reliable because it has redundancy drawn on it. It is reliable because specific failures have specific answers. Walk the failures. An application instance dies: the load balancer stops routing to it, and because instances hold no per-request state, nothing is lost. The database primary dies: the replica is promoted, and the seconds of unavailability are the cost of not running a distributed database for a system that does not need one. The cache dies: reads fall through to the database, which is sized to survive that at peak because the estimate said so, and the limiter fails open for reads and closed for login, as lesson 54 argued. A downstream provider is slow: every outbound call has a timeout from lesson 24, retries only on transient failures from lesson 43, and an idempotency key so a retry cannot double-send.
+
+Two properties make those answers checkable. **Observability** means the system reports what it is doing in a form that answers the question "is it working and for whom": request counts and latency per endpoint as percentiles, never averages, because the opener's p99 of four seconds hides behind a mean of half a second; error rates by status family from lesson 47; and traces that follow one request across the instance, the cache, and the database. **Rollout** means every change reaches production the way lesson 53 taught: expand-migrate-contract for schema, a **canary** before the fleet, meaning one instance runs the new version under real traffic while the rest stay on the old until its numbers hold, and a rollback that is a flag flip or a redeploy of the previous version, not a hope.
+
+## Tradeoffs are the deliverable
+
+The finished design is not a diagram. It is a list of decisions, each with what it costs and what it buys, and each traceable to a number or a requirement. Pagination costs a cursor in every list client and buys the opener's ninety-five-fold throughput. A read replica costs replication lag on reads and buys survival of a primary failure. A cache costs a staleness window and an invalidation obligation and buys the database its headroom. A shared limiter store costs a network hop per request and buys a limit that is actually enforced across instances. Serializable transactions cost retries and buy correctness for the one flow that needs it. A design review that cannot name what each piece costs has not finished, and an interviewer who hears only benefits will ask about costs until they find the piece you did not think about.
+
+The reverse holds too. The estimate said the book club does not need sharding or a queue, and a design that includes them anyway has paid for complexity it cannot justify, which is lesson 59's premature abstraction at the scale of infrastructure. The strongest answer to "how would you scale this" is often "here is the number at which I would, here is what I would do then, and here is why not before."
+
+## Common mistakes
+
+These are the design errors that show up most often in reviews and in interviews:
+
+- Drawing the architecture before estimating the load, and sizing for a scale the product may never reach or missing the one that it will.
+- Listing functional requirements only, so every non-functional decision, staleness, availability, consistency, is made by accident later.
+- Returning unbounded lists because a page felt like premature engineering, as the opener did.
+- Adding sharding, queues, or a second region without a number that requires them.
+- Reporting average latency, which hid a four-second p99 behind a half-second mean in the opener.
+- Drawing redundancy without naming what happens when each specific component fails.
+- Calling a downstream service without a timeout, a retry policy that distinguishes transient from permanent, and an idempotency key.
+- Presenting a design as a diagram of benefits with no list of what each piece costs.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+The exercises follow the lesson from the arithmetic to the full design and its defense:
+
+1. Implement the capacity estimator that turns user counts and request shapes into requests per second, egress, and storage.
+2. Design the book club at a million daily users: requirements, numbers, API, data, consistency, caching, and the boxes that result.
+3. Design the reliability and rollout plan for that system: what fails, what happens, how you know, and how changes ship.
+4. Explain in your own words which three decisions in your design matter most, what each costs, and the number at which you would change your mind.
