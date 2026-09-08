@@ -81,7 +81,7 @@ export const lesson: Lesson = {
       completionMode: 'all-tests-pass',
       title: 'Fix the late fee the bisect blamed',
       prompt:
-        'lateFeeCents computes the late fee on an invoice from its total in cents and the number of days late. The policy: no fee through the tenth day late inclusive; after that, two percent of the total per full week past the grace period, so days 11 through 16 charge nothing and day 17 charges one week; the rate is capped at twenty percent; the fee is rounded to whole cents. The bisected commit "tidy late fee rounding" changed this function, and finance reports that an invoice 20 days late was charged 400 instead of 200 and one exactly 10 days late was charged at all. Restore the policy. Example: `lateFeeCents(10000, 20)` returns `200`.',
+        'lateFeeCents computes the late fee on an invoice from its total in cents and the number of days late. The policy: no fee through the tenth day late inclusive; after that, two percent of the total per full week past the grace period, so days 11 through 16 charge nothing and day 17 charges one week; the rate is capped at twenty percent; the fee is rounded to whole cents. The bisected commit "tidy late fee rounding" changed this function, and finance reports that an invoice 20 days late was charged 400 instead of 200. Restore the policy, including the grace comparison the commit rewrote, even though the rounding change is the only one with a visible symptom. Example: `lateFeeCents(10000, 20)` returns `200`.',
       estimatedMinutes: 10,
       functionName: 'lateFeeCents',
       brokenCode: `// Late fee: nothing during the grace period, then 2% of the total per
@@ -96,7 +96,7 @@ export function lateFeeCents(totalCents: number, daysLate: number): number {
 console.log(lateFeeCents(10000, 20))
 `,
       bugHints: [
-        'The bisected diff touched two boundaries. Which comparison decides the last day of grace, and which decides how a partial week counts?',
+        'The bisected diff touched two lines. Which one decides how a partial week counts, and does the other change any output at all?',
         'Twenty days late is ten days past grace. Is that one full week or two?',
         'The existing test used 24 days, where floor and ceiling agree. Pick inputs where they do not.',
       ],
@@ -262,7 +262,7 @@ console.log(lateFeeCents(10000, 20))
         'A teammate is impressed that the late-fee bug was located in three test runs and asks how to do that next time. In your own words: why was the first step a failing test rather than reading the code, how git bisect used that test and why the test had to be automatic and reliable, why the existing test never caught the bug, what characterization tests would have done for the "tidy" commit, and what rule about commits would have made the bisect result unambiguous. Use the late-fee numbers.',
       estimatedMinutes: 12,
       referenceAnswer:
-        'The first step was a failing test because a ticket is a claim and a test is a fact. Writing lateFeeCents(10000, 20) and expecting 200 turned "finance says the fee is wrong" into something that fails in a tenth of a second at a desk, so every theory about the cause could be checked instantly instead of argued, and the fix could not regress later because the test stays. It also forced the expected value to be stated precisely: twenty days late is ten past grace, one full week, 200 cents, which is the policy, not the ticket\'s number.\n\ngit bisect took that test as its oracle. Given a known-bad commit, HEAD, and a known-good one, the commit that added the fee, it checked out the middle commit, ran the test, and used pass or fail to discard half the range, then repeated. Eight commits took three runs and named "tidy late fee rounding" as the first bad commit. The test had to be automatic, because bisect run needs a command that exits non-zero on bad, and reliable, because a flaky check would have sent the search to the wrong commit; a manual "does it look right" cannot be halved.\n\nThe existing test never caught the bug because it checked one input, 24 days, where the two rounding rules agree: fourteen days past grace is exactly two weeks whether you floor or ceil, so 400 was right before and after the change. The commit moved two boundaries, the grace period from inclusive of day 10 to exclusive and partial weeks from rounding down to rounding up, and the single test sat on neither boundary.\n\nCharacterization tests would have recorded the current answer at every boundary before the tidy: day 10 charges 0, day 16 charges 0, day 17 charges 200, day 20 charges 200, the cap at 2000. Any of those would have gone red the moment the comparison or the rounding changed, and the author would have seen that "tidy" was not a tidy.\n\nThe rule is that a refactor never shares a commit with a behavior change. Had the boundary changes been intended, they belonged in their own commit with their own tests and a message naming the new policy; then a bisect landing on it would say what changed and why, and a reviewer of the tidy commit would have seen only structure.',
+        'The first step was a failing test because a ticket is a claim and a test is a fact. Writing lateFeeCents(10000, 20) and expecting 200 turned "finance says the fee is wrong" into something that fails in a tenth of a second at a desk, so every theory about the cause could be checked instantly instead of argued, and the fix could not regress later because the test stays. It also forced the expected value to be stated precisely: twenty days late is ten past grace, one full week, 200 cents, which is the policy, not the ticket\'s number.\n\ngit bisect took that test as its oracle. Given a known-bad commit, HEAD, and a known-good one, the commit that added the fee, it checked out the middle commit, ran the test, and used pass or fail to discard half the range, then repeated. Eight commits took three runs and named "tidy late fee rounding" as the first bad commit. The test had to be automatic, because bisect run needs a command that exits non-zero on bad, and reliable, because a flaky check would have sent the search to the wrong commit; a manual "does it look right" cannot be halved.\n\nThe existing test never caught the bug because it checked one input, 24 days, where the two rounding rules agree: fourteen days past grace is exactly two weeks whether you floor or ceil, so 400 was right before and after the change. The commit changed two lines, the grace comparison from inclusive of day 10 to exclusive and the week count from rounding down to rounding up; only the rounding change alters any output, since day 10 yields zero weeks either way, and the single test sat where floor and ceiling agree.\n\nCharacterization tests would have recorded the current answer at every boundary before the tidy: day 10 charges 0, day 16 charges 0, day 17 charges 200, day 20 charges 200, the cap at 2000. Any of those would have gone red the moment the comparison or the rounding changed, and the author would have seen that "tidy" was not a tidy.\n\nThe rule is that a refactor never shares a commit with a behavior change. Had the boundary changes been intended, they belonged in their own commit with their own tests and a message naming the new policy; then a bisect landing on it would say what changed and why, and a reviewer of the tidy commit would have seen only structure.',
       rubric: [
         {
           id: 'reproduce-first',
@@ -280,7 +280,7 @@ console.log(lateFeeCents(10000, 20))
           id: 'coverage-gap',
           label: 'Why the existing test missed it',
           description:
-            'Points out that 24 days is where floor and ceiling agree, so a single happy-path test was silent at both moved boundaries, and names characterization tests at the boundaries as the guard.',
+            'Points out that 24 days is where floor and ceiling agree, so a single happy-path test was silent exactly where the rounding change bites, and names characterization tests at the boundaries as the guard.',
         },
         {
           id: 'commit-discipline',
@@ -367,7 +367,7 @@ console.log(lateFeeCents(10000, 20))
   approaches: {
     'fix-late-fee-boundaries': [
       {
-        name: 'Restore the two boundaries the tidy moved',
+        name: 'Reverse both lines of the tidy, and know which one mattered',
         code: `// Late fee: nothing through the tenth day late, then 2% of the total per
 // full week past the grace period, capped at 20%.
 export function lateFeeCents(totalCents: number, daysLate: number): number {
@@ -381,7 +381,7 @@ export function lateFeeCents(totalCents: number, daysLate: number): number {
   return Math.round(totalCents * rate)
 }`,
         explanation:
-          'Both fixes reverse the bisected diff. The grace comparison goes back to less-than-or-equal so day 10 is still inside the grace period, and the week count goes back to floor so a partial week does not charge as a full one. The tests pin every boundary the single original test missed: the last grace day, the six days before the first full week, the first full week at day 17, the reported 20-day case, the 24-day case where both roundings agreed, and the cap. With those in the suite, the next commit that touches a comparison in this function turns red at the exact input it changed, which is what the tidy commit needed and did not have.',
+          'Both lines of the bisected diff are reversed. The week count goes back to floor so a partial week does not charge as a full one, which is the change that produced the 400. The grace comparison goes back to less-than-or-equal to say what the policy says, though it never changed an output: on day 10 the week count is zero under either comparison, which is why the day-10 test documents the policy rather than catching the bug. The tests pin every boundary the single original test missed: the last grace day, the six days before the first full week, the first full week at day 17, the reported 20-day case, the 24-day case where both roundings agreed, and the cap. With those in the suite, the next commit that touches a comparison in this function turns red at the exact input it changed, which is what the tidy commit needed and did not have.',
         complexity:
           'O(1) time and space. The guarantee that matters is that the fee is now pinned at every boundary of the policy, not at one point where two readings coincide.',
       },

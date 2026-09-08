@@ -52,11 +52,11 @@ Three test runs across eight commits, and the guilty commit has a name. Its diff
 +  const weeksLate = Math.ceil((daysLate - 10) / 7)
 ```
 
-A commit called "tidy" changed two boundaries: the grace period now ends a day early, and a partial week rounds up to a full one. The existing test passed because 24 days is exactly two weeks past grace, where floor and ceiling agree. What follows is the process that found this in minutes rather than an afternoon of reading, and the discipline that would have kept a tidying commit from changing behavior in the first place.
+A commit called "tidy" changed two lines. The first, moving the grace comparison from `<= 10` to `< 10`, happens to change nothing observable: on day 10 the week count is zero either way, so the fee is zero under both. The second, rounding a partial week up to a full one, changes every input that is not a whole number of weeks past grace. The existing test passed because 24 days is exactly two weeks past grace, where floor and ceiling agree. What follows is the process that found this in minutes rather than an afternoon of reading, and the discipline that would have kept a tidying commit from changing behavior in the first place.
 
 ## Reproduce before you reason
 
-Debugging starts with a failing test, not a theory. The ticket said what happened; the test says it in a form that runs, and once it runs, every theory can be checked in a second instead of argued. It also turns the fix into something that cannot regress silently, because the test stays in the suite after the bug is gone. The first practice problem is that test's function: the bisected bug is the broken code, and the tests are the characterization of the policy the ticket describes, including the two boundaries the tidying commit moved.
+Debugging starts with a failing test, not a theory. The ticket said what happened; the test says it in a form that runs, and once it runs, every theory can be checked in a second instead of argued. It also turns the fix into something that cannot regress silently, because the test stays in the suite after the bug is gone. The first practice problem is that test's function: the bisected bug is the broken code, and the tests are the characterization of the policy the ticket describes, including the boundary the tidying commit moved and the day-10 boundary it only appeared to move.
 
 Reproduction has a second benefit that is easy to miss. Writing the test forces you to state the expected behavior precisely, and that is often where the bug turns out to be a disagreement rather than a mistake. If the ticket had said 20 days late should charge 400, the test would have exposed that the policy and the ticket disagree before anyone changed code.
 
@@ -74,7 +74,7 @@ A **characterization test** records what the code currently does, whether or not
 
 ## Refactor in steps that keep the tests green
 
-The word **refactor** means changing structure without changing behavior, and the definition is only enforceable with tests that would notice a behavior change. With characterization tests in place, refactoring becomes a sequence of small moves, each followed by a green run: extract a helper, rename a variable, replace a nested conditional with a lookup table, delete a branch that the table made redundant. If a step turns the suite red, the step changed behavior and is reverted, not debugged. The tidying commit broke this rule by combining a cleanup with two boundary changes in one diff called "tidy"; had the boundary changes been intended, they belonged in their own commit with their own tests and a message saying what policy changed and why.
+The word **refactor** means changing structure without changing behavior, and the definition is only enforceable with tests that would notice a behavior change. With characterization tests in place, refactoring becomes a sequence of small moves, each followed by a green run: extract a helper, rename a variable, replace a nested conditional with a lookup table, delete a branch that the table made redundant. If a step turns the suite red, the step changed behavior and is reverted, not debugged. The tidying commit broke this rule by combining a cleanup with a rounding change in one diff called "tidy"; had the rounding change been intended, they belonged in their own commit with their own tests and a message saying what policy changed and why.
 
 The second practice problem is a legacy shipping function with four copy-pasted branches, `var` declarations, and a side effect on its argument. Its characterization tests are already written and green. The job is to make it small without making any of them red, and the static checks pin the things a reader of the diff would want: no mutation of the input, no `var`, and a line budget that forces the duplicated branches into a table.
 
@@ -101,7 +101,7 @@ These are the debugging and refactoring errors that show up most often in incide
 
 The exercises follow the lesson from the reproduction to the plan:
 
-1. Debug the late-fee function the bisect blamed, with tests that pin both boundaries the tidying commit moved.
+1. Debug the late-fee function the bisect blamed, with tests that pin the week boundary the tidying commit moved and the grace boundary it touched.
 2. Refactor a legacy shipping function under its characterization tests and static checks: no mutation, no var, and a line budget that forces the duplication out.
 3. Explain in your own words how the bug was found in three test runs and what would have prevented it.
 4. Design the plan for replacing a legacy pricing module path by path without a freeze.
