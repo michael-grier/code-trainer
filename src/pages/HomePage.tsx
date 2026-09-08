@@ -35,7 +35,8 @@ export function HomePage() {
           <h1 className="text-2xl font-semibold tracking-tight">Welcome back</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             {totalCompletedLessons} of {availableLessons.length} available lessons
-            complete · {comingSoonLessonCount} coming soon
+            complete
+            {comingSoonLessonCount > 0 && ` · ${comingSoonLessonCount} coming soon`}
             {progress.syncStatus === 'guest' ? ' · saved in this browser' : ''}
           </p>
         </div>

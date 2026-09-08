@@ -40,8 +40,7 @@ export type CodeProblem = BaseProblem & {
   // Type-test fixture compiled below the submission under the fixed strict
   // compiler options. When present, completion also requires a clean type
   // check. "Hidden" means not displayed in the problem UI, not secret: all
-  // grading in this app is client-side by design (build plan section 21
-  // forbids backend dependencies), exactly like test expectations and
+  // grading in this app runs in the learner's browser, like test expectations and
   // reference approaches. See src/runtime/typeGrader.ts.
   typeFixture?: string
 }
