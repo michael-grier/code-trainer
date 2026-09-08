@@ -1,14 +1,99 @@
 # End-to-End Testing
 
-This placeholder concept page reserves the lesson slot for **End-to-End Testing**. The content pass will replace it with the final interview-focused MDX lesson.
+A profile page has a name field and a Save button. Clicking Save posts the name to the server, and when the server answers, about three hundred milliseconds later, a status line reads `Saved Ada`. The team wants one test that proves the whole thing works in a real browser: real page, real click, real network, real server. Here is the first version, written with a browser automation library and run against a real Chromium.
 
-## What this lesson will cover
+```ts
+await page.goto('http://127.0.0.1:3000/')
+await page.getByRole('button', { name: 'Save' }).click()
+const text = await page.locator('#status').textContent()
+expect(text).toBe('Saved Ada')
+```
 
-- Core interview signals for end-to-end testing.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+<TerminalTranscript
+  label="terminal, real Chromium"
+  lines={[
+    { type: 'error', text: 'FAIL  immediate: status text was ""  (177 ms)' },
+  ]}
+/>
+
+The status line was empty when the test looked, because the test looked 177 milliseconds after starting and the server takes 300 to answer. The page was working. The test was faster than the feature. The usual next move is a pause, so the test sleeps a little before reading the status.
+
+<TerminalTranscript
+  label="terminal, real Chromium"
+  lines={[
+    { type: 'error', text: 'FAIL  sleep 100ms: status text was ""  (201 ms)' },
+    { type: 'output', text: 'PASS  sleep 1000ms: status text was "Saved Ada"  (1103 ms)' },
+  ]}
+/>
+
+A hundred milliseconds is not enough. A full second passes, and now the test takes over a second to check a feature that finishes in three hundred milliseconds, and it will fail again the first time the server or the CI machine is slower than usual. The number is a guess about timing, and any guess is wrong on some machine on some day. This lesson is about tests that drive the real system through a real browser: what they are for, why they are the most expensive tests you will write, and how to keep them from becoming the suite nobody trusts.
+
+## What an end-to-end test buys
+
+An **end-to-end test** exercises a user flow through every layer at once: the browser renders the real page, the click runs the real handler, the request crosses the real network to the real server, and the assertion reads what a user would see. Lessons 55 and 56 covered the layers individually. This is the only kind of test that checks they are wired together: that the button calls the endpoint the server actually exposes, that the response shape the client expects is the one the server sends, that the status line updates when it all comes back. The opener's page could have perfect unit tests on both sides and still show nothing to the user if the click handler posted to the wrong path.
+
+That coverage is what makes these tests valuable and what makes them expensive. They need the whole system running, so they are slow to start and slow to run. They depend on everything, so they fail for every reason, including reasons that have nothing to do with the code under test. And their assertions are made against a moving target, because a real browser and a real server take real time. The opener failed on that last point, and the fix for it is the most important habit in the lesson.
+
+## Wait for a condition, never for a duration
+
+The test's mistake was checking the outcome at a moment it chose. The right check waits until the outcome appears, and gives up only after a generous limit. Automation libraries build this in: a locator that waits for an element to reach a state, an assertion that retries until it holds or a timeout passes.
+
+```ts
+await page.getByRole('button', { name: 'Save' }).click()
+await page.getByRole('status').filter({ hasText: 'Saved' }).waitFor({ timeout: 5000 })
+expect(await page.locator('#status').textContent()).toBe('Saved Ada')
+```
+
+<TerminalTranscript
+  label="terminal, real Chromium"
+  lines={[
+    { type: 'output', text: 'PASS  wait: status text was "Saved Ada"  (889 ms)' },
+    { type: 'output', text: 'PASS  wait: status text was "Saved Ada"  (898 ms)' },
+  ]}
+/>
+
+The test now takes as long as the feature takes and no longer, passes on a slow machine because the limit is five seconds rather than a guess, and fails only when the status genuinely never appears. The rule is short: a test may wait for a condition with a timeout, and it may never wait for a number. A `sleep` in an end-to-end test is a guess written down, and every guess is a future flake. The first practice problem is the polling loop underneath this idea, implemented as a pure function so its edge cases can be pinned exactly: a condition that holds at once, one that holds on the last poll before the limit, and one that never holds.
+
+The same principle covers the start of the test. Navigating to a page and immediately clicking a button that has not rendered yet is the opener's bug in another place, and the fix is the same: locate the button by what it is, and let the locator wait for it.
+
+## Find things the way a user does
+
+The waiting example located the button by its role and name, and the status by its role, rather than by an id or a CSS class. That is not a style preference. A test that finds `#save-btn` is coupled to the markup, and a designer renaming a class or a refactor restructuring the DOM breaks it with no change to what the user sees, which is lesson 55's implementation-versus-behavior rule applied to a page. A test that finds the button named Save is coupled to what the user perceives, and lesson 38 made the same elements findable for assistive technology: a button with an accessible name, a status region with a role. An end-to-end test written against roles and names is a test that the page is usable by people who cannot see it, at no extra cost.
+
+## Every test brings its own world
+
+The second largest source of flake after timing is shared state. An end-to-end test that signs in as `ada@example.com` and saves a profile leaves that profile changed for the next test, and the next run, and every other developer running the suite against the same environment. Two tests that both edit Ada's name pass alone and fail together, depending on order, which is the shared-fixture mistake from lesson 55 with a database behind it.
+
+Each test creates what it needs and does not depend on what other tests leave behind. A test that needs a signed-in user creates a fresh user with a unique email, through the application's own signup endpoint or a test-only seeding route, and works in that user's data. Cleanup is then optional rather than load-bearing: a leftover user from a crashed run hurts nothing, because no other test will ever look for it. What must never happen is a test that assumes the database contains a particular row it did not create.
+
+## Keep the suite small and the flakes visible
+
+Because each end-to-end test costs seconds and fails for every reason, the suite covers the flows whose breakage would be an incident and nothing else: sign up, sign in, the main thing the product does, the payment or submission that makes money. Everything below that, every validation message and edge case, belongs to the unit and integration tests that run in milliseconds and fail with a precise message. A suite of three hundred end-to-end tests takes half an hour, fails somewhere on most runs, and teaches the team to click retry without reading.
+
+When a test does fail intermittently, the temptation is to configure automatic retries and move on. A retried flake is still a flake; the retry hides it, and the hidden flake is usually a real race, either in the test or in the product. The honest response is to measure. Recording every test's outcome across runs and computing each test's failure rate separates the three cases that need different responses: a test that fails every run is broken and blocks the merge, a test that never fails is healthy, and a test that fails some of the time is flaky and gets quarantined with an owner and a deadline rather than a retry count. The second practice problem builds that classifier.
+
+## What this costs
+
+An end-to-end suite needs an environment: the application deployed somewhere the browser can reach, with a database it may write to, refreshed often enough that tests reflect the current code. It needs the browser installed on every machine that runs it. Its failures need artifacts, a screenshot and the network log at the moment of failure, or a red run is a mystery. And it needs the discipline above to stay trustworthy. Teams that pay these costs get the one signal no other test gives: the product, as shipped, does the thing. Teams that skip them get a suite that is always slightly red, which is worse than none, because it trains everyone to ignore the alarm.
+
+## Common mistakes
+
+These are the end-to-end errors that show up most often in flaky suites and in interviews:
+
+- Asserting immediately after an action, so the test checks the page before the feature has finished, as the opener did.
+- Replacing the immediate check with a fixed sleep, which passes on the author's machine and fails on a slower one.
+- Locating elements by id, class, or DOM path, so a markup refactor breaks the test with no visible change.
+- Sharing one account or one seeded row across tests, so they pass alone and fail together.
+- Covering every validation message end to end instead of leaving it to unit tests, until the suite takes half an hour.
+- Configuring automatic retries for flaky tests instead of measuring flake rates and fixing or quarantining the cause.
+- Running the suite against an environment that other people are also using, so someone else's data changes mid-test.
+- Failing without a screenshot or a trace, so nobody can tell whether the product or the test broke.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+The exercises follow the lesson from the wait to the suite's health:
+
+1. Debug the polling helper behind "wait for a condition" so it keeps checking until the condition holds or the timeout passes.
+2. Implement the run-history classifier that separates stable, flaky, and broken tests by failure rate.
+3. Explain in your own words why the opener failed at 177 milliseconds, why a one-second sleep is not a fix, and how a suite stays trustworthy.
+4. Design the end-to-end suite for the book club app: which flows, how tests get their data, where it runs, and what happens to a flaky test.
