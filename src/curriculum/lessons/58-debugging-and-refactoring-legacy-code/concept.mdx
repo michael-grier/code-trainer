@@ -1,14 +1,107 @@
 # Debugging and Refactoring Legacy Code
 
-This placeholder concept page reserves the lesson slot for **Debugging and Refactoring Legacy Code**. The content pass will replace it with the final interview-focused MDX lesson.
+Finance files a ticket: invoice 4471, for 10,000 cents, was 20 days late and was charged a 400-cent late fee. The policy is a ten-day grace period, then two percent of the total per full week late, capped at twenty percent. Twenty days late is ten days past grace, which is one full week, which is 200 cents. The function that computes the fee has one test, and the test passes on every commit.
 
-## What this lesson will cover
+```ts
+test('charges 2% per full week after the 10-day grace period', () => {
+  expect(lateFeeCents(10000, 24)).toBe(400)
+})
+```
 
-- Core interview signals for debugging and refactoring legacy code.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+Twenty-four days late is fourteen past grace, two full weeks, 400 cents. The test is correct and the code it exercises is wrong for a different input. That is what a single happy-path test buys: one point of agreement, and silence everywhere else. Nobody knows when the bug arrived, and the file has eight commits from four people.
+
+The first move is not to read the code. It is to turn the ticket into a test that fails.
+
+```ts
+// Reported by finance: invoice 4471, 10,000 cents, 20 days late, charged 400 instead of 200.
+test('charges one week of late fee for an invoice 20 days late', () => {
+  expect(lateFeeCents(10000, 20)).toBe(200)
+})
+```
+
+<TerminalTranscript
+  label="test runner"
+  lines={[
+    { type: 'command', text: 'bun test regression.test.ts' },
+    { type: 'output', text: 'Expected: 200' },
+    { type: 'error', text: 'Received: 400' },
+    { type: 'error', text: '(fail) charges one week of late fee for an invoice 20 days late' },
+  ]}
+/>
+
+The bug is now reproducible at a desk in a tenth of a second, which is the difference between a ticket and a fact. And the same test, kept outside the repository's history, answers the second question. `git bisect` checks out commits between a known-good and a known-bad point and asks, at each one, whether the test passes, halving the range every step.
+
+<TerminalTranscript
+  label="terminal"
+  lines={[
+    { type: 'command', text: 'git bisect start HEAD 644aa4c   # bad: HEAD, good: the commit that added the fee' },
+    { type: 'command', text: 'git bisect run bun test ../regression.test.ts' },
+    { type: 'output', text: 'Bisecting: 1 revision left to test after this (roughly 1 step)' },
+    { type: 'output', text: 'Bisecting: 0 revisions left to test after this (roughly 0 steps)' },
+    { type: 'error', text: 'e2e488c07f510625f72a328160e337895e5fdeb4 is the first bad commit' },
+    { type: 'output', text: '    tidy late fee rounding' },
+  ]}
+/>
+
+Three test runs across eight commits, and the guilty commit has a name. Its diff is four lines.
+
+```diff
+-  if (daysLate <= 10) return 0
+-  const weeksLate = Math.floor((daysLate - 10) / 7)
++  if (daysLate < 10) return 0
++  const weeksLate = Math.ceil((daysLate - 10) / 7)
+```
+
+A commit called "tidy" changed two boundaries: the grace period now ends a day early, and a partial week rounds up to a full one. The existing test passed because 24 days is exactly two weeks past grace, where floor and ceiling agree. What follows is the process that found this in minutes rather than an afternoon of reading, and the discipline that would have kept a tidying commit from changing behavior in the first place.
+
+## Reproduce before you reason
+
+Debugging starts with a failing test, not a theory. The ticket said what happened; the test says it in a form that runs, and once it runs, every theory can be checked in a second instead of argued. It also turns the fix into something that cannot regress silently, because the test stays in the suite after the bug is gone. The first practice problem is that test's function: the bisected bug is the broken code, and the tests are the characterization of the policy the ticket describes, including the two boundaries the tidying commit moved.
+
+Reproduction has a second benefit that is easy to miss. Writing the test forces you to state the expected behavior precisely, and that is often where the bug turns out to be a disagreement rather than a mistake. If the ticket had said 20 days late should charge 400, the test would have exposed that the policy and the ticket disagree before anyone changed code.
+
+## Isolate by halving, not by reading
+
+With a reproduction in hand, the question is where the bug lives. Reading eight commits' worth of diffs is the slow way. Bisecting is the fast way, and it works on anything with a known-good and a known-bad point and a yes-or-no check in between: commits, as above, but also inputs, configuration, and code paths. Delete half the input and see if the bug survives. Disable half the plugins. Comment out half the pipeline. Each step halves the search, so a range of a thousand commits takes ten checks. The precondition is that the check is automatic and reliable, which is why the reproduction test comes first: `git bisect run` needs a command that exits zero on good and non-zero on bad, and a flaky check sends it to the wrong commit.
+
+When the bug is in a single function rather than a history, the same instinct applies inside it. Print or assert the intermediate values at the midpoint of the computation and see which half of the function is already wrong. In the fee function, checking `weeksLate` for 20 days shows 2 where 1 was expected and points at the rounding before the rate is even computed.
+
+## Characterize before you change
+
+The tidying commit did not set out to change behavior. It changed behavior because there was nothing to stop it: one test covering one input, with every boundary of the policy uncovered. **Legacy code**, in the working definition this lesson uses, is code without tests that pin what it does, and the first thing to do before changing it is to give it those tests.
+
+A **characterization test** records what the code currently does, whether or not that is what anyone intended. You call the function with an input, write down what comes back, and assert it. For a fee function that means a grid of inputs around every boundary: the last day of grace, the first day after, six days after, seven, the cap, zero. Some of those answers may look wrong when you write them down; that is a finding, filed separately, and the test still records the current answer, because the point is to detect change, not to define correctness. Once the grid is green, the code can be restructured with confidence, and any accidental change shows up as a red test naming the exact input.
+
+## Refactor in steps that keep the tests green
+
+The word **refactor** means changing structure without changing behavior, and the definition is only enforceable with tests that would notice a behavior change. With characterization tests in place, refactoring becomes a sequence of small moves, each followed by a green run: extract a helper, rename a variable, replace a nested conditional with a lookup table, delete a branch that the table made redundant. If a step turns the suite red, the step changed behavior and is reverted, not debugged. The tidying commit broke this rule by combining a cleanup with two boundary changes in one diff called "tidy"; had the boundary changes been intended, they belonged in their own commit with their own tests and a message saying what policy changed and why.
+
+The second practice problem is a legacy shipping function with four copy-pasted branches, `var` declarations, and a side effect on its argument. Its characterization tests are already written and green. The job is to make it small without making any of them red, and the static checks pin the things a reader of the diff would want: no mutation of the input, no `var`, and a line budget that forces the duplicated branches into a table.
+
+## When not to refactor
+
+Not every ugly function deserves the treatment. A function that has not changed in two years and has no open bugs is not costing anything, and refactoring it risks a behavior change for no benefit; the characterization tests alone are worth writing if it is ever touched, and the restructuring can wait until then. Refactoring earns its cost where the code is changed often, where bugs keep landing, or where a new feature needs a shape the current code cannot take. And a refactor never rides along with a behavior change or a bug fix in the same commit, because a reviewer of a diff that does both cannot tell which lines are which, and a bisect that lands on it cannot say what broke.
+
+For a module too large to characterize at once, the **strangler** approach replaces it a path at a time: new code handles one input class behind a switch, with the old code still handling the rest, and the switch widens as characterization tests for each path come online. The old module is deleted when nothing routes to it. The design problem at the end of the lesson plans exactly that for a legacy pricing module.
+
+## Common mistakes
+
+These are the debugging and refactoring errors that show up most often in incidents and in interviews:
+
+- Reading code and forming theories before reproducing the bug, so every theory takes an afternoon to check instead of a second.
+- Trusting a single happy-path test as coverage, when it agrees with the code at one input and is silent at every boundary.
+- Bisecting with a check that is manual or flaky, so the search lands on the wrong commit.
+- Fixing the bug without keeping the reproduction as a permanent test, so it can return unnoticed.
+- Changing behavior in a commit described as a cleanup, so the next bisect points at "tidy" and the reviewer never saw a policy change.
+- Refactoring untested code by feel, with no characterization tests to say whether a step changed anything.
+- Rewriting a large legacy module in one go instead of strangling it a path at a time, so nothing ships until everything works.
+- Refactoring stable code that nobody changes, spending risk for no reduction in future cost.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+The exercises follow the lesson from the reproduction to the plan:
+
+1. Debug the late-fee function the bisect blamed, with tests that pin both boundaries the tidying commit moved.
+2. Refactor a legacy shipping function under its characterization tests and static checks: no mutation, no var, and a line budget that forces the duplication out.
+3. Explain in your own words how the bug was found in three test runs and what would have prevented it.
+4. Design the plan for replacing a legacy pricing module path by path without a freeze.
