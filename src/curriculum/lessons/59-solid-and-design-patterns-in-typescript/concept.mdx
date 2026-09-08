@@ -1,14 +1,126 @@
 # SOLID and Design Patterns in TypeScript
 
-This placeholder concept page reserves the lesson slot for **SOLID and Design Patterns in TypeScript**. The content pass will replace it with the final interview-focused MDX lesson.
+The book club app sends notifications over email and SMS, and the function that sends them is a switch over the channel. This quarter the mobile team adds push notifications. They add `'push'` to the `Channel` union, wire up the mobile client, and ship. The compiler is happy, because the switch has a `default` branch.
 
-## What this lesson will cover
+```ts
+type Channel = 'email' | 'sms' | 'push'
 
-- Core interview signals for solid and design patterns in typescript.
-- TypeScript-oriented implementation notes and common pitfalls.
-- A concise worked example that leads into practice.
-- A transition from concept review to hands-on problem solving.
+export function send(notification: Notification): string {
+  switch (notification.channel) {
+    case 'email':
+      return `email to ${notification.to}: ${notification.body}`
+    case 'sms':
+      return `sms to ${notification.to}: ${notification.body.slice(0, 160)}`
+    default:
+      throw new Error(`unknown channel: ${notification.channel}`)
+  }
+}
+```
+
+<TerminalTranscript
+  label="compiler and runtime"
+  lines={[
+    { type: 'command', text: 'tsc --noEmit --strict notify.ts' },
+    { type: 'output', text: 'exit 0, no errors' },
+    { type: 'command', text: "node notify.ts   # send({ channel: 'push', to: 'ada', body: 'Your club picked a new book' })" },
+    { type: 'error', text: 'Error: unknown channel: push' },
+  ]}
+/>
+
+The union said push was a channel. The function said it was not. Nothing connected the two, so the first push notification in production threw, and the error message reads as if the code had never heard of a channel the type system knew about. The switch is the kind of code every principle in this lesson is a reaction to: to add a channel you must find every place that branches on channels and edit each one, and nothing tells you when you have missed one. This lesson takes the five principles usually abbreviated as SOLID and a handful of patterns, and it treats each as the answer to a failure like this one, with TypeScript doing as much of the enforcement as it can.
+
+## Let the compiler find the missing branch
+
+Before any restructuring, the cheapest fix. TypeScript can be told that the `default` branch is unreachable, and it will then refuse to compile a switch that does not cover every member of the union.
+
+```ts
+    default: {
+      const unhandled: never = notification.channel
+      throw new Error(`unknown channel: ${String(unhandled)}`)
+    }
+```
+
+<TerminalTranscript
+  label="tsc"
+  lines={[
+    { type: 'command', text: 'tsc --noEmit --strict notify.ts' },
+    { type: 'error', text: "notify.ts(11,13): error TS2322: Type '\"push\"' is not assignable to type 'never'." },
+  ]}
+/>
+
+Lesson 26 introduced this exhaustiveness check for discriminated unions, and it turns the opener from a production error into a build error on the pull request that added push. For a switch with two branches that will never grow, this is the whole answer. The rest of the lesson is for the code that will grow.
+
+## Open to extension, closed to modification
+
+The **open/closed principle** says a module should be extendable without editing its existing code. Stated that abstractly it sounds like a wish. Made concrete, it says: adding a channel should mean adding one thing, in one place, and the compiler should refuse an incomplete addition. The tool is a table of handlers keyed by the union, and the type that enforces it is `Record<Channel, Sender>`.
+
+```ts
+type Sender = (notification: Notification) => string
+
+const senders: Record<Channel, Sender> = {
+  email: (n) => `email to ${n.to}: ${n.body}`,
+  sms: (n) => `sms to ${n.to}: ${n.body.slice(0, 160)}`,
+}
+
+export function send(notification: Notification): string {
+  return senders[notification.channel](notification)
+}
+```
+
+<TerminalTranscript
+  label="tsc"
+  lines={[
+    { type: 'command', text: 'tsc --noEmit --strict notify.ts' },
+    { type: 'error', text: "notify.ts(5,7): error TS2741: Property 'push' is missing in type '{ email: ...; sms: ...; }' but required in type 'Record<Channel, Sender>'." },
+  ]}
+/>
+
+Adding `'push'` to the union now fails to compile until a `push` sender exists, and the sender is one entry in one object rather than a case in every switch. The `send` function itself never changes again. This shape is the **strategy pattern**: a family of interchangeable behaviors behind one interface, chosen by a key. In TypeScript it needs no classes; a record of functions is the whole pattern, and the union-keyed record type is what makes it closed to modification. The first practice problem is exactly this refactor on a discount engine whose `if` chain over rule kinds has the opener's failure mode waiting in it.
+
+## One reason to change
+
+The **single responsibility principle** is usually stated as "a module should have one reason to change," and the switch shows why. Email formatting and SMS truncation lived in one function, so a change to the SMS character limit was a change to the function that also formats email, tested together, deployed together, reviewed together. In the record each channel is its own function with its own tests, and a change to SMS cannot break email because the email code is not in the diff. The principle is not about size. A three-hundred-line function that does one thing has one responsibility; a ten-line function that formats and sends and logs has three, and each will drag the others into its changes.
+
+## A substitute must honor the contract
+
+The **Liskov substitution principle** says that anything standing in for a type must behave as that type promises, so that callers written against the type keep working. The failure it names is subtle because it type-checks. Suppose subscriptions are charged monthly, and a trial subscription is added as a plan. It fits the `Subscription` type, so it flows into the nightly billing run alongside the others, and its charge implementation throws, because a trial should not be charged.
+
+```ts
+if (sub.plan === 'monthly') amount = sub.priceCents
+else if (sub.plan === 'annual') amount = sub.priceCents * 12
+else throw new Error(`cannot charge a trial subscription: ${sub.id}`)
+```
+
+The billing run iterates every subscription, charges each, and sums the results. One trial in the list and the whole run throws halfway through, with some customers charged and others not. The trial type-checked as a subscription and then refused to behave as one. The contract of "charge" is "return the amount to charge, which may be zero," and a substitute that throws where the contract says return breaks every caller that trusted the contract. The second practice problem is that billing run, and the fix is to make the trial honor the contract by charging zero and reporting itself skipped, so the run completes for everyone else.
+
+## Depend on what you use, and receive what you depend on
+
+The last two principles are the ones this curriculum has been practicing since lesson 55. **Interface segregation** says callers should depend on interfaces that contain only what they use. `Sender` is one function. A `NotificationRepository` with twelve methods forces every fake in every test to implement twelve methods, and every caller to be recompiled when any of the twelve changes; splitting it into the two or three methods each caller actually uses shrinks both costs. **Dependency inversion** says high-level code should depend on an interface and receive the implementation from outside rather than constructing it. That is lesson 55's seam and lesson 56's injected request target, named as a principle: the billing run takes a `charge` function or a client interface as a parameter, production passes the real one, and tests pass a fake with real behavior.
+
+Two more patterns fall out of these principles and are worth knowing by name. An **adapter** wraps a third-party client so the rest of the code depends on your interface and not theirs, which is where lesson 56's contract parser lives: the adapter parses the provider's shape into yours, and a provider change is confined to the adapter. A **decorator** wraps an implementation of an interface with another implementation of the same interface that adds behavior; lesson 43's retry logic around fetch is a decorator, and so is a cache in front of a repository, and both leave the callers unaware anything was added.
+
+## When a pattern is the wrong answer
+
+Every principle above costs indirection. A strategy table is one more place to look when reading the code; an injected dependency is one more parameter; an adapter is one more file. Those costs are paid back only when the flexibility is used. A switch over two cases that will never grow, with a `never` check, is better than a strategy table, because a reader sees the whole behavior in one place. A function with one caller does not need an interface. The rule of thumb is to wait for the third similar case before abstracting the first two, and to abstract in the direction the code has actually changed, not the direction it might. The opener's switch was wrong not because switches are wrong but because channels were a known axis of growth with a change already in flight. The written review asks you to draw that line for a set of proposed abstractions, and the design problem asks you to structure a notification module along the axes it will really grow on and no others.
+
+## Common mistakes
+
+These are the design errors that show up most often in reviews and in interviews:
+
+- Branching on a union in several places with a `default` that throws, so adding a member compiles cleanly and fails in production.
+- Stating a principle as a rule about size or file count instead of about reasons to change, and splitting code that always changes together.
+- Adding a subtype that satisfies the type but throws or no-ops where the contract promises a result, so callers written against the contract break.
+- Defining one wide interface for everything, so every fake and every caller pays for methods they never use.
+- Constructing dependencies inside the code that uses them, which is the hidden-clock problem from lesson 55 with a client instead of a clock.
+- Introducing a strategy table, factory, or interface for two cases that will never grow, and paying the indirection for nothing.
+- Abstracting in the direction the code might change instead of the direction it has changed.
+- Reaching for class hierarchies where a union and a record of functions express the same thing with less ceremony.
 
 ## Practice path
 
-The placeholder practice set includes a foundation code exercise, an applied written prompt, and an interview-depth design review. These preserve the final lesson shape while the curriculum content is authored track by track.
+The exercises follow the lesson from the compiler's help to the judgment call:
+
+1. Refactor a discount engine's `if` chain over rule kinds into a strategy table keyed by the union, so a new kind cannot be added without a strategy.
+2. Debug a billing run where a trial subscription violates the charge contract and takes the whole run down.
+3. Explain in your own words which principle each of four proposed abstractions serves, and which two you would refuse.
+4. Design the structure of a notification module along the axes it will grow on, with the compiler enforcing completeness.
