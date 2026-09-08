@@ -50,11 +50,20 @@ export const lesson: Lesson = {
       completionMode: 'tests-and-static-checks-pass',
       title: 'Turn the rule chain into a strategy table',
       prompt:
-        'applyDiscount computes the amount a cart pays after one discount rule. Rules come in three kinds: a percentage off the subtotal, a fixed amount off, and a bulk percentage that applies only when the cart has at least minItems items; the discount never exceeds the subtotal, and percentages are rounded to whole cents. The function branches on rule.kind in a chain, so a fourth kind can be added to the union without anyone touching the chain, and the cart silently gets no discount. Refactor it to dispatch through a table of strategies keyed by `Rule[\'kind\']`, one function per kind, so the compiler refuses a kind with no strategy, with no `switch` and no comparisons of rule.kind left in the code. Behavior must not change. Example: `applyDiscount({ kind: "percent", percent: 10 }, { subtotalCents: 5000, itemCount: 2 })` returns `4500`.',
+        'applyDiscount computes the amount a cart pays after one discount rule. Rules come in three kinds: a percentage off the subtotal, a fixed amount off, and a bulk percentage that applies only when the cart has at least minItems items; the discount never exceeds the subtotal, and percentages are rounded to whole cents. The function branches on rule.kind in a chain, so a fourth kind can be added to the union without anyone touching the chain, and the cart silently gets no discount. Refactor it to dispatch through a table of strategies keyed by `Rule[\'kind\']`, one function per kind, so the compiler refuses a kind with no strategy, with no `switch` and no comparisons of rule.kind left in the code. Behavior must not change. Your submission is also type-checked under strict settings, so a table that misses a kind fails to compile. Example: `applyDiscount({ kind: "percent", percent: 10 }, { subtotalCents: 5000, itemCount: 2 })` returns `4500`.',
       estimatedMinutes: 20,
       functionName: 'applyDiscount',
       originalCode: discountOriginal,
       starter: discountOriginal,
+      // Compiled beneath the submission under strict settings, so the lesson's
+      // promise, that a strategy table missing a rule kind is a compile error,
+      // is graded by the compiler rather than by a text check alone.
+      typeFixture: `const fixtureTotal: number = applyDiscount(
+  { kind: 'percent', percent: 10 },
+  { subtotalCents: 5000, itemCount: 2 },
+)
+void fixtureTotal
+`,
       goals: [
         "Build a table of strategies whose keys are Rule['kind'], so every kind in the union must have an entry.",
         'Dispatch by looking up the strategy for the rule, with no switch or kind comparisons in the function body.',
@@ -74,7 +83,7 @@ export const lesson: Lesson = {
         },
         {
           kind: 'require-text',
-          text: "Rule['kind']",
+          text: 'Rule[',
           message:
             "Key the strategy table by Rule['kind'] so the compiler checks that every kind has a strategy.",
         },

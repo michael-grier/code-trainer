@@ -4,6 +4,7 @@ The book club app sends notifications over email and SMS, and the function that 
 
 ```ts
 type Channel = 'email' | 'sms' | 'push'
+type Notification = { channel: Channel; to: string; body: string }
 
 export function send(notification: Notification): string {
   switch (notification.channel) {

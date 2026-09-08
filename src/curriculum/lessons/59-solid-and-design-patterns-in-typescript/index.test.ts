@@ -1,8 +1,13 @@
+import { readdirSync, readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { dirname, join } from 'node:path'
+
 import { transform } from 'sucrase'
 import { describe, expect, it } from 'vitest'
 
 import { runStaticChecks } from '@/runtime/staticChecks'
 import { runTestCases } from '@/runtime/testHarness'
+import { runTypeCheck, type LibFileMap } from '@/runtime/typeGrader'
 
 import { lesson } from './index'
 
@@ -35,6 +40,19 @@ function loadFunction(code: string, functionName: string) {
 
   return candidate as (...args: unknown[]) => unknown
 }
+
+// The same lib subset the browser type worker bundles, without DOM.
+const require = createRequire(import.meta.url)
+const libDirectory = dirname(require.resolve('typescript/lib/typescript.js'))
+const libFiles: LibFileMap = Object.fromEntries(
+  readdirSync(libDirectory)
+    .filter(
+      (name) =>
+        (name.startsWith('lib.es') || name.startsWith('lib.decorators')) &&
+        name.endsWith('.d.ts'),
+    )
+    .map((name) => [name, readFileSync(join(libDirectory, name), 'utf8')]),
+)
 
 function startingCode(problem: (typeof runnableProblems)[number]) {
   return problem.kind === 'debug' ? problem.brokenCode : problem.starter
@@ -132,6 +150,40 @@ describe('solid and design patterns lesson', () => {
         `${problem.id} should not already pass`,
       ).toBe(true)
     }
+  })
+
+  it('grades the strategy table with the compiler, not only with text', () => {
+    const refactor = lesson.problems.find(
+      (problem) => problem.id === 'discount-strategy-table',
+    )
+
+    if (refactor?.kind !== 'refactor' || !refactor.typeFixture) {
+      throw new Error('expected the discount refactor to carry a type fixture')
+    }
+
+    const reference = lesson.approaches[refactor.id]?.[0]?.code ?? ''
+    const clean = runTypeCheck(
+      { code: reference, typeFixture: refactor.typeFixture },
+      libFiles,
+    )
+    expect(clean.diagnostics).toEqual([])
+    expect(clean.passed).toBe(true)
+
+    // Drop one strategy from the reference: the union-keyed table must now
+    // fail to compile, which is the lesson's whole promise.
+    const missingKind = reference.replace('  fixed: (rule) => rule.amountCents,\n', '')
+    expect(missingKind).not.toBe(reference)
+
+    const incomplete = runTypeCheck(
+      { code: missingKind, typeFixture: refactor.typeFixture },
+      libFiles,
+    )
+    expect(incomplete.passed).toBe(false)
+    expect(
+      incomplete.diagnostics.some((diagnostic) =>
+        diagnostic.message.includes("'fixed'"),
+      ),
+    ).toBe(true)
   })
 
   it('ties written and design work back to the lesson rules', () => {
