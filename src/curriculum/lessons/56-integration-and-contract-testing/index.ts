@@ -185,6 +185,21 @@ console.log(
           expected: { ok: false, errors: ['body must be an object'] },
         },
         {
+          name: 'rejects an array body',
+          args: [[]],
+          expected: { ok: false, errors: ['body must be an object'] },
+        },
+        {
+          name: 'rejects an array in place of the data envelope',
+          args: [{ data: [] }],
+          expected: { ok: false, errors: ['data must be an object'] },
+        },
+        {
+          name: 'rejects items that are not an array',
+          args: [{ data: { items: {}, nextCursor: null } }],
+          expected: { ok: false, errors: ['data.items must be an array'] },
+        },
+        {
           name: 'rejects a fractional total, naming the item',
           args: [{ data: { items: [{ id: 1, totalCents: 18.5 }], nextCursor: null } }],
           expected: {
