@@ -156,7 +156,7 @@ function TraceQuestionControl({
   onChange: (value: unknown) => void
 }) {
   return (
-    <article className="grid gap-3 rounded-md border bg-background p-3">
+    <article className="grid min-w-0 gap-3 rounded-md border bg-background p-3">
       <div className="flex items-start justify-between gap-3">
         <div className="grid gap-1">
           <h3 className="text-sm font-medium">{question.label}</h3>
@@ -229,6 +229,9 @@ function TraceAnswerInput({
         {question.options.map((option) => (
           <Button
             aria-pressed={value === option}
+            // Option text can be a full sentence, so let it wrap instead of
+            // inheriting the nowrap, fixed-height button defaults.
+            className="h-auto min-h-10 whitespace-normal text-left"
             key={option}
             onClick={() => onChange(option)}
             type="button"
