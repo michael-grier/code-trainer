@@ -292,7 +292,9 @@ console.log(longestConsecutive([100, 4, 200, 1, 3, 2]))
   const counts = new Array<number>(26).fill(0)
 
   for (const char of word) {
-    // "a" maps to 0, "b" maps to 1, and so on.
+    // charCodeAt(0) returns the character code at position 0 in char.
+    // Lowercase letters have consecutive codes: "a" = 97, "b" = 98, ..., "z" = 122.
+    // Subtracting 97 shifts those codes to array indexes 0 through 25.
     counts[char.charCodeAt(0) - 97] += 1
   }
 
