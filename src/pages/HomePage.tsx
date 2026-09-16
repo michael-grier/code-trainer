@@ -154,7 +154,13 @@ export function HomePage() {
             )
 
             return (
-              <div className="scroll-mt-20" id={track.id} key={track.id}>
+              // The last section pads the page so any track heading can
+              // scroll to the top, not just the ones with enough content below.
+              <div
+                className="scroll-mt-20 last:min-h-[calc(100vh-6rem)]"
+                id={track.id}
+                key={track.id}
+              >
                 <div className="flex items-baseline justify-between border-b pb-2">
                   <h3 className="font-medium">{track.title}</h3>
                   <span className="text-xs text-muted-foreground tabular-nums">
