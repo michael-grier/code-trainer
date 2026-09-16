@@ -102,14 +102,14 @@ describe('learning flow', () => {
     })
   })
 
-  it('ignores legacy focus state when choosing the recommended fallback', () => {
+  it('follows the focus lesson when choosing the recommended fallback', () => {
     const progress = createEmptyProgressState()
 
     progress.learningPath.mode = 'self-directed'
     progress.learningPath.focusLessonSlug = 'second'
 
     expect(getContinueTarget(lessons, progress)).toEqual({
-      lessonSlug: 'first',
+      lessonSlug: 'second',
       problemId: 'one',
     })
   })

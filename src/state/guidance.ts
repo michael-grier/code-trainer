@@ -1,6 +1,7 @@
 import {
   isLessonAvailable,
   type Lesson,
+  type Problem,
   type Track,
 } from '@/curriculum/types'
 import {
@@ -19,6 +20,13 @@ export type LessonStatus =
   | 'recommended'
   | 'ahead-of-path'
   | 'untouched'
+
+export type RecentActivityItem = {
+  lesson: Lesson
+  problem: Problem
+  updatedAt: number
+  hasDraft: boolean
+}
 
 export function getLessonCompletion(
   lesson: Lesson,
@@ -65,15 +73,43 @@ export function getTrackCompletion(
   }
 }
 
+// The lesson a self-directed learner chose to focus on, when it still exists.
+export function getFocusLesson(lessons: Lesson[], progress: ProgressState) {
+  const { focusLessonSlug, mode } = progress.learningPath
+
+  if (mode !== 'self-directed' || !focusLessonSlug) {
+    return undefined
+  }
+
+  const lesson = lessons.find((candidate) => candidate.slug === focusLessonSlug)
+
+  return lesson && isLessonAvailable(lesson) ? lesson : undefined
+}
+
 export function getRecommendedLesson(
   lessons: Lesson[],
   progress: ProgressState,
 ) {
-  return lessons.find(
-    (lesson) =>
-      isLessonAvailable(lesson) &&
-      !getLessonCompletion(lesson, progress).isComplete,
-  )
+  const isIncomplete = (lesson: Lesson) =>
+    isLessonAvailable(lesson) && !getLessonCompletion(lesson, progress).isComplete
+  const focusLesson = getFocusLesson(lessons, progress)
+
+  if (focusLesson) {
+    // A focus narrows the path to one track, walking forward from the focus
+    // lesson. Once that track is done the guided order takes over again.
+    const nextInTrack = lessons.find(
+      (lesson) =>
+        lesson.track === focusLesson.track &&
+        lesson.order >= focusLesson.order &&
+        isIncomplete(lesson),
+    )
+
+    if (nextInTrack) {
+      return nextInTrack
+    }
+  }
+
+  return lessons.find(isIncomplete)
 }
 
 export function getRecommendedProblem(lesson: Lesson, progress: ProgressState) {
@@ -108,7 +144,13 @@ export function getLessonStatus(
     return 'in-progress'
   }
 
-  if (recommendedLesson && lesson.order > recommendedLesson.order) {
+  // Focusing a track is a deliberate step off the guided order, so nothing
+  // counts as ahead of it while that choice is active.
+  if (
+    recommendedLesson &&
+    lesson.order > recommendedLesson.order &&
+    progress.learningPath.mode !== 'self-directed'
+  ) {
     return 'ahead-of-path'
   }
 
@@ -141,6 +183,73 @@ export function getProgressCounts(
     },
     { completed: 0, inProgress: 0, untouched: 0, aheadOfPath: 0 },
   )
+}
+
+// Unfinished problems with saved work, newest first. Every save records a
+// timestamp under "<field>::<lesson>::<problem>[::<part>]", so the latest
+// stamp per problem is its last activity.
+export function getRecentActivity(
+  lessons: Lesson[],
+  progress: ProgressState,
+  limit = 4,
+): RecentActivityItem[] {
+  const latestByProblem = new Map<string, number>()
+
+  for (const [key, updatedAt] of Object.entries(progress.updatedAt)) {
+    const [, lessonSlug, problemId] = key.split('::')
+
+    if (!lessonSlug || !problemId) {
+      continue
+    }
+
+    const problemKey = getProblemKey(lessonSlug, problemId)
+
+    latestByProblem.set(
+      problemKey,
+      Math.max(latestByProblem.get(problemKey) ?? 0, updatedAt),
+    )
+  }
+
+  const items: RecentActivityItem[] = []
+
+  for (const lesson of lessons.filter(isLessonAvailable)) {
+    for (const problem of lesson.problems) {
+      const problemKey = getProblemKey(lesson.slug, problem.id)
+      const updatedAt = latestByProblem.get(problemKey)
+
+      if (!updatedAt || progress.completed[problemKey]) {
+        continue
+      }
+
+      items.push({
+        lesson,
+        problem,
+        updatedAt,
+        hasDraft: hasEditedDraft(lesson, problem, progress),
+      })
+    }
+  }
+
+  return items.sort((a, b) => b.updatedAt - a.updatedAt).slice(0, limit)
+}
+
+function hasEditedDraft(lesson: Lesson, problem: Problem, progress: ProgressState) {
+  const draft = progress.drafts[getDraftKey(lesson.slug, problem.id)]
+
+  if (!draft?.trim()) {
+    return false
+  }
+
+  // Reset saves the starter back as the draft, so only edits away from it
+  // count as a draft worth returning to.
+  const starter =
+    problem.kind === 'debug'
+      ? problem.brokenCode
+      : 'starter' in problem
+        ? problem.starter
+        : undefined
+
+  return draft !== starter
 }
 
 function hasProblemActivity(

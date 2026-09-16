@@ -63,6 +63,8 @@ export type ProgressContextValue = {
   getLessonStatus: typeof getLessonStatus
   getRecommendedProblem: typeof getRecommendedProblem
   saveLastVisited: (lessonSlug: string, problemId?: string) => void
+  focusTrackId?: string
+  setFocusTrack: (trackId?: string) => void
   flushProgress: () => Promise<boolean>
   retrySync: () => Promise<void>
 }

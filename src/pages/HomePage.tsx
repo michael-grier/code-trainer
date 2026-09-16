@@ -1,4 +1,4 @@
-import { Search, X } from 'lucide-react'
+import { Check, Search, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 
@@ -13,6 +13,8 @@ import {
   type Lesson,
   type Track,
 } from '@/curriculum'
+import { formatRelativeTime } from '@/lib/format'
+import { getRecentActivity } from '@/state/guidance'
 import { getContinueTarget, learningTargetToPath } from '@/state/learningFlow'
 import { useProgress } from '@/state/progressContext'
 import { getProblemKey } from '@/state/progress'
@@ -24,8 +26,10 @@ export function HomePage() {
   const comingSoonLessonCount = lessons.length - availableLessons.length
   const recommendedLesson = progress.recommendedLesson ?? availableLessons[0]
   const recommendedTrack = getTrack(recommendedLesson.track)
+  const focusTrack = getTrack(progress.focusTrackId)
   const continueTarget = getContinueTarget(lessons, progress.state)
   const continuePath = learningTargetToPath(continueTarget)
+  const recentActivity = getRecentActivity(lessons, progress.state)
   const totalCompletedLessons = tracks.reduce((total, track) => {
     const completion = progress.getTrackCompletion(track, lessons, progress.state)
 
@@ -101,7 +105,52 @@ export function HomePage() {
             <Link to={`/lesson/${recommendedLesson.slug}`}>Open lesson</Link>
           </Button>
         </div>
+        {focusTrack ? (
+          <p className="mt-3 flex flex-wrap items-center gap-x-2 border-t pt-3 text-xs text-muted-foreground">
+            <span>
+              Focused on <span className="text-foreground">{focusTrack.title}</span>
+            </span>
+            <button
+              className="rounded-sm text-primary underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={() => progress.setFocusTrack(undefined)}
+              type="button"
+            >
+              Back to the guided path
+            </button>
+          </p>
+        ) : null}
       </section>
+
+      {recentActivity.length > 0 ? (
+        <section>
+          <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            Pick up where you left off
+          </h2>
+          <ul className="mt-2 grid text-sm">
+            {recentActivity.map((item) => (
+              <li key={getProblemKey(item.lesson.slug, item.problem.id)}>
+                <Link
+                  className="flex items-center justify-between gap-3 rounded-md px-2 py-2 outline-none transition hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+                  to={`/lesson/${item.lesson.slug}/problem/${item.problem.id}`}
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate">{item.problem.title}</span>
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {item.lesson.title} · {item.problem.kind}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {item.hasDraft ? (
+                      <span className="text-primary">draft saved · </span>
+                    ) : null}
+                    {formatRelativeTime(item.updatedAt)}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <section>
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -153,6 +202,7 @@ export function HomePage() {
               lessons,
               progress.state,
             )
+            const isFocused = track.id === focusTrack?.id
 
             return (
               // The last section pads the page so any track heading can
@@ -162,11 +212,26 @@ export function HomePage() {
                 id={track.id}
                 key={track.id}
               >
-                <div className="flex items-baseline justify-between border-b pb-2">
-                  <h3 className="font-medium">{track.title}</h3>
-                  <span className="text-xs text-muted-foreground tabular-nums">
-                    {completion.completedLessons}/{completion.totalLessons}
-                  </span>
+                <div className="flex items-center justify-between gap-3 border-b pb-2">
+                  <h3 className="min-w-0 truncate font-medium">{track.title}</h3>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Button
+                      aria-pressed={isFocused}
+                      className="h-7 px-2 text-xs"
+                      onClick={() =>
+                        progress.setFocusTrack(isFocused ? undefined : track.id)
+                      }
+                      size="sm"
+                      type="button"
+                      variant={isFocused ? 'secondary' : 'ghost'}
+                    >
+                      {isFocused ? <Check className="size-3.5" /> : null}
+                      {isFocused ? 'Focused' : 'Focus'}
+                    </Button>
+                    <span className="text-xs text-muted-foreground tabular-nums">
+                      {completion.completedLessons}/{completion.totalLessons}
+                    </span>
+                  </div>
                 </div>
                 <ul className="mt-1 grid text-sm">
                   {trackLessons.map((lesson) => (
