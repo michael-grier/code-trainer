@@ -264,6 +264,11 @@ describe('focus and recent activity', () => {
     expect(getLessonStatus(trackLessons[0], trackLessons, focused)).toBe(
       'untouched',
     )
+
+    focused.learningPath.focusLessonSlug = 'missing'
+    expect(getLessonStatus(trackLessons[3], trackLessons, focused)).toBe(
+      'ahead-of-path',
+    )
   })
 
   it('lists unfinished problems by latest activity and flags edited drafts', () => {

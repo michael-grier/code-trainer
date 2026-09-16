@@ -102,6 +102,33 @@ describe('learning flow', () => {
     })
   })
 
+  it('prefers the focused track over a last visit in another track', () => {
+    const otherTrackLesson: Lesson = {
+      ...lessons[0],
+      slug: 'other',
+      track: 'other-track',
+      order: 4,
+    }
+    const allLessons = [...lessons, otherTrackLesson]
+    const progress = createEmptyProgressState()
+
+    progress.lastVisited = { lessonSlug: 'first', problemId: 'two', updatedAt: 100 }
+    progress.learningPath.mode = 'self-directed'
+    progress.learningPath.focusLessonSlug = 'other'
+
+    expect(getContinueTarget(allLessons, progress)).toEqual({
+      lessonSlug: 'other',
+      problemId: 'one',
+    })
+
+    progress.learningPath.focusLessonSlug = 'second'
+
+    expect(getContinueTarget(allLessons, progress)).toEqual({
+      lessonSlug: 'first',
+      problemId: 'two',
+    })
+  })
+
   it('follows the focus lesson when choosing the recommended fallback', () => {
     const progress = createEmptyProgressState()
 

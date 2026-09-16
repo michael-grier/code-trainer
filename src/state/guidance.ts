@@ -149,7 +149,7 @@ export function getLessonStatus(
   if (
     recommendedLesson &&
     lesson.order > recommendedLesson.order &&
-    progress.learningPath.mode !== 'self-directed'
+    !getFocusLesson(lessons, progress)
   ) {
     return 'ahead-of-path'
   }
