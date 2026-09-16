@@ -87,6 +87,13 @@ export function ConceptPage() {
             title, which the page header already shows — hide that one. */}
         <section className="min-w-0 [&_article>h1:first-child]:hidden">
           <Mdx component={lesson.concept} />
+          <div className="mt-8">
+            <Button asChild>
+              <Link to={`/lesson/${lesson.slug}/problem/${nextProblem.id}`}>
+                Start practice
+              </Link>
+            </Button>
+          </div>
         </section>
 
         <aside className="min-w-0">
