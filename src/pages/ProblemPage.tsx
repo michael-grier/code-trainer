@@ -46,8 +46,8 @@ export function ProblemPage() {
           </CardHeader>
           <CardContent>
             <Button asChild>
-              <Link to={lesson ? `/lesson/${lesson.slug}` : '/progress'}>
-                Back to {lesson ? 'lesson' : 'curriculum map'}
+              <Link to={lesson ? `/lesson/${lesson.slug}` : '/'}>
+                Back to {lesson ? 'lesson' : 'dashboard'}
               </Link>
             </Button>
           </CardContent>
@@ -106,8 +106,15 @@ export function ProblemPage() {
           </CardContent>
         </Card>
 
-        <ProblemRenderer lesson={lesson} problem={problem} />
+        {/* Problem views keep drafts and run results in local state. Remount
+            per problem so moving between problems never carries them over. */}
+        <ProblemRenderer
+          key={`${lesson.slug}/${problem.id}`}
+          lesson={lesson}
+          problem={problem}
+        />
         <ProblemNavigation
+          lessonSlug={lesson.slug}
           next={navigation.next}
           previous={navigation.previous}
         />

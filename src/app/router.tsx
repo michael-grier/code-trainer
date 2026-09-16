@@ -1,11 +1,10 @@
-import { createBrowserRouter } from 'react-router-dom'
+import { createBrowserRouter, Navigate } from 'react-router-dom'
 
 import { AppShell } from '@/components/app/AppShell'
 import { ConceptPage } from '@/pages/ConceptPage'
 import { HomePage } from '@/pages/HomePage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 import { ProblemPage } from '@/pages/ProblemPage'
-import { ProgressPage } from '@/pages/ProgressPage'
 
 export const router = createBrowserRouter([
   {
@@ -18,8 +17,9 @@ export const router = createBrowserRouter([
         element: <HomePage />,
       },
       {
+        // The curriculum map moved onto the dashboard; keep old links working.
         path: 'progress',
-        element: <ProgressPage />,
+        element: <Navigate replace to="/" />,
       },
       {
         path: 'lesson/:slug',
@@ -36,4 +36,3 @@ export const router = createBrowserRouter([
     element: <NotFoundPage />,
   },
 ])
-

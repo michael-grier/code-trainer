@@ -101,7 +101,7 @@ export function getNextIncompleteProblem(
 
 export function learningTargetToPath(target: LearningTarget | undefined) {
   if (!target) {
-    return '/progress'
+    return '/'
   }
 
   if (target.problemId) {

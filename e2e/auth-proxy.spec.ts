@@ -84,10 +84,10 @@ test('restores the persistent auth cookie after a browser restart', async ({
 test('shows a safe GitHub callback error and restores the original route', async ({
   page,
 }) => {
-  const returnTo = encodeURIComponent('/progress?track=backend#cloud')
+  const returnTo = encodeURIComponent('/lesson/two-pointers?track=backend#cloud')
 
   await page.goto(
-    `/progress?track=backend&githubAuthError=1&githubAuthReturnTo=${returnTo}&error=access_denied`,
+    `/lesson/two-pointers?track=backend&githubAuthError=1&githubAuthReturnTo=${returnTo}&error=access_denied`,
   )
 
   await expect(
@@ -96,6 +96,6 @@ test('shows a safe GitHub callback error and restores the original route', async
   await expect(page.getByRole('alert')).toHaveText(
     'GitHub sign-in did not finish. You can keep learning locally and retry later.',
   )
-  await expect(page).toHaveURL(`${appUrl}/progress?track=backend#cloud`)
+  await expect(page).toHaveURL(`${appUrl}/lesson/two-pointers?track=backend#cloud`)
   await expect(page.getByText('access_denied')).toHaveCount(0)
 })

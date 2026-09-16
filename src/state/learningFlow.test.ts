@@ -152,6 +152,6 @@ describe('learning flow', () => {
       learningTargetToPath({ lessonSlug: 'first', problemId: 'one' }),
     ).toBe('/lesson/first/problem/one')
     expect(learningTargetToPath({ lessonSlug: 'first' })).toBe('/lesson/first')
-    expect(learningTargetToPath(undefined)).toBe('/progress')
+    expect(learningTargetToPath(undefined)).toBe('/')
   })
 })

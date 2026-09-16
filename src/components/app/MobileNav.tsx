@@ -1,6 +1,6 @@
 import { PanelLeft } from 'lucide-react'
 
-import { PrimaryNavLinks, TrackNavList } from '@/components/app/ProgressSidebar'
+import { SidebarNav } from '@/components/app/Sidebar'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import {
@@ -25,16 +25,12 @@ export function MobileNav() {
         <SheetHeader>
           <SheetTitle>Code Trainer</SheetTitle>
           <SheetDescription className="sr-only">
-            Navigate lessons, progress, and tracks.
+            Navigate the dashboard, tracks, and lessons.
           </SheetDescription>
         </SheetHeader>
         <Separator />
-        <div className="p-3">
-          <PrimaryNavLinks />
-          <div className="mt-6 px-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            Tracks
-          </div>
-          <TrackNavList className="mt-2" />
+        <div className="min-h-0 flex-1 overflow-y-auto p-3">
+          <SidebarNav />
         </div>
       </SheetContent>
     </Sheet>
