@@ -1,5 +1,5 @@
 import { Search, X } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
@@ -47,15 +47,27 @@ export function HomePage() {
   )
 
   // Sidebar track links navigate to "/#<trackId>". The router does not scroll
-  // to hashes itself, and the effect keys on the whole location so repeating
-  // the same link still scrolls.
+  // to hashes itself. Each navigation gets a new location key, so repeating
+  // the same link still scrolls, and the ref stops filter edits from
+  // re-scrolling once a navigation has been handled.
+  const handledLocationKey = useRef<string>(undefined)
+
   useEffect(() => {
-    if (location.hash) {
-      document
-        .getElementById(location.hash.slice(1))
-        ?.scrollIntoView({ block: 'start' })
+    if (!location.hash || handledLocationKey.current === location.key) {
+      return
     }
-  }, [location])
+
+    const section = document.getElementById(location.hash.slice(1))
+
+    if (section) {
+      section.scrollIntoView({ block: 'start' })
+      handledLocationKey.current = location.key
+    } else {
+      // The filter hid the target track. Clearing it re-renders the section,
+      // and this effect runs again once trackSections changes.
+      setQuery('')
+    }
+  }, [location, trackSections])
 
   return (
     <div className="mx-auto grid max-w-3xl gap-8">
