@@ -119,6 +119,8 @@ A set also earns its keep when duplicates should not affect the answer at all. I
 
 In `areAnagrams` the key was a single character. In `hasDuplicate` it was the number itself. Choosing the key is the real design decision in this pattern, and some problems make you build one. Here is a prompt that does: given lowercase English words, group the words that are anagrams of each other. With `words = ["eat", "tea", "bat"]`, the answer is `[["eat", "tea"], ["bat"]]`.
 
+For this exercise, keep words within each group in their input order, and return groups in the order their first word appears. That gives the tests one exact output to expect. These are requirements of this exercise; other anagram-grouping problems may accept any order. Check the prompt before deciding whether order matters.
+
 You want every anagram of a word to land in the same group, which means every anagram must produce the same key. The word itself will not do, since `"eat"` and `"tea"` are different strings. What you need is a canonical form, one agreed-upon representative that all anagrams of a word share. The simplest choice is the word with its letters sorted:
 
 ```
@@ -160,11 +162,11 @@ export function groupAnagrams(words: string[]): string[][] {
     const key = createSignature(word)
     const currentGroup = groups.get(key) ?? []
 
-    // Append to preserve the original word order inside the group.
+    // Appending keeps input order within each group, as this exercise requires.
     groups.set(key, [...currentGroup, word])
   }
 
-  // Map values preserve first-seen group order.
+  // Map insertion order gives the first-seen group order this exercise requires.
   return [...groups.values()]
 }
 ```

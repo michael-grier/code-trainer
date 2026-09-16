@@ -311,7 +311,7 @@ export function groupAnagrams(words: string[]): string[][] {
     const signature = createSignature(word)
     const group = groups.get(signature)
 
-    // Append to preserve the original word order inside the group.
+    // Appending keeps input order within each group, as this exercise requires.
     if (group) {
       group.push(word)
     } else {
@@ -319,7 +319,7 @@ export function groupAnagrams(words: string[]): string[][] {
     }
   }
 
-  // Map values preserve first-seen group order.
+  // Map insertion order gives the first-seen group order this exercise requires.
   return [...groups.values()]
 }
 `,
