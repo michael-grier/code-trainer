@@ -1,6 +1,8 @@
 import { PanelLeft } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 
-import { PrimaryNavLinks, TrackNavList } from '@/components/app/ProgressSidebar'
+import { SidebarNav } from '@/components/app/Sidebar'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import {
@@ -13,8 +15,17 @@ import {
 } from '@/components/ui/sheet'
 
 export function MobileNav() {
+  const location = useLocation()
+  const [open, setOpen] = useState(false)
+
+  // Every link in the sheet navigates, so closing on location change covers
+  // all of them without threading a callback through the nav tree.
+  useEffect(() => {
+    setOpen(false)
+  }, [location])
+
   return (
-    <Sheet>
+    <Sheet onOpenChange={setOpen} open={open}>
       <SheetTrigger asChild>
         <Button className="md:hidden" size="icon" type="button" variant="ghost">
           <PanelLeft className="size-4" />
@@ -25,16 +36,12 @@ export function MobileNav() {
         <SheetHeader>
           <SheetTitle>Code Trainer</SheetTitle>
           <SheetDescription className="sr-only">
-            Navigate lessons, progress, and tracks.
+            Navigate the dashboard, tracks, and lessons.
           </SheetDescription>
         </SheetHeader>
         <Separator />
-        <div className="p-3">
-          <PrimaryNavLinks />
-          <div className="mt-6 px-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            Tracks
-          </div>
-          <TrackNavList className="mt-2" />
+        <div className="min-h-0 flex-1 overflow-y-auto p-3">
+          <SidebarNav />
         </div>
       </SheetContent>
     </Sheet>

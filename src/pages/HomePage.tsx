@@ -1,4 +1,6 @@
-import { Link } from 'react-router-dom'
+import { Search, X } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useLocation } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -9,6 +11,7 @@ import {
   lessons,
   tracks,
   type Lesson,
+  type Track,
 } from '@/curriculum'
 import { getContinueTarget, learningTargetToPath } from '@/state/learningFlow'
 import { useProgress } from '@/state/progressContext'
@@ -16,6 +19,7 @@ import { getProblemKey } from '@/state/progress'
 
 export function HomePage() {
   const progress = useProgress()
+  const location = useLocation()
   const availableLessons = lessons.filter(isLessonAvailable)
   const comingSoonLessonCount = lessons.length - availableLessons.length
   const recommendedLesson = progress.recommendedLesson ?? availableLessons[0]
@@ -27,6 +31,44 @@ export function HomePage() {
 
     return total + completion.completedLessons
   }, 0)
+  const [query, setQuery] = useState('')
+  const normalizedQuery = query.trim().toLowerCase()
+  const trackSections = useMemo(
+    () =>
+      tracks
+        .map((track) => ({
+          track,
+          lessons: getLessonsForTrack(track.id).filter((lesson) =>
+            matchesLessonQuery(track, lesson, normalizedQuery),
+          ),
+        }))
+        .filter((section) => !normalizedQuery || section.lessons.length > 0),
+    [normalizedQuery],
+  )
+
+  // Sidebar track links navigate to "/#<trackId>". The router does not scroll
+  // to hashes itself. Each navigation gets a new location key, so repeating
+  // the same link still scrolls, and the ref stops filter edits from
+  // re-scrolling once a navigation has been handled.
+  const handledLocationKey = useRef<string>(undefined)
+
+  useEffect(() => {
+    if (!location.hash || handledLocationKey.current === location.key) {
+      return
+    }
+
+    const trackId = location.hash.slice(1)
+    const section = document.getElementById(trackId)
+
+    if (section) {
+      section.scrollIntoView({ block: 'start' })
+      handledLocationKey.current = location.key
+    } else if (tracks.some((track) => track.id === trackId)) {
+      // The filter hid the target track. Clearing it re-renders the section,
+      // and this effect runs again once trackSections changes.
+      setQuery('')
+    }
+  }, [location, trackSections])
 
   return (
     <div className="mx-auto grid max-w-3xl gap-8">
@@ -62,11 +104,50 @@ export function HomePage() {
       </section>
 
       <section>
-        <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          Curriculum
-        </h2>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            Curriculum
+          </h2>
+          <div className="flex h-9 w-full items-center gap-2 rounded-md border bg-card/60 px-3 sm:w-72">
+            <Search className="size-4 shrink-0 text-muted-foreground" />
+            <input
+              aria-label="Filter lessons"
+              className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Filter by lesson, track, or problem"
+              value={query}
+            />
+            {query ? (
+              <Button
+                aria-label="Clear filter"
+                className="size-6"
+                onClick={() => setQuery('')}
+                size="icon"
+                type="button"
+                variant="ghost"
+              >
+                <X className="size-4" />
+              </Button>
+            ) : null}
+          </div>
+        </div>
+
+        {trackSections.length === 0 ? (
+          <div className="mt-4 grid gap-2 rounded-md border border-dashed p-6 text-center">
+            <h3 className="font-medium">No lessons match this filter</h3>
+            <Button
+              className="justify-self-center"
+              onClick={() => setQuery('')}
+              type="button"
+              variant="outline"
+            >
+              Clear filter
+            </Button>
+          </div>
+        ) : null}
+
         <div className="mt-4 grid gap-8">
-          {tracks.map((track) => {
+          {trackSections.map(({ lessons: trackLessons, track }) => {
             const completion = progress.getTrackCompletion(
               track,
               lessons,
@@ -74,7 +155,13 @@ export function HomePage() {
             )
 
             return (
-              <div key={track.id}>
+              // The last section pads the page so any track heading can
+              // scroll to the top, not just the ones with enough content below.
+              <div
+                className="scroll-mt-20 last:min-h-[calc(100vh-6rem)]"
+                id={track.id}
+                key={track.id}
+              >
                 <div className="flex items-baseline justify-between border-b pb-2">
                   <h3 className="font-medium">{track.title}</h3>
                   <span className="text-xs text-muted-foreground tabular-nums">
@@ -82,7 +169,7 @@ export function HomePage() {
                   </span>
                 </div>
                 <ul className="mt-1 grid text-sm">
-                  {getLessonsForTrack(track.id).map((lesson) => (
+                  {trackLessons.map((lesson) => (
                     <LessonRow key={lesson.slug} lesson={lesson} />
                   ))}
                 </ul>
@@ -139,4 +226,19 @@ function LessonRow({ lesson }: { lesson: Lesson }) {
       </Link>
     </li>
   )
+}
+
+function matchesLessonQuery(track: Track, lesson: Lesson, query: string) {
+  if (!query) {
+    return true
+  }
+
+  return [
+    track.title,
+    track.summary,
+    lesson.title,
+    lesson.summary,
+    String(lesson.order),
+    ...lesson.problems.map((problem) => problem.title),
+  ].some((value) => value.toLowerCase().includes(query))
 }
