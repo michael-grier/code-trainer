@@ -57,12 +57,13 @@ export function HomePage() {
       return
     }
 
-    const section = document.getElementById(location.hash.slice(1))
+    const trackId = location.hash.slice(1)
+    const section = document.getElementById(trackId)
 
     if (section) {
       section.scrollIntoView({ block: 'start' })
       handledLocationKey.current = location.key
-    } else {
+    } else if (tracks.some((track) => track.id === trackId)) {
       // The filter hid the target track. Clearing it re-renders the section,
       // and this effect runs again once trackSections changes.
       setQuery('')
