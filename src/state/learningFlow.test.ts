@@ -102,14 +102,41 @@ describe('learning flow', () => {
     })
   })
 
-  it('ignores legacy focus state when choosing the recommended fallback', () => {
+  it('prefers the focused track over a last visit in another track', () => {
+    const otherTrackLesson: Lesson = {
+      ...lessons[0],
+      slug: 'other',
+      track: 'other-track',
+      order: 4,
+    }
+    const allLessons = [...lessons, otherTrackLesson]
+    const progress = createEmptyProgressState()
+
+    progress.lastVisited = { lessonSlug: 'first', problemId: 'two', updatedAt: 100 }
+    progress.learningPath.mode = 'self-directed'
+    progress.learningPath.focusLessonSlug = 'other'
+
+    expect(getContinueTarget(allLessons, progress)).toEqual({
+      lessonSlug: 'other',
+      problemId: 'one',
+    })
+
+    progress.learningPath.focusLessonSlug = 'second'
+
+    expect(getContinueTarget(allLessons, progress)).toEqual({
+      lessonSlug: 'first',
+      problemId: 'two',
+    })
+  })
+
+  it('follows the focus lesson when choosing the recommended fallback', () => {
     const progress = createEmptyProgressState()
 
     progress.learningPath.mode = 'self-directed'
     progress.learningPath.focusLessonSlug = 'second'
 
     expect(getContinueTarget(lessons, progress)).toEqual({
-      lessonSlug: 'first',
+      lessonSlug: 'second',
       problemId: 'one',
     })
   })
@@ -152,6 +179,6 @@ describe('learning flow', () => {
       learningTargetToPath({ lessonSlug: 'first', problemId: 'one' }),
     ).toBe('/lesson/first/problem/one')
     expect(learningTargetToPath({ lessonSlug: 'first' })).toBe('/lesson/first')
-    expect(learningTargetToPath(undefined)).toBe('/progress')
+    expect(learningTargetToPath(undefined)).toBe('/')
   })
 })

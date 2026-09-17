@@ -1,9 +1,4 @@
-import { tracks } from '@/curriculum'
-
-export const primaryNavItems = [
-  { to: '/', label: 'Dashboard' },
-  { to: '/progress', label: 'Progress' },
-]
+import { tracks, type Track } from '@/curriculum'
 
 const shortTitles = {
   algorithms: 'Algorithms',
@@ -13,8 +8,11 @@ const shortTitles = {
   production: 'Production',
 }
 
+export function getTrackShortTitle(track: Pick<Track, 'id' | 'title'>) {
+  return shortTitles[track.id as keyof typeof shortTitles] ?? track.title
+}
+
 export const trackPreviewItems = tracks.map((track) => ({
   ...track,
-  shortTitle: shortTitles[track.id as keyof typeof shortTitles] ?? track.title,
-  lessonCount: track.lessonSlugs.length,
+  shortTitle: getTrackShortTitle(track),
 }))

@@ -5,7 +5,7 @@ import { ConceptPage } from '@/pages/ConceptPage'
 import { HomePage } from '@/pages/HomePage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 import { ProblemPage } from '@/pages/ProblemPage'
-import { ProgressPage } from '@/pages/ProgressPage'
+import { ProgressRedirect } from '@/pages/ProgressRedirect'
 
 export const router = createBrowserRouter([
   {
@@ -19,7 +19,7 @@ export const router = createBrowserRouter([
       },
       {
         path: 'progress',
-        element: <ProgressPage />,
+        element: <ProgressRedirect />,
       },
       {
         path: 'lesson/:slug',
@@ -36,4 +36,3 @@ export const router = createBrowserRouter([
     element: <NotFoundPage />,
   },
 ])
-

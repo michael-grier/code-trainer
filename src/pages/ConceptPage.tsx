@@ -39,7 +39,7 @@ export function ConceptPage() {
           </CardHeader>
           <CardContent>
             <Button asChild>
-              <Link to="/progress">Back to curriculum map</Link>
+              <Link to="/">Back to dashboard</Link>
             </Button>
           </CardContent>
         </Card>

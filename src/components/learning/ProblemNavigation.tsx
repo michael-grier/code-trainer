@@ -5,22 +5,27 @@ import { Card, CardContent } from '@/components/ui/card'
 import type { ProblemNavigationItem } from '@/state/learningFlow'
 
 type ProblemNavigationProps = {
+  lessonSlug: string
   previous?: ProblemNavigationItem
   next?: ProblemNavigationItem
 }
 
-export function ProblemNavigation({ next, previous }: ProblemNavigationProps) {
+export function ProblemNavigation({
+  lessonSlug,
+  next,
+  previous,
+}: ProblemNavigationProps) {
   return (
     <Card className="min-w-0">
       <CardContent className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:items-center">
-        <NavItem direction="previous" item={previous} />
-        <NavItem direction="next" item={next} />
+        <NavItem direction="previous" item={previous} lessonSlug={lessonSlug} />
+        <NavItem direction="next" item={next} lessonSlug={lessonSlug} />
         <Button
           asChild
           className="col-span-2 justify-self-center sm:col-span-1 sm:col-start-2 sm:row-start-1"
           variant="outline"
         >
-          <Link to="/progress">Map</Link>
+          <Link to="/">Dashboard</Link>
         </Button>
       </CardContent>
     </Card>
@@ -30,9 +35,11 @@ export function ProblemNavigation({ next, previous }: ProblemNavigationProps) {
 function NavItem({
   direction,
   item,
+  lessonSlug,
 }: {
   direction: 'previous' | 'next'
   item?: ProblemNavigationItem
+  lessonSlug: string
 }) {
   const isPrevious = direction === 'previous'
 
@@ -43,6 +50,15 @@ function NavItem({
       </div>
     )
   }
+
+  // Problems run in one sequence across lessons, so say when a step leaves
+  // the current lesson instead of silently landing in another one.
+  const label =
+    item.lessonSlug === lessonSlug
+      ? isPrevious
+        ? 'Previous'
+        : 'Next'
+      : `${isPrevious ? 'Previous' : 'Next'} lesson · ${item.lessonTitle}`
 
   return (
     <Button
@@ -56,8 +72,8 @@ function NavItem({
     >
       <Link to={`/lesson/${item.lessonSlug}/problem/${item.problemId}`}>
         <span className="grid min-w-0 text-left">
-          <span className="text-xs text-muted-foreground">
-            {isPrevious ? 'Previous' : 'Next'}
+          <span className="break-words text-xs text-muted-foreground sm:truncate">
+            {label}
           </span>
           <span className="break-words sm:truncate">{item.problemTitle}</span>
         </span>
