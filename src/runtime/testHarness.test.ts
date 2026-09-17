@@ -148,4 +148,36 @@ describe('formatValue', () => {
     for (let index = 0; index < 30; index += 1) nested = new Set([nested])
     expect(formatValue(nested)).toContain('[Max depth]')
   })
+
+  it('limits traversal of repeatedly shared object graphs before clamping text', () => {
+    let reads = 0
+    let graph: unknown = {
+      get value() {
+        reads += 1
+        return 'leaf'
+      },
+    }
+    for (let depth = 0; depth < 16; depth += 1) graph = [graph, graph]
+
+    expect(formatValue(graph).length).toBeLessThanOrEqual(MAX_RUNNER_TEXT_LENGTH)
+    expect(reads).toBeGreaterThan(0)
+    expect(reads).toBeLessThanOrEqual(MAX_RUNNER_TEXT_LENGTH)
+  })
+
+  it('stops reading wide collections once the shared traversal budget is spent', () => {
+    let reads = 0
+    const values = Array.from({ length: MAX_RUNNER_TEXT_LENGTH * 2 }, () => ({
+      get value() {
+        reads += 1
+        return 'entry'
+      },
+    }))
+
+    for (const collection of [values, new Set(values), new Map(values.map((value, index) => [index, value]))]) {
+      reads = 0
+      expect(formatValue(collection).length).toBeLessThanOrEqual(MAX_RUNNER_TEXT_LENGTH)
+      expect(reads).toBeGreaterThan(0)
+      expect(reads).toBeLessThanOrEqual(MAX_RUNNER_TEXT_LENGTH)
+    }
+  })
 })
