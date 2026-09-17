@@ -61,7 +61,7 @@ export function PracticePage() {
   )
 
   return (
-    <div className="mx-auto grid max-w-3xl gap-8">
+    <div className="mx-auto grid max-w-3xl gap-8 2xl:max-w-6xl">
       <section>
         <p className="text-xs text-muted-foreground">Practice by type</p>
         <h1 className="mt-1 text-2xl font-semibold tracking-tight">
@@ -72,7 +72,7 @@ export function PracticePage() {
         </p>
       </section>
 
-      <div className="grid gap-8">
+      <div className="grid gap-8 2xl:grid-cols-2 2xl:items-start">
         {sections.map(({ rows, track }) => (
           <section key={track.id}>
             <h2 className="border-b pb-2 font-medium">{track.title}</h2>

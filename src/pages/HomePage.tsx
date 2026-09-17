@@ -90,8 +90,8 @@ export function HomePage() {
   }, [location, trackSections])
 
   return (
-    <div className="mx-auto grid max-w-3xl gap-8">
-      <section className="flex flex-wrap items-end justify-between gap-4">
+    <div className="mx-auto grid max-w-3xl gap-8 2xl:max-w-6xl 2xl:grid-cols-[minmax(0,1fr)_22rem] 2xl:items-start">
+      <section className="flex flex-wrap items-end justify-between gap-4 2xl:col-span-2">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Welcome back</h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -106,102 +106,105 @@ export function HomePage() {
         </Button>
       </section>
 
-      <section className="rounded-lg border bg-card/60 p-4">
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <div className="text-xs text-muted-foreground">
-              Up next{recommendedTrack ? ` · ${recommendedTrack.title}` : ''}
+      {/* On wide screens the guidance blocks sit beside the curriculum */}
+      <div className="grid gap-8 2xl:sticky 2xl:top-[4.75rem] 2xl:order-2">
+        <section className="rounded-lg border bg-card/60 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-xs text-muted-foreground">
+                Up next{recommendedTrack ? ` · ${recommendedTrack.title}` : ''}
+              </div>
+              <div className="mt-0.5 truncate font-medium">
+                {recommendedLesson.title}
+              </div>
             </div>
-            <div className="mt-0.5 truncate font-medium">
-              {recommendedLesson.title}
-            </div>
+            <Button asChild className="shrink-0" size="sm" variant="outline">
+              <Link to={`/lesson/${recommendedLesson.slug}`}>Open lesson</Link>
+            </Button>
           </div>
-          <Button asChild className="shrink-0" size="sm" variant="outline">
-            <Link to={`/lesson/${recommendedLesson.slug}`}>Open lesson</Link>
-          </Button>
-        </div>
-        <p className="mt-3 flex flex-wrap items-center gap-x-2 border-t pt-3 text-xs text-muted-foreground">
-          {focusTrack ? (
-            <>
+          <p className="mt-3 flex flex-wrap items-center gap-x-2 border-t pt-3 text-xs text-muted-foreground">
+            {focusTrack ? (
+              <>
+                <span>
+                  Focused on{' '}
+                  <span className="text-foreground">{focusTrack.title}</span>. Its
+                  lessons come first until you clear the focus.
+                </span>
+                <button
+                  className="rounded-sm text-primary underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+                  onClick={() => progress.setFocusTrack(undefined)}
+                  type="button"
+                >
+                  Back to the guided path
+                </button>
+              </>
+            ) : (
               <span>
-                Focused on{' '}
-                <span className="text-foreground">{focusTrack.title}</span>. Its
-                lessons come first until you clear the focus.
+                Following the guided path through every track. Focus a track below
+                to work through its lessons first.
               </span>
-              <button
-                className="rounded-sm text-primary underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
-                onClick={() => progress.setFocusTrack(undefined)}
-                type="button"
-              >
-                Back to the guided path
-              </button>
-            </>
-          ) : (
-            <span>
-              Following the guided path through every track. Focus a track below
-              to work through its lessons first.
-            </span>
-          )}
-        </p>
-      </section>
+            )}
+          </p>
+        </section>
 
-      {recentActivity.length > 0 ? (
+        {recentActivity.length > 0 ? (
+          <section>
+            <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              Pick up where you left off
+            </h2>
+            <ul className="mt-2 grid text-sm">
+              {recentActivity.map((item) => (
+                <li key={getProblemKey(item.lesson.slug, item.problem.id)}>
+                  <Link
+                    className="flex items-center justify-between gap-3 rounded-md px-2 py-2 outline-none transition hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring 2xl:flex-col 2xl:items-start 2xl:gap-0.5"
+                    to={`/lesson/${item.lesson.slug}/problem/${item.problem.id}`}
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate">{item.problem.title}</span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {item.lesson.title} · {problemKindLabels[item.problem.kind]}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      {item.hasDraft ? (
+                        <span className="text-primary">draft saved · </span>
+                      ) : null}
+                      {formatRelativeTime(item.updatedAt)}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+
         <section>
           <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            Pick up where you left off
+            Practice by type
           </h2>
-          <ul className="mt-2 grid text-sm">
-            {recentActivity.map((item) => (
-              <li key={getProblemKey(item.lesson.slug, item.problem.id)}>
-                <Link
-                  className="flex items-center justify-between gap-3 rounded-md px-2 py-2 outline-none transition hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-                  to={`/lesson/${item.lesson.slug}/problem/${item.problem.id}`}
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate">{item.problem.title}</span>
-                    <span className="block truncate text-xs text-muted-foreground">
-                      {item.lesson.title} · {problemKindLabels[item.problem.kind]}
+          <ul className="mt-2 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4 2xl:grid-cols-1">
+            {problemKinds.map((kind) => {
+              const counts = kindCounts[kind]
+
+              return (
+                <li key={kind}>
+                  <Link
+                    className="flex items-center justify-between gap-2 rounded-md border bg-card/60 px-3 py-1.5 outline-none transition hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+                    to={`/practice/${kind}`}
+                  >
+                    <span>{problemKindLabels[kind]}</span>
+                    <span className="text-xs text-muted-foreground tabular-nums">
+                      {counts.done}/{counts.total}
                     </span>
-                  </span>
-                  <span className="shrink-0 text-xs text-muted-foreground">
-                    {item.hasDraft ? (
-                      <span className="text-primary">draft saved · </span>
-                    ) : null}
-                    {formatRelativeTime(item.updatedAt)}
-                  </span>
-                </Link>
-              </li>
-            ))}
+                  </Link>
+                </li>
+              )
+            })}
           </ul>
         </section>
-      ) : null}
+      </div>
 
-      <section>
-        <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          Practice by type
-        </h2>
-        <ul className="mt-2 flex flex-wrap gap-2 text-sm">
-          {problemKinds.map((kind) => {
-            const counts = kindCounts[kind]
-
-            return (
-              <li key={kind}>
-                <Link
-                  className="flex items-center gap-2 rounded-md border bg-card/60 px-3 py-1.5 outline-none transition hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-                  to={`/practice/${kind}`}
-                >
-                  <span>{problemKindLabels[kind]}</span>
-                  <span className="text-xs text-muted-foreground tabular-nums">
-                    {counts.done}/{counts.total}
-                  </span>
-                </Link>
-              </li>
-            )
-          })}
-        </ul>
-      </section>
-
-      <section>
+      <section className="2xl:order-1">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
             Curriculum
