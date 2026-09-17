@@ -2,6 +2,23 @@
 
 @custom-variant dark (&:is(.dark *));
 
+@media (max-width: 639px) {
+  /* Override Monaco's inline layout widths for the visible mobile viewport.
+     Keep its cursor-relative vertical placement and keyboard navigation. */
+  .code-editor .monaco-editor .suggest-widget {
+    left: calc(var(--editor-visible-left, 0px) + var(--editor-visible-width, 100vw) / 2) !important;
+    width: min(430px, calc(var(--editor-visible-width, 100vw) - 32px)) !important;
+    max-width: calc(var(--editor-visible-width, 100vw) - 32px) !important;
+    transform: translateX(-50%);
+  }
+
+  .code-editor .suggest-widget .monaco-list,
+  .code-editor .suggest-widget .monaco-scrollable-element,
+  .code-editor .suggest-widget .monaco-list-rows {
+    width: 100% !important;
+  }
+}
+
 @theme inline {
   --font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
   --color-background: var(--background);

@@ -1,5 +1,6 @@
 import Editor from '@monaco-editor/react'
 import { useTheme } from 'next-themes'
+import { useEffect, useRef } from 'react'
 
 import { cn } from '@/lib/cn'
 
@@ -21,11 +22,39 @@ export function CodeEditor({
   value,
 }: CodeEditorProps) {
   const { resolvedTheme } = useTheme()
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const viewport = window.visualViewport
+    const updateViewport = () => {
+      // Monaco uses layout-viewport bounds, which can exceed the visible area
+      // when a mobile browser zooms or pans around the focused editor.
+      containerRef.current?.style.setProperty(
+        '--editor-visible-width',
+        `${viewport?.width ?? window.innerWidth}px`,
+      )
+      containerRef.current?.style.setProperty(
+        '--editor-visible-left',
+        `${viewport?.offsetLeft ?? 0}px`,
+      )
+    }
+
+    updateViewport()
+    viewport?.addEventListener('resize', updateViewport)
+    viewport?.addEventListener('scroll', updateViewport)
+    window.addEventListener('resize', updateViewport)
+    return () => {
+      viewport?.removeEventListener('resize', updateViewport)
+      viewport?.removeEventListener('scroll', updateViewport)
+      window.removeEventListener('resize', updateViewport)
+    }
+  }, [])
 
   return (
     <div
+      ref={containerRef}
       className={cn(
-        'min-w-0 overflow-hidden rounded-md border bg-background',
+        'code-editor min-w-0 overflow-hidden rounded-md border bg-background',
         className,
       )}
     >
