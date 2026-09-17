@@ -23,5 +23,5 @@ export const problemKindDescriptions: Record<ProblemKind, string> = {
 export const problemKinds = Object.keys(problemKindLabels) as ProblemKind[]
 
 export function isProblemKind(value: string | undefined): value is ProblemKind {
-  return value !== undefined && value in problemKindLabels
+  return problemKinds.includes(value as ProblemKind)
 }
