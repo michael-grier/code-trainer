@@ -251,22 +251,26 @@ describe('focus and recent activity', () => {
     expect(getRecommendedLesson(trackLessons, progress)?.slug).toBe('a1')
   })
 
-  it('does not flag lessons as ahead of the path while focused', () => {
+  it('flags skipped lessons only within the guided step\'s track', () => {
     const guided = createEmptyProgressState(1)
     const focused = focusedOnB()
 
-    expect(getLessonStatus(trackLessons[3], trackLessons, guided)).toBe(
+    expect(getLessonStatus(trackLessons[1], trackLessons, guided)).toBe(
       'ahead-of-path',
     )
-    expect(getLessonStatus(trackLessons[3], trackLessons, focused)).toBe(
+    expect(getLessonStatus(trackLessons[3], trackLessons, guided)).toBe(
       'untouched',
     )
-    expect(getLessonStatus(trackLessons[0], trackLessons, focused)).toBe(
+
+    expect(getLessonStatus(trackLessons[3], trackLessons, focused)).toBe(
+      'ahead-of-path',
+    )
+    expect(getLessonStatus(trackLessons[1], trackLessons, focused)).toBe(
       'untouched',
     )
 
     focused.learningPath.focusLessonSlug = 'missing'
-    expect(getLessonStatus(trackLessons[3], trackLessons, focused)).toBe(
+    expect(getLessonStatus(trackLessons[1], trackLessons, focused)).toBe(
       'ahead-of-path',
     )
   })

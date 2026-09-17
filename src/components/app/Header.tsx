@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 
 import { AuthButtons } from '@/components/app/AuthButtons'
+import { JumpPalette } from '@/components/app/JumpPalette'
 import { MobileNav } from '@/components/app/MobileNav'
 import { SyncStatus } from '@/components/app/SyncStatus'
 import { ThemeToggle } from '@/components/app/ThemeToggle'
@@ -17,6 +18,7 @@ export function Header() {
           Code Trainer
         </Link>
         <div className="ml-auto flex items-center gap-3">
+          <JumpPalette />
           <div className="hidden sm:block">
             <SyncStatus />
           </div>

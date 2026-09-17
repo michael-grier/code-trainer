@@ -13,6 +13,8 @@ import {
   type Lesson,
   type Track,
 } from '@/curriculum'
+import type { ProblemKind } from '@/curriculum/types'
+import { problemKindLabels, problemKinds } from '@/curriculum/problemKinds'
 import { formatRelativeTime } from '@/lib/format'
 import { getRecentActivity } from '@/state/guidance'
 import { getContinueTarget, learningTargetToPath } from '@/state/learningFlow'
@@ -30,6 +32,19 @@ export function HomePage() {
   const continueTarget = getContinueTarget(lessons, progress.state)
   const continuePath = learningTargetToPath(continueTarget)
   const recentActivity = getRecentActivity(lessons, progress.state)
+  const kindCounts = Object.fromEntries(
+    problemKinds.map((kind) => [kind, { done: 0, total: 0 }]),
+  ) as Record<ProblemKind, { done: number; total: number }>
+
+  for (const lesson of availableLessons) {
+    for (const problem of lesson.problems) {
+      kindCounts[problem.kind].total += 1
+
+      if (progress.isProblemCompleted(lesson.slug, problem.id)) {
+        kindCounts[problem.kind].done += 1
+      }
+    }
+  }
   const totalCompletedLessons = tracks.reduce((total, track) => {
     const completion = progress.getTrackCompletion(track, lessons, progress.state)
 
@@ -145,7 +160,7 @@ export function HomePage() {
                   <span className="min-w-0">
                     <span className="block truncate">{item.problem.title}</span>
                     <span className="block truncate text-xs text-muted-foreground">
-                      {item.lesson.title} · {item.problem.kind}
+                      {item.lesson.title} · {problemKindLabels[item.problem.kind]}
                     </span>
                   </span>
                   <span className="shrink-0 text-xs text-muted-foreground">
@@ -160,6 +175,31 @@ export function HomePage() {
           </ul>
         </section>
       ) : null}
+
+      <section>
+        <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          Practice by type
+        </h2>
+        <ul className="mt-2 flex flex-wrap gap-2 text-sm">
+          {problemKinds.map((kind) => {
+            const counts = kindCounts[kind]
+
+            return (
+              <li key={kind}>
+                <Link
+                  className="flex items-center gap-2 rounded-md border bg-card/60 px-3 py-1.5 outline-none transition hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+                  to={`/practice/${kind}`}
+                >
+                  <span>{problemKindLabels[kind]}</span>
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    {counts.done}/{counts.total}
+                  </span>
+                </Link>
+              </li>
+            )
+          })}
+        </ul>
+      </section>
 
       <section>
         <div className="flex flex-wrap items-center justify-between gap-3">

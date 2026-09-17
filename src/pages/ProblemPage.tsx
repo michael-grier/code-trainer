@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { getLesson, getProblem, lessons } from '@/curriculum'
+import { problemKindLabels } from '@/curriculum/problemKinds'
 import { formatSlug } from '@/lib/format'
 import { getProblemNavigation } from '@/state/learningFlow'
 import { useProgress } from '@/state/progressContext'
@@ -66,7 +67,8 @@ export function ProblemPage() {
       <section className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0">
           <p className="text-xs text-muted-foreground">
-            {lesson.title} · {problem.kind} · {problem.estimatedMinutes ?? 10}{' '}
+            {lesson.title} · {problemKindLabels[problem.kind]} ·{' '}
+            {problem.estimatedMinutes ?? 10}{' '}
             min
             {isCompleted ? (
               <span className="text-primary"> · completed</span>
