@@ -105,20 +105,29 @@ export function HomePage() {
             <Link to={`/lesson/${recommendedLesson.slug}`}>Open lesson</Link>
           </Button>
         </div>
-        {focusTrack ? (
-          <p className="mt-3 flex flex-wrap items-center gap-x-2 border-t pt-3 text-xs text-muted-foreground">
+        <p className="mt-3 flex flex-wrap items-center gap-x-2 border-t pt-3 text-xs text-muted-foreground">
+          {focusTrack ? (
+            <>
+              <span>
+                Focused on{' '}
+                <span className="text-foreground">{focusTrack.title}</span>. Its
+                lessons come first until you clear the focus.
+              </span>
+              <button
+                className="rounded-sm text-primary underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={() => progress.setFocusTrack(undefined)}
+                type="button"
+              >
+                Back to the guided path
+              </button>
+            </>
+          ) : (
             <span>
-              Focused on <span className="text-foreground">{focusTrack.title}</span>
+              Following the guided path through every track. Focus a track below
+              to work through its lessons first.
             </span>
-            <button
-              className="rounded-sm text-primary underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
-              onClick={() => progress.setFocusTrack(undefined)}
-              type="button"
-            >
-              Back to the guided path
-            </button>
-          </p>
-        ) : null}
+          )}
+        </p>
       </section>
 
       {recentActivity.length > 0 ? (
@@ -218,6 +227,11 @@ export function HomePage() {
                     <Button
                       aria-pressed={isFocused}
                       className="h-7 px-2 text-xs"
+                      title={
+                        isFocused
+                          ? 'Clear the focus and follow the guided path'
+                          : 'Work through this track first'
+                      }
                       onClick={() =>
                         progress.setFocusTrack(isFocused ? undefined : track.id)
                       }

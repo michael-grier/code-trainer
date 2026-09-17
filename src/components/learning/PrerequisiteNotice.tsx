@@ -34,7 +34,7 @@ export function PrerequisiteNotice({
           >
             {recommendedLesson.title}
           </Link>
-          .
+          . Focusing on this track makes its lessons your next steps instead.
         </p>
         <div className="flex shrink-0 flex-wrap gap-2">
           {track ? (
