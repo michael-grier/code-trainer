@@ -12,12 +12,16 @@ type ProblemNavigationProps = {
 export function ProblemNavigation({ next, previous }: ProblemNavigationProps) {
   return (
     <Card className="min-w-0">
-      <CardContent className="grid gap-3 p-4 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
+      <CardContent className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:items-center">
         <NavItem direction="previous" item={previous} />
-        <Button asChild className="justify-self-center" variant="outline">
+        <NavItem direction="next" item={next} />
+        <Button
+          asChild
+          className="col-span-2 justify-self-center sm:col-span-1 sm:col-start-2 sm:row-start-1"
+          variant="outline"
+        >
           <Link to="/progress">Map</Link>
         </Button>
-        <NavItem direction="next" item={next} />
       </CardContent>
     </Card>
   )
@@ -34,7 +38,7 @@ function NavItem({
 
   if (!item) {
     return (
-      <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+      <div className="min-w-0 rounded-md border border-dashed p-3 text-sm text-muted-foreground">
         {isPrevious ? 'Start of path' : 'End of path'}
       </div>
     )
@@ -45,8 +49,8 @@ function NavItem({
       asChild
       className={
         isPrevious
-          ? 'h-auto w-full min-w-0 justify-start py-3'
-          : 'h-auto w-full min-w-0 justify-end py-3'
+          ? 'h-auto w-full min-w-0 items-start justify-start whitespace-normal py-3 sm:items-center'
+          : 'h-auto w-full min-w-0 items-start justify-start whitespace-normal py-3 sm:items-center sm:justify-end'
       }
       variant="outline"
     >
@@ -55,7 +59,7 @@ function NavItem({
           <span className="text-xs text-muted-foreground">
             {isPrevious ? 'Previous' : 'Next'}
           </span>
-          <span className="truncate">{item.problemTitle}</span>
+          <span className="break-words sm:truncate">{item.problemTitle}</span>
         </span>
       </Link>
     </Button>
