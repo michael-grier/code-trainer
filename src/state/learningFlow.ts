@@ -1,5 +1,9 @@
 import { isLessonAvailable, type Lesson } from '@/curriculum/types'
-import { getRecommendedLesson, getRecommendedProblem } from '@/state/guidance'
+import {
+  getFocusLesson,
+  getRecommendedLesson,
+  getRecommendedProblem,
+} from '@/state/guidance'
 import { getProblemKey, type ProgressState } from '@/state/progress'
 
 export type LearningTarget = {
@@ -18,12 +22,17 @@ export function getContinueTarget(
   lessons: Lesson[],
   progress: ProgressState,
 ): LearningTarget | undefined {
+  const focusLesson = getFocusLesson(lessons, progress)
+
   if (progress.lastVisited) {
     const lesson = lessons.find(
       (item) => item.slug === progress.lastVisited?.lessonSlug,
     )
+    // A last visit outside the focused track loses to the focus, or Continue
+    // would pull the learner straight back off the track they just chose.
+    const matchesFocus = !focusLesson || lesson?.track === focusLesson.track
 
-    if (lesson && isLessonAvailable(lesson)) {
+    if (lesson && isLessonAvailable(lesson) && matchesFocus) {
       const problem = progress.lastVisited.problemId
         ? lesson.problems.find(
             (item) => item.id === progress.lastVisited?.problemId,

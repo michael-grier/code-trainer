@@ -1,4 +1,4 @@
-import { Outlet } from 'react-router-dom'
+import { Outlet, ScrollRestoration } from 'react-router-dom'
 
 import { Header } from '@/components/app/Header'
 import { Sidebar } from '@/components/app/Sidebar'
@@ -13,6 +13,9 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
+      {/* Client-side navigations otherwise keep the previous page's scroll
+          offset, so a lesson opened from low on the dashboard starts mid-text. */}
+      <ScrollRestoration />
     </div>
   )
 }

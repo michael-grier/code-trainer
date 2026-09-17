@@ -12,9 +12,10 @@ import {
   useQuery_experimental as useConvexQuery,
 } from 'convex/react'
 
-import { lessons } from '@/curriculum'
+import { lessons, tracks } from '@/curriculum'
 import { progressApi } from '@/lib/convexProgressApi'
 import {
+  getFocusLesson,
   getLessonCompletion,
   getLessonStatus,
   getProgressCounts,
@@ -302,6 +303,32 @@ export function ProgressProvider({ children, cloud, userId }: ProgressProviderPr
     [update],
   )
 
+  const setFocusTrack = useCallback(
+    (trackId?: string) => {
+      const track = tracks.find((candidate) => candidate.id === trackId)
+
+      update(
+        (current, now) => ({
+          ...current,
+          learningPath: {
+            ...current.learningPath,
+            mode: track ? 'self-directed' : 'guided',
+            // The focus points at the track's first lesson; recommendations
+            // walk forward from there to the first incomplete lesson.
+            focusLessonSlug: track?.lessonSlugs[0],
+            updatedAt: now,
+          },
+          updatedAt: {
+            ...current.updatedAt,
+            [getUpdatedAtKey('learningPath')]: now,
+          },
+        }),
+        'immediate',
+      )
+    },
+    [update],
+  )
+
   const syncStatus = useMemo<SyncStatus>(() => {
     if (!userId) {
       return 'guest'
@@ -569,6 +596,8 @@ export function ProgressProvider({ children, cloud, userId }: ProgressProviderPr
       getLessonStatus,
       getRecommendedProblem,
       saveLastVisited,
+      focusTrackId: getFocusLesson(lessons, state)?.track,
+      setFocusTrack,
       flushProgress,
       retrySync,
     }
@@ -580,6 +609,7 @@ export function ProgressProvider({ children, cloud, userId }: ProgressProviderPr
     pendingHandoff,
     retrySync,
     saveLastVisited,
+    setFocusTrack,
     state,
     storageKey,
     syncStatus,
