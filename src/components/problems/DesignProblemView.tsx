@@ -227,8 +227,7 @@ function answerToList(answer: unknown) {
 }
 
 function textToList(value: string) {
-  return value
-    .split(/\r?\n/)
-    .map((item) => item.trim())
-    .filter(Boolean)
+  // These entries are an editable draft: trimming or dropping blank lines
+  // removes spaces and Enter presses before the learner can keep typing.
+  return value.split(/\r?\n/)
 }
