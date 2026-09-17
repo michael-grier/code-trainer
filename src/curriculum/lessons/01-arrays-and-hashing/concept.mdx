@@ -12,29 +12,33 @@ One small idiom appears in the code before anything else, so let's read it here 
 
 ```ts
 export function areAnagrams(left: string, right: string): boolean {
-  // Different lengths cannot contain the same characters.
+  // If the strings have different lengths, they cannot be anagrams.
   if (left.length !== right.length) {
     return false
   }
 
-  // First count the characters required from the left string.
+  // 1. Count the characters contained in the left string.
   const counts = new Map<string, number>()
 
   for (const char of left) {
+    // Use 0 for a missing character, then add 1. The first occurrence stores 1.
     counts.set(char, (counts.get(char) ?? 0) + 1)
   }
 
-  // Then compare the right string against those required counts.
+  // 2. Compare the right string against the left string's character counts.
   for (const char of right) {
-    // This character now needs one fewer match.
+    // Subtract one from the count still needed for this character.
+    // A missing character has a count of 0, so subtraction produces -1.
     const remaining = (counts.get(char) ?? 0) - 1
 
-    // A negative count means right used a character too many times.
+    // A negative count means right has more copies of this character than left,
+    // so the strings are not anagrams.
     if (remaining < 0) {
       return false
     }
 
-    // Delete completed counts so counts only stores characters still needed.
+    // Update the map after scanning each character. Delete counts that reach 0
+    // so the map contains only characters that still need a match.
     if (remaining === 0) {
       counts.delete(char)
     } else {
@@ -42,7 +46,8 @@ export function areAnagrams(left: string, right: string): boolean {
     }
   }
 
-  // No required characters remain unmatched.
+  // An empty map means all character counts matched, so return true.
+  // Any remaining entries mean there are unmatched characters, so return false.
   return counts.size === 0
 }
 ```
@@ -64,11 +69,13 @@ The map in `areAnagrams` tracked how many of each character remained. A map used
 
 ```ts
 export function countCharacters(word: string): Map<string, number> {
-  // The map stores character -> number of times seen.
+  // Store each character and the number of times it appears in the string.
   const counts = new Map<string, number>()
 
+  // Loop through the string one character at a time to fill the counts map.
   for (const char of word) {
-    // Missing characters start at zero, then increase by one.
+    // Use 0 when the character is missing, then add 1 in either case.
+    // The first occurrence stores 1; later occurrences increase the count.
     counts.set(char, (counts.get(char) ?? 0) + 1)
   }
 
@@ -93,20 +100,20 @@ Sometimes the count is more than you need. Suppose the prompt is: given an array
 
 ```ts
 export function hasDuplicate(nums: number[]): boolean {
-  // Keep every number seen so far.
+  // Record every number seen in the array so far.
   const seen = new Set<number>()
 
   for (const num of nums) {
-    // Check before adding so the second copy is detected.
+    // If this number was seen earlier in the array, a duplicate is found.
     if (seen.has(num)) {
       return true
     }
 
-    // Record this number for later membership checks.
+    // Otherwise, add the number so later loop iterations can find it.
     seen.add(num)
   }
 
-  // No number ever appeared twice.
+  // Reaching the end of the loop means no number appeared twice.
   return false
 }
 ```
@@ -138,35 +145,40 @@ Read it left to right: the leading `1` is the count of `a`, the `1` five slots i
 
 ```ts
 function createSignature(word: string): string {
-  // One slot per lowercase English letter.
+  // Create 26 slots, indexed 0 through 25, one per lowercase English letter.
+  // Initialize every count to 0.
   const counts = new Array<number>(26).fill(0)
 
+  // Update the counts array one character at a time.
   for (const char of word) {
     // charCodeAt(0) returns the character code at position 0 in char.
     // Lowercase letters have consecutive codes: "a" = 97, "b" = 98, ..., "z" = 122.
-    // Subtracting 97 shifts those codes to array indexes 0 through 25.
+    // Subtracting 97 maps each letter to its slot in counts, indexed 0 through 25.
     const alphabetIndex = char.charCodeAt(0) - 97
+    // Increment the count in that letter's slot.
     counts[alphabetIndex] += 1
   }
 
-  // Serialize the counts so the signature can be a Map key.
+  // Convert the completed counts array into a string to use as a map key.
   return counts.join('#')
 }
 
 export function groupAnagrams(words: string[]): string[][] {
-  // Each signature owns one output group.
+  // Each signature is the map key for words with matching character counts.
   const groups = new Map<string, string[]>()
 
   for (const word of words) {
-    // Anagrams produce the same signature.
+    // Anagrams produce the same signature, so they belong in the same group.
     const key = createSignature(word)
     const currentGroup = groups.get(key) ?? []
 
-    // Appending keeps input order within each group, as this exercise requires.
+    // Append the word to its matching group, preserving the input order
+    // required by this exercise.
     groups.set(key, [...currentGroup, word])
   }
 
-  // Map insertion order gives the first-seen group order this exercise requires.
+  // Return all groups in the order their signatures were first added,
+  // preserving the first-seen group order required by this exercise.
   return [...groups.values()]
 }
 ```
