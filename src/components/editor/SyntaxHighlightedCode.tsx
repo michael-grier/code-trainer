@@ -27,7 +27,7 @@ export function SyntaxHighlightedCode({
 
 function getTokenClassName(kind: CodeTokenKind) {
   if (kind === 'comment') {
-    return 'text-muted-foreground italic'
+    return 'whitespace-pre-wrap break-words text-muted-foreground italic'
   }
 
   if (kind === 'string') {
