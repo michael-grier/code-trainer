@@ -60,7 +60,8 @@ in the Convex progress modules. Browser code and cached progress are untrusted.
 cloud loading, synchronization, and the guest-to-account choice.
 [src/state/cloudProgress.ts](../src/state/cloudProgress.ts) defines the merge:
 
-- Completion and reference reveal use OR merges.
+- Completion and reference reveal use OR merges. A completion keeps its
+  earliest timestamp, which the dashboard's activity history reads.
 - Drafts and editable answers use field timestamps for last-write-wins merges.
 - Rubric reviews use an OR merge per item; a checked item in either copy stays
   checked, so an uncheck does not override a checked item from another copy.

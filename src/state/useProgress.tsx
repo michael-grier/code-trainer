@@ -579,6 +579,12 @@ export function ProgressProvider({ children, cloud, userId }: ProgressProviderPr
         update((current, now) => {
           const key = getProblemKey(lessonSlug, problemId)
 
+          // Passing a solved problem again keeps the first completion time,
+          // which the activity history and streaks are built from.
+          if (current.completed[key]) {
+            return current
+          }
+
           return {
             ...current,
             completed: { ...current.completed, [key]: true },

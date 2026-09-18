@@ -530,7 +530,12 @@ function mergeTrueRecord(
     const cloudUpdatedAt = cloud.updatedAt[updatedAtKey] ?? 0
 
     merged[field][key] = true
-    merged.updatedAt[updatedAtKey] = Math.max(localUpdatedAt, cloudUpdatedAt)
+    // Activity history is built from the first completion, so a completion
+    // keeps its earliest known time. A missing time is 0 and never wins.
+    merged.updatedAt[updatedAtKey] =
+      field === 'completed' && localUpdatedAt && cloudUpdatedAt
+        ? Math.min(localUpdatedAt, cloudUpdatedAt)
+        : Math.max(localUpdatedAt, cloudUpdatedAt)
   }
 }
 

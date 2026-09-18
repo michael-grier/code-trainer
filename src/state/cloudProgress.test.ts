@@ -39,6 +39,37 @@ describe('cloud progress sync helpers', () => {
     expect(merged.drafts[draftKey]).toBe('cloud draft')
   })
 
+  test('keeps the earliest completion time and the latest reference reveal', () => {
+    const local = createEmptyProgressState(0)
+    const cloud = createEmptyProgressState(0)
+    const problemKey = getProblemKey('arrays-and-hashing', 'practice')
+    const completedAtKey = getUpdatedAtKey('completed', 'arrays-and-hashing', 'practice')
+    const revealedAtKey = getUpdatedAtKey(
+      'revealedReferences',
+      'arrays-and-hashing',
+      'practice',
+    )
+
+    for (const [state, updatedAt] of [
+      [local, 100],
+      [cloud, 200],
+    ] as const) {
+      state.completed[problemKey] = true
+      state.updatedAt[completedAtKey] = updatedAt
+      state.revealedReferences[problemKey] = true
+      state.updatedAt[revealedAtKey] = updatedAt
+    }
+
+    const merged = mergeProgressStates(local, cloud)
+
+    expect(merged.updatedAt[completedAtKey]).toBe(100)
+    expect(merged.updatedAt[revealedAtKey]).toBe(200)
+
+    delete local.updatedAt[completedAtKey]
+
+    expect(mergeProgressStates(local, cloud).updatedAt[completedAtKey]).toBe(200)
+  })
+
   test('union-merges recently changed queued lessons', () => {
     const local = createEmptyProgressState(0)
     const cloud = createEmptyProgressState(0)
