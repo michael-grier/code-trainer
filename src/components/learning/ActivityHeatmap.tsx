@@ -38,6 +38,14 @@ export function ActivityHeatmap({
   const thisWeekStart = today - now.getDay()
   // Newest week first: the scroller below lays its columns out in reverse.
   const weekStarts = Array.from({ length: WEEKS }, (_, index) => thisWeekStart - index * 7)
+  const firstDay = thisWeekStart - (WEEKS - 1) * 7
+  let solvedInRange = 0
+
+  for (const [day, solved] of solvedByDay) {
+    if (day >= firstDay) {
+      solvedInRange += solved
+    }
+  }
 
   return (
     <div className="flex flex-wrap items-center gap-x-10 gap-y-5">
@@ -61,7 +69,8 @@ export function ActivityHeatmap({
           {/* The reversed row makes the scroll position start at the newest
               week when a narrow screen cannot fit the whole year. */}
           <div
-            aria-label="Problems solved per day over the last year"
+            // Per-day counts are hover-only, so the label carries the total.
+            aria-label={`Problems solved per day over the last year, ${solvedInRange} in total`}
             className="flex min-w-0 flex-row-reverse gap-1 overflow-x-auto px-0.5 pb-1"
             role="img"
           >
