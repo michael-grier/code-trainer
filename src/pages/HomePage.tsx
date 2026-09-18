@@ -1,7 +1,15 @@
-import { Check, Search, X } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Check, ChevronDown, Search, X } from 'lucide-react'
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 import { Link, useLocation } from 'react-router-dom'
 
+import { ActivityHeatmap } from '@/components/learning/ActivityHeatmap'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -19,6 +27,8 @@ import type { ProblemKind } from '@/curriculum/types'
 import { problemKindLabels, problemKinds } from '@/curriculum/problemKinds'
 import { cn } from '@/lib/cn'
 import { formatRelativeTime } from '@/lib/format'
+import { useMediaQuery } from '@/lib/useMediaQuery'
+import { getSolvedCountsByDay, getStreaks } from '@/state/activity'
 import { getRecentActivity } from '@/state/guidance'
 import { getContinueTarget, learningTargetToPath } from '@/state/learningFlow'
 import { useProgress } from '@/state/progressContext'
@@ -65,6 +75,91 @@ export function HomePage() {
 
     return total + completion.completedLessons
   }, 0)
+  const solvedByDay = getSolvedCountsByDay(progress.state)
+  const streaks = getStreaks(solvedByDay)
+  // Matches Tailwind's 2xl breakpoint, where the guidance rail moves beside
+  // the curriculum and there is room to keep every block expanded.
+  const isTwoColumn = useMediaQuery('(min-width: 96rem)')
+  // Below Tailwind's sm breakpoint the In progress list collapses too; the
+  // Continue button in the page header still reaches the same target.
+  const isPhone = useMediaQuery('(max-width: 39.99rem)')
+  const activityHeatmap = <ActivityHeatmap solvedByDay={solvedByDay} streaks={streaks} />
+  const practiceList = (
+    <ul className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4 2xl:grid-cols-1">
+      {problemKinds.map((kind) => {
+        const counts = kindCounts[kind]
+
+        return (
+          <li key={kind}>
+            <Link
+              className="flex items-center justify-between gap-2 rounded-md border bg-card/60 px-3 py-1.5 outline-none transition hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+              to={`/practice/${kind}`}
+            >
+              <span>{problemKindLabels[kind]}</span>
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {counts.done}/{counts.total}
+              </span>
+            </Link>
+          </li>
+        )
+      })}
+    </ul>
+  )
+  const inProgressContent = (
+    <>
+      <ul className="grid grid-cols-1 text-sm">
+        {inProgressRows.map((row) => (
+          <li key={row.key}>
+            <Link
+              className={cn(
+                'flex items-center justify-between gap-3 rounded-md px-2 py-2 outline-none transition hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring 2xl:flex-col 2xl:items-start 2xl:gap-0.5',
+                row.tag === 'Continue' && 'bg-accent',
+              )}
+              to={row.path}
+            >
+              <span className="min-w-0">
+                <span className="flex items-center gap-2">
+                  <span className="truncate">{row.title}</span>
+                  {row.tag ? (
+                    <span className="shrink-0 rounded border px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+                      {row.tag}
+                    </span>
+                  ) : null}
+                </span>
+                <span className="block truncate text-xs text-muted-foreground">
+                  {row.detail}
+                </span>
+              </span>
+              <span className="shrink-0 text-xs text-muted-foreground">{row.meta}</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-3 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+        {focusTrack ? (
+          <>
+            <span>
+              The guided step follows{' '}
+              <span className="text-foreground">{focusTrack.title}</span> while
+              it is focused.
+            </span>
+            <button
+              className="rounded-sm text-primary underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={() => progress.setFocusTrack(undefined)}
+              type="button"
+            >
+              Back to the curriculum order
+            </button>
+          </>
+        ) : (
+          <span>
+            The guided step follows the curriculum order. Focus a track below to
+            put its lessons first.
+          </span>
+        )}
+      </p>
+    </>
+  )
   const [query, setQuery] = useState('')
   const normalizedQuery = query.trim().toLowerCase()
   const trackSections = useMemo(
@@ -105,7 +200,10 @@ export function HomePage() {
   }, [location, trackSections])
 
   return (
-    <div className="mx-auto grid max-w-3xl gap-8 2xl:max-w-6xl 2xl:grid-cols-[minmax(0,1fr)_22rem] 2xl:items-start">
+    // Single-column grids here use grid-cols-1 so the column can shrink.
+    // Truncated titles do not wrap, and an auto-sized column would grow to
+    // the longest one and push the page past a phone's viewport.
+    <div className="mx-auto grid max-w-3xl grid-cols-1 gap-8 2xl:max-w-6xl 2xl:grid-cols-[minmax(0,1fr)_22rem] 2xl:items-start">
       <section className="flex flex-wrap items-end justify-between gap-4 2xl:col-span-2">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Welcome back</h1>
@@ -116,94 +214,56 @@ export function HomePage() {
             {progress.syncStatus === 'guest' ? ' · saved in this browser' : ''}
           </p>
         </div>
-        <Button asChild>
+        <Button asChild className="w-full sm:w-auto">
           <Link to={continuePath}>Continue</Link>
         </Button>
       </section>
 
+      {isTwoColumn ? (
+        <section className="col-span-2">
+          <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            Activity
+          </h2>
+          <div className="mt-2 rounded-md border bg-card/60 p-4">{activityHeatmap}</div>
+        </section>
+      ) : null}
+
       {/* On wide screens the guidance blocks sit beside the curriculum */}
-      <div className="grid gap-8 2xl:sticky 2xl:top-[4.75rem] 2xl:order-2">
-        <section>
-          <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            In progress
-          </h2>
-          <ul className="mt-2 grid text-sm">
-            {inProgressRows.map((row) => (
-              <li key={row.key}>
-                <Link
-                  className={cn(
-                    'flex items-center justify-between gap-3 rounded-md px-2 py-2 outline-none transition hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring 2xl:flex-col 2xl:items-start 2xl:gap-0.5',
-                    row.tag === 'Continue' && 'bg-accent',
-                  )}
-                  to={row.path}
-                >
-                  <span className="min-w-0">
-                    <span className="flex items-center gap-2">
-                      <span className="truncate">{row.title}</span>
-                      {row.tag ? (
-                        <span className="shrink-0 rounded border px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">
-                          {row.tag}
-                        </span>
-                      ) : null}
-                    </span>
-                    <span className="block truncate text-xs text-muted-foreground">
-                      {row.detail}
-                    </span>
-                  </span>
-                  <span className="shrink-0 text-xs text-muted-foreground">{row.meta}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-          <p className="mt-3 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
-            {focusTrack ? (
-              <>
-                <span>
-                  The guided step follows{' '}
-                  <span className="text-foreground">{focusTrack.title}</span> while
-                  it is focused.
-                </span>
-                <button
-                  className="rounded-sm text-primary underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
-                  onClick={() => progress.setFocusTrack(undefined)}
-                  type="button"
-                >
-                  Back to the curriculum order
-                </button>
-              </>
-            ) : (
-              <span>
-                The guided step follows the curriculum order. Focus a track below to
-                put its lessons first.
-              </span>
-            )}
-          </p>
-        </section>
+      <div className="grid grid-cols-1 gap-8 2xl:sticky 2xl:top-[4.75rem] 2xl:order-2">
+        {isPhone ? null : (
+          <section>
+            <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              In progress
+            </h2>
+            <div className="mt-2">{inProgressContent}</div>
+          </section>
+        )}
 
-        <section>
-          <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            Practice by type
-          </h2>
-          <ul className="mt-2 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4 2xl:grid-cols-1">
-            {problemKinds.map((kind) => {
-              const counts = kindCounts[kind]
-
-              return (
-                <li key={kind}>
-                  <Link
-                    className="flex items-center justify-between gap-2 rounded-md border bg-card/60 px-3 py-1.5 outline-none transition hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-                    to={`/practice/${kind}`}
-                  >
-                    <span>{problemKindLabels[kind]}</span>
-                    <span className="text-xs text-muted-foreground tabular-nums">
-                      {counts.done}/{counts.total}
-                    </span>
-                  </Link>
-                </li>
-              )
-            })}
-          </ul>
-        </section>
+        {isTwoColumn ? (
+          <section>
+            <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              Practice by type
+            </h2>
+            <div className="mt-2">{practiceList}</div>
+          </section>
+        ) : (
+          // Collapsed by default so the curriculum stays near the top of a
+          // single-column page.
+          <div className="divide-y rounded-md border bg-card/60">
+            {isPhone ? (
+              <CollapsibleSection summary={inProgressRows[0]?.title} title="In progress">
+                {inProgressContent}
+              </CollapsibleSection>
+            ) : null}
+            <CollapsibleSection
+              summary={`${streaks.current}-day streak`}
+              title="Activity"
+            >
+              {activityHeatmap}
+            </CollapsibleSection>
+            <CollapsibleSection title="Practice by type">{practiceList}</CollapsibleSection>
+          </div>
+        )}
       </div>
 
       <section className="2xl:order-1">
@@ -249,7 +309,7 @@ export function HomePage() {
           </div>
         ) : null}
 
-        <div className="mt-4 grid gap-8">
+        <div className="mt-4 grid grid-cols-1 gap-8">
           {trackSections.map(({ lessons: trackLessons, track }) => {
             const completion = progress.getTrackCompletion(
               track,
@@ -292,7 +352,7 @@ export function HomePage() {
                     </span>
                   </div>
                 </div>
-                <ul className="mt-1 grid text-sm">
+                <ul className="mt-1 grid grid-cols-1 text-sm">
                   {trackLessons.map((lesson) => (
                     <LessonRow key={lesson.slug} lesson={lesson} />
                   ))}
@@ -303,6 +363,44 @@ export function HomePage() {
         </div>
       </section>
     </div>
+  )
+}
+
+function CollapsibleSection({
+  children,
+  summary,
+  title,
+}: {
+  children: ReactNode
+  summary?: string
+  title: string
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+  const contentId = useId()
+
+  return (
+    <section>
+      <h2>
+        <button
+          aria-controls={contentId}
+          aria-expanded={isOpen}
+          className="flex w-full items-center justify-between gap-3 rounded-md px-3 py-2.5 text-xs font-medium uppercase tracking-wider text-muted-foreground outline-none transition hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+          onClick={() => setIsOpen((current) => !current)}
+          type="button"
+        >
+          <span className="shrink-0">{title}</span>
+          <span className="flex min-w-0 items-center gap-2 font-normal normal-case tracking-normal">
+            <span className="truncate">{summary}</span>
+            <ChevronDown
+              className={cn('size-4 shrink-0 transition', isOpen && 'rotate-180')}
+            />
+          </span>
+        </button>
+      </h2>
+      <div className="px-3 pb-3 pt-1" hidden={!isOpen} id={contentId}>
+        {children}
+      </div>
+    </section>
   )
 }
 
