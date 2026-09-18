@@ -11,6 +11,7 @@ import {
   type Lesson,
   type Track,
 } from '@/curriculum'
+import { problemKindLabels } from '@/curriculum/problemKinds'
 import { cn } from '@/lib/cn'
 import { useProgress } from '@/state/progressContext'
 
@@ -235,7 +236,7 @@ function ProblemLink({
           {isComplete ? (
             <span className="text-primary">done</span>
           ) : (
-            `${problem.kind} · ${problem.estimatedMinutes ?? 10} min`
+            `${problemKindLabels[problem.kind]} · ${problem.estimatedMinutes ?? 10} min`
           )}
         </span>
       </Link>

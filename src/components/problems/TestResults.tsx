@@ -48,16 +48,19 @@ export function ProblemResults({
 }: ProblemResultsProps) {
   const [activeTab, setActiveTab] = useState<ResultTab>('console')
 
+  // Follow the run the learner just started. Keying on results instead would
+  // pin the Tests tab after the first evaluation and hide later console runs.
   useEffect(() => {
-    if (isEvaluating || testResult) {
+    if (isEvaluating) {
       setActiveTab('tests')
-      return
     }
+  }, [isEvaluating])
 
-    if (isLogging || consoleResult) {
+  useEffect(() => {
+    if (isLogging) {
       setActiveTab('console')
     }
-  }, [consoleResult, isEvaluating, isLogging, testResult])
+  }, [isLogging])
 
   return (
     <Card className="min-w-0">

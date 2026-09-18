@@ -144,12 +144,12 @@ export function getLessonStatus(
     return 'in-progress'
   }
 
-  // Focusing a track is a deliberate step off the guided order, so nothing
-  // counts as ahead of it while that choice is active.
+  // "Ahead" means skipping earlier lessons in the same track as the guided
+  // step. Other tracks are separate subjects, so browsing them is not a skip.
   if (
     recommendedLesson &&
-    lesson.order > recommendedLesson.order &&
-    !getFocusLesson(lessons, progress)
+    lesson.track === recommendedLesson.track &&
+    lesson.order > recommendedLesson.order
   ) {
     return 'ahead-of-path'
   }

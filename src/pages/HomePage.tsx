@@ -1,11 +1,13 @@
 import { Check, Search, X } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
+  getLesson,
   getLessonsForTrack,
+  getProblem,
   getTrack,
   isLessonAvailable,
   lessons,
@@ -13,6 +15,9 @@ import {
   type Lesson,
   type Track,
 } from '@/curriculum'
+import type { ProblemKind } from '@/curriculum/types'
+import { problemKindLabels, problemKinds } from '@/curriculum/problemKinds'
+import { cn } from '@/lib/cn'
 import { formatRelativeTime } from '@/lib/format'
 import { getRecentActivity } from '@/state/guidance'
 import { getContinueTarget, learningTargetToPath } from '@/state/learningFlow'
@@ -30,6 +35,31 @@ export function HomePage() {
   const continueTarget = getContinueTarget(lessons, progress.state)
   const continuePath = learningTargetToPath(continueTarget)
   const recentActivity = getRecentActivity(lessons, progress.state)
+  const inProgressRows = buildInProgressRows({
+    continueLesson: getLesson(continueTarget?.lessonSlug),
+    continueProblemId: continueTarget?.problemId,
+    continuePath,
+    focusTrack,
+    lastVisited: progress.state.lastVisited,
+    recentActivity,
+    recommendedLesson,
+    recommendedTrack,
+    getLessonCompletion: (lesson: Lesson) =>
+      progress.getLessonCompletion(lesson, progress.state),
+  })
+  const kindCounts = Object.fromEntries(
+    problemKinds.map((kind) => [kind, { done: 0, total: 0 }]),
+  ) as Record<ProblemKind, { done: number; total: number }>
+
+  for (const lesson of availableLessons) {
+    for (const problem of lesson.problems) {
+      kindCounts[problem.kind].total += 1
+
+      if (progress.isProblemCompleted(lesson.slug, problem.id)) {
+        kindCounts[problem.kind].done += 1
+      }
+    }
+  }
   const totalCompletedLessons = tracks.reduce((total, track) => {
     const completion = progress.getTrackCompletion(track, lessons, progress.state)
 
@@ -75,8 +105,8 @@ export function HomePage() {
   }, [location, trackSections])
 
   return (
-    <div className="mx-auto grid max-w-3xl gap-8">
-      <section className="flex flex-wrap items-end justify-between gap-4">
+    <div className="mx-auto grid max-w-3xl gap-8 2xl:max-w-6xl 2xl:grid-cols-[minmax(0,1fr)_22rem] 2xl:items-start">
+      <section className="flex flex-wrap items-end justify-between gap-4 2xl:col-span-2">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Welcome back</h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -91,77 +121,92 @@ export function HomePage() {
         </Button>
       </section>
 
-      <section className="rounded-lg border bg-card/60 p-4">
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <div className="text-xs text-muted-foreground">
-              Up next{recommendedTrack ? ` · ${recommendedTrack.title}` : ''}
-            </div>
-            <div className="mt-0.5 truncate font-medium">
-              {recommendedLesson.title}
-            </div>
-          </div>
-          <Button asChild className="shrink-0" size="sm" variant="outline">
-            <Link to={`/lesson/${recommendedLesson.slug}`}>Open lesson</Link>
-          </Button>
-        </div>
-        <p className="mt-3 flex flex-wrap items-center gap-x-2 border-t pt-3 text-xs text-muted-foreground">
-          {focusTrack ? (
-            <>
-              <span>
-                Focused on{' '}
-                <span className="text-foreground">{focusTrack.title}</span>. Its
-                lessons come first until you clear the focus.
-              </span>
-              <button
-                className="rounded-sm text-primary underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
-                onClick={() => progress.setFocusTrack(undefined)}
-                type="button"
-              >
-                Back to the guided path
-              </button>
-            </>
-          ) : (
-            <span>
-              Following the guided path through every track. Focus a track below
-              to work through its lessons first.
-            </span>
-          )}
-        </p>
-      </section>
-
-      {recentActivity.length > 0 ? (
+      {/* On wide screens the guidance blocks sit beside the curriculum */}
+      <div className="grid gap-8 2xl:sticky 2xl:top-[4.75rem] 2xl:order-2">
         <section>
           <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            Pick up where you left off
+            In progress
           </h2>
           <ul className="mt-2 grid text-sm">
-            {recentActivity.map((item) => (
-              <li key={getProblemKey(item.lesson.slug, item.problem.id)}>
+            {inProgressRows.map((row) => (
+              <li key={row.key}>
                 <Link
-                  className="flex items-center justify-between gap-3 rounded-md px-2 py-2 outline-none transition hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-                  to={`/lesson/${item.lesson.slug}/problem/${item.problem.id}`}
+                  className={cn(
+                    'flex items-center justify-between gap-3 rounded-md px-2 py-2 outline-none transition hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring 2xl:flex-col 2xl:items-start 2xl:gap-0.5',
+                    row.tag === 'Continue' && 'bg-accent',
+                  )}
+                  to={row.path}
                 >
                   <span className="min-w-0">
-                    <span className="block truncate">{item.problem.title}</span>
+                    <span className="flex items-center gap-2">
+                      <span className="truncate">{row.title}</span>
+                      {row.tag ? (
+                        <span className="shrink-0 rounded border px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+                          {row.tag}
+                        </span>
+                      ) : null}
+                    </span>
                     <span className="block truncate text-xs text-muted-foreground">
-                      {item.lesson.title} · {item.problem.kind}
+                      {row.detail}
                     </span>
                   </span>
-                  <span className="shrink-0 text-xs text-muted-foreground">
-                    {item.hasDraft ? (
-                      <span className="text-primary">draft saved · </span>
-                    ) : null}
-                    {formatRelativeTime(item.updatedAt)}
-                  </span>
+                  <span className="shrink-0 text-xs text-muted-foreground">{row.meta}</span>
                 </Link>
               </li>
             ))}
           </ul>
+          <p className="mt-3 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+            {focusTrack ? (
+              <>
+                <span>
+                  The guided step follows{' '}
+                  <span className="text-foreground">{focusTrack.title}</span> while
+                  it is focused.
+                </span>
+                <button
+                  className="rounded-sm text-primary underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+                  onClick={() => progress.setFocusTrack(undefined)}
+                  type="button"
+                >
+                  Back to the curriculum order
+                </button>
+              </>
+            ) : (
+              <span>
+                The guided step follows the curriculum order. Focus a track below to
+                put its lessons first.
+              </span>
+            )}
+          </p>
         </section>
-      ) : null}
 
-      <section>
+        <section>
+          <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            Practice by type
+          </h2>
+          <ul className="mt-2 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4 2xl:grid-cols-1">
+            {problemKinds.map((kind) => {
+              const counts = kindCounts[kind]
+
+              return (
+                <li key={kind}>
+                  <Link
+                    className="flex items-center justify-between gap-2 rounded-md border bg-card/60 px-3 py-1.5 outline-none transition hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+                    to={`/practice/${kind}`}
+                  >
+                    <span>{problemKindLabels[kind]}</span>
+                    <span className="text-xs text-muted-foreground tabular-nums">
+                      {counts.done}/{counts.total}
+                    </span>
+                  </Link>
+                </li>
+              )
+            })}
+          </ul>
+        </section>
+      </div>
+
+      <section className="2xl:order-1">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
             Curriculum
@@ -320,4 +365,101 @@ function matchesLessonQuery(track: Track, lesson: Lesson, query: string) {
     String(lesson.order),
     ...lesson.problems.map((problem) => problem.title),
   ].some((value) => value.toLowerCase().includes(query))
+}
+
+type InProgressRow = {
+  key: string
+  path: string
+  title: string
+  detail: string
+  meta: ReactNode
+  tag?: 'Continue' | 'Guided step' | 'Focused step'
+}
+
+// One list answers "what next": the Continue target first, then other
+// unfinished work, then the guided step unless Continue already points into
+// that lesson.
+function buildInProgressRows({
+  continueLesson,
+  continueProblemId,
+  continuePath,
+  focusTrack,
+  getLessonCompletion,
+  lastVisited,
+  recentActivity,
+  recommendedLesson,
+  recommendedTrack,
+}: {
+  continueLesson: Lesson | undefined
+  continueProblemId: string | undefined
+  continuePath: string
+  focusTrack: Track | undefined
+  getLessonCompletion: (lesson: Lesson) => { completedProblems: number; totalProblems: number }
+  lastVisited: { lessonSlug: string; problemId?: string; updatedAt: number } | undefined
+  recentActivity: ReturnType<typeof getRecentActivity>
+  recommendedLesson: Lesson
+  recommendedTrack: Track | undefined
+}): InProgressRow[] {
+  const activityRows: InProgressRow[] = recentActivity.map((item) => ({
+    key: getProblemKey(item.lesson.slug, item.problem.id),
+    path: `/lesson/${item.lesson.slug}/problem/${item.problem.id}`,
+    title: item.problem.title,
+    detail: `${item.lesson.title} · ${problemKindLabels[item.problem.kind]}`,
+    meta: (
+      <>
+        {item.hasDraft ? <span className="text-primary">draft saved · </span> : null}
+        {formatRelativeTime(item.updatedAt)}
+      </>
+    ),
+  }))
+  const lessonMeta = (lesson: Lesson) => {
+    const completion = getLessonCompletion(lesson)
+
+    return completion.completedProblems > 0
+      ? `${completion.completedProblems}/${completion.totalProblems} done`
+      : 'not started'
+  }
+  const continueProblem = getProblem(continueLesson, continueProblemId)
+  const continueKey = continueLesson
+    ? continueProblem
+      ? getProblemKey(continueLesson.slug, continueProblem.id)
+      : `lesson:${continueLesson.slug}`
+    : undefined
+  const isLastVisited =
+    lastVisited?.lessonSlug === continueLesson?.slug &&
+    lastVisited?.problemId === continueProblem?.id
+  const continueRow: InProgressRow | undefined = continueLesson
+    ? {
+        ...(activityRows.find((row) => row.key === continueKey) ?? {
+          key: continueKey ?? continuePath,
+          path: continuePath,
+          title: continueProblem?.title ?? continueLesson.title,
+          detail: continueProblem
+            ? `${continueLesson.title} · ${problemKindLabels[continueProblem.kind]}`
+            : (getTrack(continueLesson.track)?.title ?? ''),
+          meta:
+            isLastVisited && lastVisited
+              ? `last visited ${formatRelativeTime(lastVisited.updatedAt)}`
+              : lessonMeta(continueLesson),
+        }),
+        tag: 'Continue',
+      }
+    : undefined
+  const guidedRow: InProgressRow | undefined =
+    continueLesson?.slug === recommendedLesson.slug
+      ? undefined
+      : {
+          key: `lesson:${recommendedLesson.slug}`,
+          path: `/lesson/${recommendedLesson.slug}`,
+          title: recommendedLesson.title,
+          detail: `${recommendedTrack?.title ?? ''} · ${recommendedLesson.problems.length} problems`,
+          meta: lessonMeta(recommendedLesson),
+          tag: focusTrack ? 'Focused step' : 'Guided step',
+        }
+
+  return [
+    continueRow,
+    ...activityRows.filter((row) => row.key !== continueKey),
+    guidedRow,
+  ].filter((row) => row !== undefined)
 }
