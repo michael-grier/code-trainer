@@ -61,7 +61,9 @@ export function PracticePage() {
   )
 
   return (
-    <div className="mx-auto grid max-w-3xl gap-8 2xl:max-w-6xl">
+    // grid-cols-1 lets each single column shrink. Truncated titles do not
+    // wrap, so an auto-sized column would overflow a phone's viewport.
+    <div className="mx-auto grid max-w-3xl grid-cols-1 gap-8 2xl:max-w-6xl">
       <section>
         <p className="text-xs text-muted-foreground">Practice by type</p>
         <h1 className="mt-1 text-2xl font-semibold tracking-tight">
@@ -72,11 +74,11 @@ export function PracticePage() {
         </p>
       </section>
 
-      <div className="grid gap-8 2xl:grid-cols-2 2xl:items-start">
+      <div className="grid grid-cols-1 gap-8 2xl:grid-cols-2 2xl:items-start">
         {sections.map(({ rows, track }) => (
           <section key={track.id}>
             <h2 className="border-b pb-2 font-medium">{track.title}</h2>
-            <ul className="mt-1 grid text-sm">
+            <ul className="mt-1 grid grid-cols-1 text-sm">
               {rows.map(({ lesson, problem }) => {
                 const isComplete = progress.isProblemCompleted(lesson.slug, problem.id)
 

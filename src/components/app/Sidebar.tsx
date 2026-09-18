@@ -17,7 +17,7 @@ import { useProgress } from '@/state/progressContext'
 
 export function Sidebar() {
   return (
-    <aside className="hidden border-r md:block">
+    <aside className="hidden border-r lg:block">
       <div className="sticky top-14 max-h-[calc(100vh-3.5rem)] overflow-y-auto px-3 py-5">
         <SidebarNav />
       </div>

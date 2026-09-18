@@ -27,7 +27,7 @@ export function MobileNav() {
   return (
     <Sheet onOpenChange={setOpen} open={open}>
       <SheetTrigger asChild>
-        <Button className="md:hidden" size="icon" type="button" variant="ghost">
+        <Button className="lg:hidden" size="icon" type="button" variant="ghost">
           <PanelLeft className="size-4" />
           <span className="sr-only">Open navigation</span>
         </Button>
