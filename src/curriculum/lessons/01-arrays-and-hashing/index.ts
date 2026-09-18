@@ -245,29 +245,33 @@ console.log(longestConsecutive([100, 4, 200, 1, 3, 2]))
       {
         name: 'Frequency map',
         code: `export function areAnagrams(left: string, right: string): boolean {
-  // Different lengths cannot contain the same characters.
+  // If the strings have different lengths, they cannot be anagrams.
   if (left.length !== right.length) {
     return false
   }
 
-  // First count the characters required from the left string.
+  // 1. Count the characters contained in the left string.
   const counts = new Map<string, number>()
 
   for (const char of left) {
+    // Use 0 for a missing character, then add 1. The first occurrence stores 1.
     counts.set(char, (counts.get(char) ?? 0) + 1)
   }
 
-  // Then compare the right string against those required counts.
+  // 2. Compare the right string against the left string's character counts.
   for (const char of right) {
-    // This character now needs one fewer match.
+    // Subtract one from the count still needed for this character.
+    // A missing character has a count of 0, so subtraction produces -1.
     const nextCount = (counts.get(char) ?? 0) - 1
 
-    // A negative count means right used a character too many times.
+    // A negative count means right has more copies of this character than left,
+    // so the strings are not anagrams.
     if (nextCount < 0) {
       return false
     }
 
-    // Delete completed counts so counts only stores characters still needed.
+    // Update the map after scanning each character. Delete counts that reach 0
+    // so the map contains only characters that still need a match.
     if (nextCount === 0) {
       counts.delete(char)
     } else {
@@ -275,7 +279,8 @@ console.log(longestConsecutive([100, 4, 200, 1, 3, 2]))
     }
   }
 
-  // No required characters remain unmatched.
+  // An empty map means all character counts matched, so return true.
+  // Any remaining entries mean there are unmatched characters, so return false.
   return counts.size === 0
 }
 `,
@@ -288,28 +293,34 @@ console.log(longestConsecutive([100, 4, 200, 1, 3, 2]))
       {
         name: 'Count signature',
         code: `function createSignature(word: string): string {
-  // One slot per lowercase English letter.
+  // Create 26 slots, indexed 0 through 25, one per lowercase English letter.
+  // Initialize every count to 0.
   const counts = new Array<number>(26).fill(0)
 
+  // Update the counts array one character at a time.
   for (const char of word) {
-    // "a" maps to 0, "b" maps to 1, and so on.
+    // charCodeAt(0) returns the character code at position 0 in char.
+    // Lowercase letters have consecutive codes: "a" = 97, "b" = 98, ..., "z" = 122.
+    // Subtracting 97 maps each letter to its slot in counts, indexed 0 through 25.
+    // Increment the count in that letter's slot.
     counts[char.charCodeAt(0) - 97] += 1
   }
 
-  // Serialize the counts so the signature can be a Map key.
+  // Convert the completed counts array into a string to use as a map key.
   return counts.join('#')
 }
 
 export function groupAnagrams(words: string[]): string[][] {
-  // Each signature owns one output group.
+  // Each signature is the map key for words with matching character counts.
   const groups = new Map<string, string[]>()
 
   for (const word of words) {
-    // Anagrams produce the same signature.
+    // Anagrams produce the same signature, so they belong in the same group.
     const signature = createSignature(word)
     const group = groups.get(signature)
 
-    // Append to preserve the original word order inside the group.
+    // Append to the matching group, or create a group for the first word.
+    // Appending preserves the input order required by this exercise.
     if (group) {
       group.push(word)
     } else {
@@ -317,7 +328,8 @@ export function groupAnagrams(words: string[]): string[][] {
     }
   }
 
-  // Map values preserve first-seen group order.
+  // Return all groups in the order their signatures were first added,
+  // preserving the first-seen group order required by this exercise.
   return [...groups.values()]
 }
 `,
@@ -331,17 +343,18 @@ export function groupAnagrams(words: string[]): string[][] {
       {
         name: 'Set starts only',
         code: `export function longestConsecutive(nums: number[]): number {
-  // Store one copy of each number so each value is checked at most once.
+  // Create a set from nums, storing each distinct number once.
   const values = new Set(nums)
   let best = 0
 
   for (const value of values) {
-    // Only start counting from the first value in a run.
+    // If value - 1 exists, this number is not the start of a consecutive run.
+    // Skip it so the same run is not counted again from each of its numbers.
     if (values.has(value - 1)) {
       continue
     }
 
-    // Walk forward until the consecutive run ends.
+    // Count the starting number, then walk forward until the run ends.
     let length = 1
     let next = value + 1
 
@@ -350,7 +363,7 @@ export function groupAnagrams(words: string[]): string[][] {
       next += 1
     }
 
-    // Keep the longest run found so far.
+    // Store the length of the longest run found so far.
     best = Math.max(best, length)
   }
 

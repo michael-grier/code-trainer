@@ -227,7 +227,9 @@ function ProblemLink({
         <span
           className={cn(
             'block',
-            isComplete && !isCurrent && 'line-through decoration-border',
+            isComplete &&
+              !isCurrent &&
+              'line-through decoration-black dark:decoration-white',
           )}
         >
           {problem.title}

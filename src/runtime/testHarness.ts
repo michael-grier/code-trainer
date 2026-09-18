@@ -2,7 +2,7 @@ import type { TestCase } from '@/curriculum/types'
 
 import { deepEqual } from './deepEqual'
 import { clampRunnerText } from './runnerText'
-import type { ConsoleMessage, TestRunResult } from './types'
+import { MAX_RUNNER_TEXT_LENGTH, type ConsoleMessage, type TestRunResult } from './types'
 
 export type TestCandidate = (
   ...args: unknown[]
@@ -78,29 +78,10 @@ export function getStatusFromTestResults(results: TestRunResult[]) {
 }
 
 export function formatValue(value: unknown): string {
-  if (typeof value === 'string') {
-    return clampRunnerText(JSON.stringify(value))
-  }
-
-  if (typeof value === 'undefined') {
-    return 'undefined'
-  }
-
-  if (typeof value === 'bigint') {
-    return clampRunnerText(`${value.toString()}n`)
-  }
-
-  if (typeof value === 'function') {
-    return clampRunnerText(`[Function ${value.name || 'anonymous'}]`)
-  }
-
-  if (typeof value === 'symbol') {
-    return clampRunnerText(value.toString())
-  }
-
   try {
-    const serialized = JSON.stringify(value, createDisplayReplacer(), 2)
-    return clampRunnerText(serialized ?? String(value))
+    return clampRunnerText(formatDisplayValue(value, new WeakSet(), 0, {
+      remaining: MAX_RUNNER_TEXT_LENGTH,
+    }))
   } catch {
     return clampRunnerText(String(value))
   }
@@ -118,31 +99,97 @@ export function errorToMessage(error: unknown) {
   return formatValue(error)
 }
 
-function createDisplayReplacer() {
-  const seen = new WeakSet<object>()
+function formatDisplayValue(
+  value: unknown,
+  ancestors: WeakSet<object>,
+  depth: number,
+  budget: { remaining: number },
+): string {
+  if (budget.remaining <= 0) return '[Truncated]'
+  budget.remaining -= 1
+  if (typeof value === 'string') return JSON.stringify(value)
+  if (typeof value === 'bigint') return `${value}n`
+  if (typeof value === 'function') return `[Function ${value.name || 'anonymous'}]`
+  if (typeof value !== 'object' || value === null) {
+    return Object.is(value, -0) ? '-0' : String(value)
+  }
 
-  return (_key: string, value: unknown) => {
-    if (typeof value === 'bigint') {
-      return `${value.toString()}n`
-    }
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime())
+      ? 'Invalid Date'
+      : JSON.stringify(value.toISOString())
+  }
+  if (value instanceof RegExp) return String(value)
+  if (value instanceof Error) return `${value.name}: ${value.message}`
+  if (ancestors.has(value)) return '[Circular]'
+  // Stop deeply nested learner values from overflowing the formatter's stack.
+  if (depth >= 20) return '[Max depth]'
 
-    if (typeof value === 'function') {
-      return `[Function ${value.name || 'anonymous'}]`
-    }
-
-    if (typeof value === 'symbol') {
-      return value.toString()
-    }
-
-    if (typeof value === 'object' && value !== null) {
-      if (seen.has(value)) {
-        return '[Circular]'
+  const indent = '  '.repeat(depth)
+  const childIndent = `${indent}  `
+  const formatChild = (child: unknown) =>
+    formatDisplayValue(child, ancestors, depth + 1, budget)
+  const formatEntries = <T>(
+    open: string,
+    close: string,
+    entries: Iterable<T>,
+    formatEntry: (entry: T) => string,
+  ) => {
+    const formatted: string[] = []
+    // Consume entries lazily so wide collections and shared graphs stop being
+    // traversed when the budget runs out, before the final text is clamped.
+    for (const entry of entries) {
+      if (budget.remaining <= 0) {
+        formatted.push('[Truncated]')
+        break
       }
-
-      seen.add(value)
+      formatted.push(formatEntry(entry))
     }
+    return formatted.length === 0
+      ? `${open}${close}`
+      : `${open}\n${childIndent}${formatted.join(`,\n${childIndent}`)}\n${indent}${close}`
+  }
 
-    return value
+  // Track only the current ancestor chain: a shared reference is not a cycle.
+  ancestors.add(value)
+  try {
+    if (value instanceof Set) {
+      return formatEntries(`Set(${value.size}) {`, '}', value.values(), formatChild)
+    }
+    if (value instanceof Map) {
+      return formatEntries(
+        `Map(${value.size}) {`,
+        '}',
+        value.entries(),
+        ([key, entry]) => `${formatChild(key)} => ${formatChild(entry)}`,
+      )
+    }
+    if (Array.isArray(value)) {
+      return formatEntries(
+        '[',
+        ']',
+        value.keys(),
+        (index) => {
+          if (index in value) return formatChild(value[index])
+          budget.remaining -= 1
+          return '<empty>'
+        },
+      )
+    }
+    return formatEntries(
+      '{',
+      '}',
+      ownEnumerableKeys(value),
+      (key) => `${JSON.stringify(key)}: ${formatChild(Reflect.get(value, key))}`,
+    )
+  } finally {
+    ancestors.delete(value)
+  }
+}
+
+function* ownEnumerableKeys(value: object) {
+  for (const key in value) {
+    if (Object.hasOwn(value, key)) yield key
   }
 }
 

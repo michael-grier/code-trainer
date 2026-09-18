@@ -53,7 +53,7 @@ export function ConceptPage() {
   const lessonCompletion = progress.getLessonCompletion(lesson, progress.state)
 
   return (
-    <div className="mx-auto grid w-full min-w-0 max-w-5xl gap-8">
+    <div className="mx-auto grid w-full min-w-0 max-w-[60rem] gap-8">
       <section className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
           <p className="text-xs text-muted-foreground">
@@ -82,53 +82,17 @@ export function ConceptPage() {
         />
       ) : null}
 
-      <div className="grid min-w-0 gap-8 lg:grid-cols-[minmax(0,1fr)_18rem]">
-        {/* Lesson MDX conventionally opens with an h1 repeating the lesson
-            title, which the page header already shows — hide that one. */}
-        <section className="min-w-0 [&_article>h1:first-child]:hidden">
-          <Mdx component={lesson.concept} />
-        </section>
-
-        <aside className="min-w-0">
-          <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            Practice
-          </h2>
-          <ul className="mt-2 grid text-sm">
-            {lesson.problems.map((problem) => {
-              const isComplete = progress.isProblemCompleted(
-                lesson.slug,
-                problem.id,
-              )
-
-              return (
-                <li key={problem.id}>
-                  <Link
-                    className="flex min-w-0 items-center justify-between gap-3 rounded-md px-2 py-2 outline-none transition hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-                    to={`/lesson/${lesson.slug}/problem/${problem.id}`}
-                  >
-                    <span
-                      className={
-                        isComplete
-                          ? 'min-w-0 truncate text-muted-foreground line-through decoration-border'
-                          : 'min-w-0 truncate'
-                      }
-                    >
-                      {problem.title}
-                    </span>
-                    <span className="shrink-0 text-xs text-muted-foreground">
-                      {isComplete ? (
-                        <span className="text-primary">done</span>
-                      ) : (
-                        `${problem.estimatedMinutes ?? 10} min`
-                      )}
-                    </span>
-                  </Link>
-                </li>
-              )
-            })}
-          </ul>
-        </aside>
-      </div>
+      {/* The page header already displays the title repeated by lesson MDX. */}
+      <section className="min-w-0 [&_article>h1:first-child]:hidden">
+        <Mdx component={lesson.concept} />
+        <div className="mt-8">
+          <Button asChild>
+            <Link to={`/lesson/${lesson.slug}/problem/${nextProblem.id}`}>
+              Start practice
+            </Link>
+          </Button>
+        </div>
+      </section>
     </div>
   )
 }

@@ -101,6 +101,25 @@ test('runs JavaScript, React, type checks, and timeouts inside the sandbox', asy
   expect(timeoutResult).toMatchObject({ status: 'timeout' })
 })
 
+test('shows collection contents in captured learner console output', async ({ page }) => {
+  const result = await runCode(page, {
+    code: `
+      const values = new Set([100, 4, 200, 4])
+      console.log(values)
+      console.log({ counts: new Map([['a', 2]]) })
+      export function pass() { return true }
+    `,
+    functionName: 'pass',
+    tests: [{ name: 'passes', args: [], expected: true }],
+  })
+
+  expect(result.status).toBe('passed')
+  expect(result.logs).toEqual([
+    { method: 'log', values: ['Set(3) {\n  100,\n  4,\n  200\n}'] },
+    { method: 'log', values: ['{\n  "counts": Map(1) {\n    "a" => 2\n  }\n}'] },
+  ])
+})
+
 test('keeps sandbox startup outside the learner execution timeout', async ({
   page,
 }) => {

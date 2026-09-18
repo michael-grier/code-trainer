@@ -11,16 +11,35 @@ export function SyntaxHighlightedCode({
   className,
   code,
 }: SyntaxHighlightedCodeProps) {
+  let sourceOffset = 0
+
   return (
     <code className={cn('font-mono text-foreground', className)}>
-      {tokenizeCode(code).map((token, index) => (
-        <span
-          className={getTokenClassName(token.kind)}
-          key={`${token.kind}-${index}`}
-        >
-          {token.value}
-        </span>
-      ))}
+      {tokenizeCode(code).map((token, index) => {
+        const linePrefix = code.slice(code.lastIndexOf('\n', sourceOffset - 1) + 1, sourceOffset)
+        sourceOffset += token.value.length
+        const standaloneComment = token.kind === 'comment'
+          && token.value.startsWith('//')
+          && /^ *$/.test(linePrefix)
+
+        return (
+          <span
+            className={cn(
+              getTokenClassName(token.kind),
+              standaloneComment && 'inline-block align-top whitespace-pre-wrap [overflow-wrap:anywhere]',
+            )}
+            // Keep wrapped text beneath the comment text, after its indentation and "// ".
+            style={standaloneComment ? {
+              width: `calc(100% - ${linePrefix.length}ch)`,
+              paddingLeft: '3ch',
+              textIndent: '-3ch',
+            } : undefined}
+            key={`${token.kind}-${index}`}
+          >
+            {token.value}
+          </span>
+        )
+      })}
     </code>
   )
 }
