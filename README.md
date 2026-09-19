@@ -15,6 +15,7 @@ All 60 lessons are available across five tracks. Guest progress works without an
 - Local progress, drafts, completion tracking, and a recommended next lesson
 - GitHub sign-in with cross-device progress sync
 - Responsive navigation, keyboard focus states, and light and dark themes
+- Selectable color themes for the code editor and example code
 
 The exercise runtime stays in the browser. Workers run inside an opaque-origin sandbox that blocks access to application storage and network requests. Sucrase transpiles submitted TypeScript and TSX for execution; a separate TypeScript compiler worker grades type fixtures.
 
