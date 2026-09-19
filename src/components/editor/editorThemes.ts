@@ -16,8 +16,10 @@ export type EditorPalette = {
   lineNumber: string
 }
 
-// Colors follow each theme's published palette. Monaco's TypeScript tokenizer
-// only distinguishes these few token kinds, so a palette is a whole theme.
+// Colors follow each theme's published palette, except that comment colors are
+// lightened or darkened to reach 4.5:1 contrast, because lesson snippets teach
+// through their comments. Monaco's TypeScript tokenizer only distinguishes
+// these few token kinds, so a palette is a whole theme.
 const palettes = {
   'github-light': {
     base: 'vs',
@@ -35,8 +37,9 @@ const palettes = {
   'solarized-light': {
     base: 'vs',
     background: '#fdf6e3',
-    foreground: '#657b83',
-    comment: '#93a1a1',
+    // Solarized's base01 rather than base00, which is 4.1:1 on this background.
+    foreground: '#586e75',
+    comment: '#657474',
     keyword: '#859900',
     string: '#2aa198',
     number: '#d33682',
@@ -62,7 +65,7 @@ const palettes = {
     base: 'vs-dark',
     background: '#282a36',
     foreground: '#f8f8f2',
-    comment: '#6272a4',
+    comment: '#8490b8',
     keyword: '#ff79c6',
     string: '#f1fa8c',
     number: '#bd93f9',
@@ -75,7 +78,7 @@ const palettes = {
     base: 'vs-dark',
     background: '#272822',
     foreground: '#f8f8f2',
-    comment: '#75715e',
+    comment: '#938e78',
     keyword: '#f92672',
     string: '#e6db74',
     number: '#ae81ff',
@@ -88,8 +91,7 @@ const palettes = {
     base: 'vs-dark',
     background: '#2e3440',
     foreground: '#d8dee9',
-    // Brighter than Nord's own comment color, which is hard to read here.
-    comment: '#7b88a1',
+    comment: '#919cb1',
     keyword: '#81a1c1',
     string: '#a3be8c',
     number: '#b48ead',
@@ -102,7 +104,7 @@ const palettes = {
     base: 'vs-dark',
     background: '#002b36',
     foreground: '#839496',
-    comment: '#586e75',
+    comment: '#78929a',
     keyword: '#859900',
     string: '#2aa198',
     number: '#d33682',
@@ -144,7 +146,8 @@ export function defineEditorThemes(monaco: Monaco) {
       inherit: true,
       rules: [
         rule('', palette.foreground),
-        rule('comment', palette.comment),
+        // Italic matches the app's own highlighter.
+        { ...rule('comment', palette.comment), fontStyle: 'italic' },
         rule('keyword', palette.keyword),
         rule('string', palette.string),
         rule('regexp', palette.string),
