@@ -1,7 +1,8 @@
 import { DiffEditor as MonacoDiffEditor } from '@monaco-editor/react'
-import { useTheme } from 'next-themes'
 
 import { cn } from '@/lib/cn'
+
+import { defineEditorThemes, useMonacoTheme } from './editorThemes'
 
 type DiffEditorProps = {
   original: string
@@ -18,7 +19,7 @@ export function DiffEditor({
   modified,
   original,
 }: DiffEditorProps) {
-  const { resolvedTheme } = useTheme()
+  const theme = useMonacoTheme()
 
   return (
     <div
@@ -29,6 +30,7 @@ export function DiffEditor({
       )}
     >
       <MonacoDiffEditor
+        beforeMount={defineEditorThemes}
         height={height}
         language="typescript"
         modified={modified}
@@ -46,7 +48,7 @@ export function DiffEditor({
           wordWrap: 'on',
         }}
         original={original}
-        theme={resolvedTheme === 'dark' ? 'vs-dark' : 'light'}
+        theme={theme}
       />
     </div>
   )

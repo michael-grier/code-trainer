@@ -1,8 +1,9 @@
 import Editor from '@monaco-editor/react'
-import { useTheme } from 'next-themes'
 import { useEffect, useRef } from 'react'
 
 import { cn } from '@/lib/cn'
+
+import { defineEditorThemes, useMonacoTheme } from './editorThemes'
 
 type CodeEditorProps = {
   value: string
@@ -21,7 +22,7 @@ export function CodeEditor({
   readOnly = false,
   value,
 }: CodeEditorProps) {
-  const { resolvedTheme } = useTheme()
+  const theme = useMonacoTheme()
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -59,6 +60,7 @@ export function CodeEditor({
       )}
     >
       <Editor
+        beforeMount={defineEditorThemes}
         height={height}
         language="typescript"
         onChange={(nextValue) => onChange?.(nextValue ?? '')}
@@ -78,7 +80,7 @@ export function CodeEditor({
           tabSize: 2,
           wordWrap: 'on',
         }}
-        theme={resolvedTheme === 'dark' ? 'vs-dark' : 'light'}
+        theme={theme}
         value={value}
       />
     </div>

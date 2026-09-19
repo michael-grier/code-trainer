@@ -1,5 +1,6 @@
 import { cn } from '@/lib/cn'
 
+import { useCodeBlockPalette, type EditorPalette } from './editorThemes'
 import { tokenizeCode, type CodeTokenKind } from './syntaxHighlight'
 
 type SyntaxHighlightedCodeProps = {
@@ -11,10 +12,14 @@ export function SyntaxHighlightedCode({
   className,
   code,
 }: SyntaxHighlightedCodeProps) {
+  const palette = useCodeBlockPalette()
   let sourceOffset = 0
 
   return (
-    <code className={cn('font-mono text-foreground', className)}>
+    <code
+      className={cn('font-mono text-foreground', className)}
+      style={palette ? { color: palette.foreground } : undefined}
+    >
       {tokenizeCode(code).map((token, index) => {
         const linePrefix = code.slice(code.lastIndexOf('\n', sourceOffset - 1) + 1, sourceOffset)
         sourceOffset += token.value.length
@@ -28,12 +33,16 @@ export function SyntaxHighlightedCode({
               getTokenClassName(token.kind),
               standaloneComment && 'inline-block align-top whitespace-pre-wrap [overflow-wrap:anywhere]',
             )}
-            // Keep wrapped text beneath the comment text, after its indentation and "// ".
-            style={standaloneComment ? {
-              width: `calc(100% - ${linePrefix.length}ch)`,
-              paddingLeft: '3ch',
-              textIndent: '-3ch',
-            } : undefined}
+            style={{
+              // An inline color outranks the token's light and dark classes.
+              color: palette?.[paletteColors[token.kind]],
+              // Keep wrapped text beneath the comment text, after its indentation and "// ".
+              ...(standaloneComment && {
+                width: `calc(100% - ${linePrefix.length}ch)`,
+                paddingLeft: '3ch',
+                textIndent: '-3ch',
+              }),
+            }}
             key={`${token.kind}-${index}`}
           >
             {token.value}
@@ -42,6 +51,22 @@ export function SyntaxHighlightedCode({
       })}
     </code>
   )
+}
+
+// Editor themes define fewer colors than this highlighter has token kinds,
+// so the extra kinds share the nearest one.
+const paletteColors: Record<CodeTokenKind, keyof EditorPalette> = {
+  plain: 'foreground',
+  comment: 'comment',
+  string: 'string',
+  keyword: 'keyword',
+  literal: 'number',
+  number: 'number',
+  type: 'type',
+  builtin: 'type',
+  function: 'type',
+  property: 'foreground',
+  operator: 'keyword',
 }
 
 function getTokenClassName(kind: CodeTokenKind) {

@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from 'react'
 
+import { useCodeBlockPalette } from '@/components/editor/editorThemes'
 import { SyntaxHighlightedCode } from '@/components/editor/SyntaxHighlightedCode'
 import { cn } from '@/lib/cn'
 
@@ -15,6 +16,7 @@ export function MdxCodeBlock({
   ...props
 }: ComponentProps<'pre'>) {
   const rawCode = getRawCode(children)
+  const palette = useCodeBlockPalette()
 
   if (!rawCode) {
     return (
@@ -36,6 +38,7 @@ export function MdxCodeBlock({
         'mb-4 max-w-full overflow-x-auto rounded-md border bg-muted p-4 text-sm leading-6',
         className,
       )}
+      style={palette ? { backgroundColor: palette.background } : undefined}
       {...props}
     >
       <SyntaxHighlightedCode code={rawCode} />

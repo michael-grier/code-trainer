@@ -5,6 +5,7 @@ import { JumpPalette } from '@/components/app/JumpPalette'
 import { MobileNav } from '@/components/app/MobileNav'
 import { SyncStatus } from '@/components/app/SyncStatus'
 import { ThemeToggle } from '@/components/app/ThemeToggle'
+import { EditorThemePicker } from '@/components/editor/EditorThemePicker'
 
 export function Header() {
   return (
@@ -23,6 +24,7 @@ export function Header() {
             <SyncStatus />
           </div>
           <ThemeToggle />
+          <EditorThemePicker />
           <AuthButtons />
         </div>
       </div>
