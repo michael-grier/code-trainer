@@ -316,21 +316,18 @@ export function groupAnagrams(words: string[]): string[][] {
 
   for (const word of words) {
     // Anagrams produce the same signature, so they belong in the same group.
-    const signature = createSignature(word)
-    const group = groups.get(signature)
+    const key = createSignature(word)
+    // Reuse the matching group, or create an empty group for its first word.
+    const currentGroup = groups.get(key) ?? []
 
-    // Append to the matching group, or create a group for the first word.
-    // Appending preserves the input order required by this exercise.
-    if (group) {
-      group.push(word)
-    } else {
-      groups.set(signature, [word])
-    }
+    // Appending words as we encounter them preserves their input order.
+    currentGroup.push(word)
+    // Store the group under its signature so later anagrams can find it.
+    groups.set(key, currentGroup)
   }
 
-  // Return all groups in the order their signatures were first added,
-  // preserving the first-seen group order required by this exercise.
-  return [...groups.values()]
+  // Map insertion order gives us the groups in first-seen order.
+  return Array.from(groups.values())
 }
 `,
         explanation:
