@@ -9,6 +9,7 @@
     "dev:vite": "bun run build:runner && vite --host 127.0.0.1 --port 5173",
     "dev:convex": "convex dev --typecheck disable",
     "dev:all": "bash ./scripts/dev-all.sh",
+    "setup:worktree": "bash ./scripts/setup-worktree.sh",
     "build": "bun run build:runner && tsc -b && vite build",
     "build:runner": "bun scripts/build-runner-sandbox.mjs",
     "lint": "eslint .",
