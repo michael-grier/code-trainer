@@ -79,6 +79,14 @@ Convex writes both `VITE_CONVEX_URL` and `VITE_CONVEX_SITE_URL` to the ignored
 To work in guest-only mode, leave `VITE_CONVEX_URL` unset and run
 `bun run dev:vite`.
 
+### Worktrees
+
+A linked worktree starts without `.env.local`. Run `bun run setup:worktree`
+there to link the main checkout's file. The script also makes the shared file
+read-only, since a write from any worktree would change what every other one
+reads; use `chmod u+w` before rotating credentials. All worktrees then share
+one development deployment, so run `convex dev` from one worktree at a time.
+
 ## GitHub OAuth setup
 
 Create a GitHub OAuth app with these production values:
